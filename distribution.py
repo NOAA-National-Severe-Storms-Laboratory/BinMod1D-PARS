@@ -102,7 +102,6 @@ class dist():
         self.Mbins = np.zeros_like(self.xbins).astype(np.float64)
         self.Nbins = np.zeros_like(self.xbins).astype(np.float64)
         
-        
         if radar:
             # Radar stuff
             self.wavl = 110.
@@ -264,8 +263,11 @@ class dist():
         self.vtm = self.vt.copy()
         self.vtn = self.vt.copy()
         
-        self.Mfbins =self.av*(self.am)**(-self.bv/self.bm)*self.moments((self.bm+self.bv)/self.bm)
-        self.Nfbins =self.av*(self.am)**(-self.bv/self.bm)*self.moments((self.bv)/self.bm)
+        #self.Mfbins =self.av*(self.am)**(-self.bv/self.bm)*self.moments((self.bm+self.bv)/self.bm)
+        #self.Nfbins =self.av*(self.am)**(-self.bv/self.bm)*self.moments((self.bv)/self.bm)
+        
+        self.Mfbins = self.vt*self.Mbins
+        self.Nfbins =self.vt*self.Nbins
         
         vt_fill = (self.Mbins>0.) & (self.Nbins>0.) & (self.vtm>0.) & (self.vtn>0.)\
                   & (self.Mfbins>0.) & (self.Nfbins>0.)
@@ -286,8 +288,7 @@ class dist():
         
         print('Ndiff = {}'.format(Ncheck-self.Nbins))
         print('Mdiff = {}'.format(Mcheck-self.Mbins))
-        
-        
+         
         
     def radar_bins(self):
         
@@ -353,20 +354,12 @@ class dist():
         ak_zhhvv = (fZhhvv2-fZhhvv1)/self.dxbins
         ck_zhhvv = fZhhvv1-ak_zhhvv*self.xi1
         
-        #akr_zhhvv = (np.real(fZhhvv2)-np.real(fZhhvv1))/self.dxbins
-        #ckr_zhhvv = np.real(fZhhvv1)-akr_zhhvv*self.xi1
-        
-        #aki_zhhvv = np.imag(ak_zhhvv)
-        #cki_zhhvv = np.imag(ck_zhhvv)
-        
         # Linearly interpolate scattering amplitudes across each bin
         # and then integrate each term to find radar values
         self.zh = 1000.*(ak_zh*self.moments(1.)+ck_zh*self.moments(0.))
         self.zv = 1000.*(ak_zv*self.moments(1.)+ck_zv*self.moments(0.))
         self.kdp = 1000.*(ak_kdp*self.moments(1.)+ck_kdp*self.moments(0.))
         self.zhhvv = 1000.*(ak_zhhvv*self.moments(1.)+ck_zhhvv*self.moments(0.))
-        #self.zhhvv = 1000.*((akr_zhhvv*self.moments(1.)+ckr_zhhvv*self.moments(0.))+ 
-        #                    1j*(aki_zhhvv*self.moments(1.)+cki_zhhvv*self.moments(0.)))
         
         self.Zh = -35.*np.ones_like(self.zh)
         self.Zv = -35.*np.ones_like(self.zv)

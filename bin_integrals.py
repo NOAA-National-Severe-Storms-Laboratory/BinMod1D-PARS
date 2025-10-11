@@ -8,6 +8,39 @@ import numpy as np
 import math
 import scipy.special as scip
 
+def init_rk(rk_order):
+    
+    # --- Butcher tableaux (a_ij, b_i, c_i) for RK1–RK4 ---
+    tableaux = {
+                1: dict(a=[[0]], # RK 1st order
+                        b=[1], 
+                        c=[0]),
+                2: dict(a=[[0, 0], # RK 2nd order
+                           [0.5, 0]], 
+                        b=[0, 1], 
+                        c=[0, 0.5]),
+                3: dict(a=[[0, 0, 0], # RK 3rd order
+                           [0.5, 0, 0],
+                           [-1, 2, 0]], 
+                        b=[1/6, 2/3, 1/6], 
+                        c=[0, 0.5, 1]),
+                4: dict(a=[[0, 0, 0, 0], # RK 4th order
+                           [0.5, 0, 0, 0],
+                           [0, 0.5, 0, 0],
+                           [0, 0, 1, 0]], 
+                        b=[1/6, 1/3, 1/3, 1/6], 
+                        c=[0, 0.5, 0.5, 1])
+                }
+
+    if rk_order not in tableaux:
+        raise ValueError("rk_order must be 1, 2, 3, or 4")
+
+    RK = {'a':np.array(tableaux[rk_order]['a'], dtype=float),
+          'b':np.array(tableaux[rk_order]['b'], dtype=float),
+          'c':np.array(tableaux[rk_order]['c'], dtype=float)}
+    
+    return RK 
+
 def kronecker_delta(i, j):
     return 1 if i == j else 0
 

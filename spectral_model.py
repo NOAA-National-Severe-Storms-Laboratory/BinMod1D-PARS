@@ -26,31 +26,32 @@ from analytical_solutions import Scott_dists, Feingold_dists
 from copy import deepcopy
 from distribution import dist
 from interaction import Interaction
+from bin_integrals import init_rk
 
 from habits import habits, fragments
 
 # 1D Spectral Bin Model Class
 class spectral_1d:
     
-    def __init__(self,sbin=8,bins=140,int_type='t',dt=2,
-                 tmax=800.,dz=10.,ztop=3000.,zbot=0.,D1=0.25,Nt0=1.,Dm0=2.0,
+    def __init__(self,sbin=8,bins=140,dt=2,
+                 tmax=800.,dz=10.,ztop=0.,zbot=0.,D1=0.25,Nt0=1.,Dm0=2.0,
                  mu0=3.,Ecol=1.53,Es=0.001,Eb=0.,dist_var='mass',
                  kernel='Golovin',frag_dist='exp',habit_list=['rain'],
                  ptype='rain',Tc=10.,dist_num=1,cc_dest=1,br_dest=1, 
-                 radar=False):
+                 radar=False,rk_order=1):
         '''
         Initialize model and PSD        
         '''       
         
-        self.setup_case(sbin=sbin,int_type=int_type,D1=D1,bins=bins,dt=dt,tmax=tmax,
+        self.setup_case(sbin=sbin,D1=D1,bins=bins,dt=dt,tmax=tmax,
                         dz=dz,ztop=ztop,zbot=zbot,Nt0=Nt0,Dm0=Dm0,mu0=mu0,Ecol=Ecol,
                         Es=Es,Eb=Eb,dist_var=dist_var,kernel=kernel,frag_dist=frag_dist,
                         habit_list=habit_list,ptype=ptype,Tc=Tc,radar=radar, 
-                        dist_num=dist_num,cc_dest=cc_dest,br_dest=br_dest)
+                        dist_num=dist_num,cc_dest=cc_dest,br_dest=br_dest,rk_order=rk_order)
         
     def setup_case(self,D1=0.001,sbin=4,bins=160,Nt0=1.,Dm0=2.0,mu0=3,dist_var='mass',kernel='Golovin',Ecol=1.53,Es=0.001,Eb=0.,
-                        int_type='t',ztop=3000.0,zbot=0.,tmax=800.,dt=10.,dz=10.,
-                        frag_dist='exp',habit_list=['rain'],ptype='rain',Tc=10.,radar=False,dist_num=1,cc_dest=1,br_dest=1):
+                        ztop=3000.0,zbot=0.,tmax=800.,dt=10.,dz=10.,frag_dist='exp',habit_list=['rain'],ptype='rain',Tc=10.,
+                        radar=False,dist_num=1,cc_dest=1,br_dest=1,rk_order=1):
         self.Tc = Tc
         self.radar = radar
         self.sbin = sbin 
@@ -66,21 +67,39 @@ class spectral_1d:
         self.Eagg = Ecol*Es # Collision+Coalescence efficiency
         self.Ebr = Ecol*Eb*(1-Es) # Total Breakup efficiency
         self.Ecb = self.Eagg+self.Ebr # # Total Collision/Breakup efficiency for loss term
-        self.int_type = int_type
         self.ztop = ztop 
         self.zbot = zbot 
         self.tmax = tmax
         self.dt = dt 
         self.dz = dz
+        # If tmax = -1 then run model as steady-state in vertical
         self.t = np.arange(0,self.tmax+self.dt,step=self.dt)
+        # If zbot == ztop == const. then run as box model
         self.z = np.arange(self.ztop,self.zbot-self.dz,step=-self.dz)
         self.dist_var = dist_var
         self.ptype = ptype
+        self.rk_order = rk_order
         
         self.indc = cc_dest 
         self.indb = br_dest
         
         self.dnum = dist_num
+        
+        self.Tlen = len(self.t) 
+        self.Hlen = len(self.z)
+        
+        # If time array is fixed then run as steady state model
+        if (self.Tlen==1) & (self.Hlen>1):
+            self.int_type = 1         
+            self.Hlen = 1
+            self.Tlen = len(self.z)
+            self.dt = 1
+            
+        #elif (self.Tlen>1) & (self.Hlen==0):
+        #    self.int_type = 2
+            
+        else:
+            self.int_type=0
         
         # Ensure that cc_dest and br_dest are valid     
         if (cc_dest<1) | (cc_dest>dist_num):
@@ -91,64 +110,45 @@ class spectral_1d:
             raise Exception()
            
         # Initialize distribution objects
-        dists =[[] for dd in range(self.dnum)]
         
         habit_dict = [habits()[habit_list[dd]] for dd in range(self.dnum)]
+
+        dists = np.empty((self.dnum,self.Hlen),dtype=object)
         
+        # initial distribution
+        dists[0,0] = dist(sbin=sbin,D1=D1,bins=bins,Nt0=Nt0,mu0=mu0,Dm0=Dm0,
+                      gam_init=True,dist_var=dist_var,kernel=kernel,
+                      habit_dict=habit_dict[0],ptype=ptype,Tc=Tc,radar=radar)
+
+        self.dist0 = deepcopy(dists[0,0])
+        
+        for hh in range(self.Hlen):
+            for dd in range(self.dnum):
+                
+                if not ((dd==0) & (hh==0)):
+                    # Coalesced or fragmented particles
+                    dists[dd,hh] = dist(sbin=sbin,D1=D1,bins=bins,gam_init=False,dist_var=dist_var,
+                                 kernel=kernel,habit_dict=habit_dict[dd],ptype=ptype,x0=self.dist0.x0, 
+                                 Tc=Tc,radar=radar)
+                    
+                dists[dd,hh].dh = self.dz/dists[dd,hh].vt   
+                dists[dd,hh].dt = self.dt*np.ones_like(self.t)
+
         if frag_dist is None:
             frag_dict = fragments('exp')
         else:
             frag_dict = fragments(frag_dist)
-            
-        for dd in range(self.dnum):
-            
-            if dd==0:
-        
-                # Primary Habit
-                dists[dd] = dist(sbin=sbin,D1=D1,bins=bins,Nt0=Nt0,mu0=mu0,Dm0=Dm0,
-                                  gam_init=True,dist_var=dist_var,kernel=kernel,
-                                  habit_dict=habit_dict[dd],ptype=ptype,Tc=Tc,radar=radar)
-            else:
-        
-                # Coalesced or fragmented particles
-                dists[dd] = dist(sbin=sbin,D1=D1,bins=bins,gam_init=False,dist_var=dist_var,
-                                 kernel=kernel,habit_dict=habit_dict[dd],ptype=ptype,x0=dists[0].x0, 
-                                 Tc=Tc,radar=radar)
-          
-        # initial distribution
-        self.dist0 = deepcopy(dists[0])
-        
+                
         self.xbins = self.dist0.xbins.copy() 
         self.xedges = self.dist0.xedges.copy()
         
-        if self.int_type=='z':
-            
-            self.Hlen = len(self.z) 
-
-            for d1 in range(self.dnum):
-                dists[d1].dh = self.dz/dists[d1].vt
-            
-        elif self.int_type=='t':
-            
-            self.Hlen = len(self.t) 
-            
-            for d1 in range(self.dnum):
-                dists[d1].dh = self.dt*np.ones_like(self.xbins)
-                
-        else: # z and t
-            
-            self.tlen = len(self.t)
-            self.Hlen = len(self.z) 
-            
-            for d1 in range(self.dnum):
-                dists[d1].dt = self.dt*np.ones_like(self.xbins)
-                dists[d1].dh = self.dz/dists[d1].vt
-            
-                        
         # Initialize interaction kernel between each species
-        self.Ikernel = Interaction(dists,cc_dest,br_dest,self.Eagg,self.Ecb,self.Ebr,int_type,frag_dict,self.kernel)
+        # Interaction() takes a (Ndist x height) array of dist objects
+        # and sets up arrays for calculating interaction (i.e., source) terms
+        # in the stochastic collection/breakup equation for multiple categories
+        self.Ikernel = Interaction(dists,cc_dest,br_dest,self.Eagg,self.Ecb,self.Ebr,frag_dict,self.kernel)
 
-        self.dists = dists
+        self.dists = dists # 3D array of distribution objects (dist_num x height x time)
 
     def check_init_dist(self):
               
@@ -193,9 +193,9 @@ class spectral_1d:
         
         dist_num = len(self.dists) 
         
-        if self.int_type=='t':
+        if len(self.z)==1:
             h = self.t
-        elif self.int_type=='z':
+        elif len(self.t)==1:
             h = self.z/1000.
         
         N  = np.full_like(self.full,np.nan)
@@ -209,8 +209,14 @@ class spectral_1d:
         ZDR = -35.*np.ones((len(h),))
         KDP = np.zeros((len(h),))
         RHOHV = np.ones((len(h),))
-        
         Dm_tot = np.full((len(h),),np.nan) 
+        
+       # ZH = -35.*np.ones((len(h),))
+      #  ZDR = -35.*np.ones((len(h),))
+       # KDP = np.zeros((len(h),))
+       # RHOHV = np.ones((len(h),))
+        
+       # Dm_tot = np.full((len(h),),np.nan) 
         
         for ff in range(len(h)):
             
@@ -259,7 +265,7 @@ class spectral_1d:
         M_tot = np.nansum(M,axis=0)
         Rm_tot = np.nansum(Rm,axis=0)
 
-        if self.int_type=='t':
+        if self.int_type==2:
             
             fig, ax = plt.subplots(2,4,figsize=(14,8),sharey=True)
             
@@ -303,7 +309,7 @@ class spectral_1d:
                     ax[0,2].plot(self.t,M[d1,:])
                     ax[0,3].plot(self.t,Rm[d1,:])
    
-        elif self.int_type=='z':
+        elif self.int_type==1:
             #fig, ax = plt.subplots(1,3,figsize=(12,6),sharey=True)
             
             fig, ax = plt.subplots(2,4,figsize=(14,8),sharey=True)
@@ -395,14 +401,14 @@ class spectral_1d:
         return fig, ax
     
     
-    def plot_dists(self,tind,x_axis='mass',y_axis='mass',xscale='log',yscale='linear',distscale='log',scott_solution=False,feingold_solution=False,plot_habits=False):
+    def plot_dists(self,tind,hind,x_axis='mass',y_axis='mass',xscale='log',yscale='linear',distscale='log',scott_solution=False,feingold_solution=False,plot_habits=False):
         
         # NOTE: probably need to figure out how to deal with x_axis='size' when
         # am and bm parameters are different for each habit.
         
         fig, ax = plt.subplots(2,1,figsize=((8,10)),sharex=True)
         
-        primary_init  = self.full[0,0]
+        primary_init  = self.full[0,0,0]
         
         mbins = primary_init.xbins.copy() 
         
@@ -420,10 +426,10 @@ class spectral_1d:
         ck_final = np.full((self.dnum,self.bins),np.nan)
 
         for d1 in range(self.dnum):
-            x1_final[d1,:] = self.full[d1,tind].x1 
-            x2_final[d1,:] = self.full[d1,tind].x2 
-            ak_final[d1,:] = self.full[d1,tind].aki 
-            ck_final[d1,:] = self.full[d1,tind].cki
+            x1_final[d1,:] = self.full[d1,hind,tind].x1 
+            x2_final[d1,:] = self.full[d1,hind,tind].x2 
+            ak_final[d1,:] = self.full[d1,hind,tind].aki 
+            ck_final[d1,:] = self.full[d1,hind,tind].cki
    
         # Distscale toggles between dN/dlog(m) plots and dN/dm plots, for example.
         if distscale=='log':
@@ -444,12 +450,12 @@ class spectral_1d:
             elif x_axis=='size':  # plot dN/dlog(D) and dM/dlog(D)
                 
                 for d1 in range(self.dnum):
-                    prefN[d1,:] = mbins*self.full[d1,0].bm*np.log(10) 
-                    prefM[d1,:] = mbins**2*self.full[d1,0].bm*np.log(10) 
+                    prefN[d1,:] = mbins*self.full[d1,0,0].bm*np.log(10) 
+                    prefM[d1,:] = mbins**2*self.full[d1,0,0].bm*np.log(10) 
                 
                     #xbins[d1,:] = (mbins/self.full[d1,0].am)**(1./self.full[d1,0].bm)
                
-                xbins = (mbins/self.full[0,0].am)**(1./self.full[0,0].bm)
+                xbins = (mbins/self.full[0,0,0].am)**(1./self.full[0,0,0].bm)
                 ylabel_num = r'dN/dlog(D)'
                 ylabel_mass = r'dM/dlog(D)'
                 
@@ -478,11 +484,11 @@ class spectral_1d:
                 
                 for d1 in range(self.dnum):
                     # CHECK
-                    prefN[d1,:] = self.full[d1,0].am**(1./self.full[d1,0].bm)*self.full[d1,0].bm*mbins**(1.-1./self.full[d1,0].bm)
-                    prefM[d1,:] = self.full[d1,0].am**(1./self.full[d1,0].bm)*self.full[d1,0].bm*mbins**(2.-1./self.full[d1,0].bm)
+                    prefN[d1,:] = self.full[d1,0,0].am**(1./self.full[d1,0,0].bm)*self.full[d1,0,0].bm*mbins**(1.-1./self.full[d1,0,0].bm)
+                    prefM[d1,:] = self.full[d1,0,0].am**(1./self.full[d1,0,0].bm)*self.full[d1,0,0].bm*mbins**(2.-1./self.full[d1,0,0].bm)
 
                     #xbins[d1,:] = (mbins/self.full[d1,0].am)**(1./self.full[d1,0].bm)
-                xbins = (mbins/self.full[0,0].am)**(1./self.full[0,0].bm)
+                xbins = (mbins/self.full[0,0,0].am)**(1./self.full[0,0,0].bm)
                 ylabel_num = r'dN/dD'
                 ylabel_mass = r'dM/dD'
          
@@ -658,97 +664,136 @@ class spectral_1d:
         return fig, ax
   
     
-    def run_full(self):
-
-        self.full = np.empty((self.dnum,self.Hlen),dtype=object)
+    def run_steady_state(self):
         
-        for d1 in range(self.dnum):
-            self.full[d1,0] = deepcopy(self.dists[d1])
-        
-        # ELD NOTE: At some point it probably will be worthwhile to do R-K timesteps
-        if self.Ecb>0.:
-            for tt in range(1,self.Tlen):
-
-                print('Running 1D spectral bin model: step = {} out of {}'.format(tt,self.Hlen-1))
-    
-                M  = 0.
-                Mf = 0.
-                
-                for zz in range(1,self.Hlen):
-                
-                    for d1 in range(self.dnum):
-                        M += np.nansum(self.dists[d1].Mbins) 
-                        Mf+= np.nansum(self.dists[d1].Mbins*self.dists[d1].vt)
-    
-                    print('Total Column Mass = {:.2f} g/m^3 | Total Column Mass Flux = {:.2f} g/(m^2*s)'.format(1000.*M,1000.*Mf))
-    
-                    self.Ikernel.advance() 
-                    
-                    # Save dist copies at each time/height
-                    for d1 in range(self.dnum):
-                        self.full[d1,tt] = deepcopy(self.dists[d1])
-    
-    def run(self):
-
-        if (self.int_type=='zt') | (self.int_type=='tz'):    
-            
-            self.full = np.empty((self.dnum,self.Tlen,self.Hlen),dtype=object)
+            self.full = np.empty((self.dnum,self.Tlen),dtype=object)
             
             for d1 in range(self.dnum):
-                self.full[d1,0,0] = deepcopy(self.dists[d1])
+                self.full[d1,0] = deepcopy(self.dists[d1,0])
             
             # ELD NOTE: At some point it probably will be worthwhile to do R-K timesteps
             if self.Ecb>0.:
                 for tt in range(1,self.Tlen):
-
+    
                     print('Running 1D spectral bin model: step = {} out of {}'.format(tt,self.Tlen-1))
         
                     M  = 0.
                     Mf = 0.
                     
-                    for zz in range(self.Hlen):
-                    
-                        for d1 in range(self.dnum):
-                            M += np.nansum(self.dists[d1].Mbins) 
-                            Mf+= np.nansum(self.dists[d1].Mbins*self.dists[d1].vt)
-        
-                        print('Total Column Mass = {:.2f} g/m^3 | Total Column Mass Flux = {:.2f} g/(m^2*s)'.format(1000.*M,1000.*Mf))
-        
-                        self.Ikernel.advance() 
-                        
-                        # Save dist copies at each time/height
-                        for d1 in range(self.dnum):
-                            self.full[d1,tt,zz] = deepcopy(self.dists[d1])
-
-        elif (self.int_type=='z') | (self.int_type=='t'):      
-            
-
-            self.full = np.empty((self.dnum,self.Hlen),dtype=object)
-            
-            for d1 in range(self.dnum):
-                self.full[d1,0] = deepcopy(self.dists[d1])
-            
-            # ELD NOTE: At some point it probably will be worthwhile to do R-K timesteps
-            if self.Ecb>0.:
-                for tt in range(1,self.Hlen):
-    
-                    print('Running 1D spectral bin model: step = {} out of {}'.format(tt,self.Hlen-1))
-        
-                    M  = 0.
-                    Mf = 0.
-                    
                     for d1 in range(self.dnum):
-                        M += np.nansum(self.dists[d1].Mbins) 
-                        Mf+= np.nansum(self.dists[d1].Mbins*self.dists[d1].vt)
+                        M += np.nansum(self.dists[d1,0].Mbins) 
+                        Mf+= np.nansum(self.dists[d1,0].Mbins*self.dists[d1,0].vt)
     
                     print('Total Mass = {:.2f} g/m^3 | Total Mass Flux = {:.2f} g/(m^2*s)'.format(1000.*M,1000.*Mf))
     
-                    self.Ikernel.advance() 
+    
+                    Mbins_old = self.Ikernel.Mbins.copy() 
+                    Nbins_old = self.Ikernel.Nbins.copy()
+  
+                    M_net, N_net = self.Ikernel.interact(self.dt)
+                   
                     
+                   # Ndists x bins
+                   
+                    Mbins = np.zeros_like(Mbins_old)
+                    Nbins = np.zeros_like(Nbins_old)
+                   
+                    dh = np.vstack([self.dists[ff,0].dh for ff in range(self.dnum)])
+                    
+                    #print('Mbins=',Mbins.shape)
+                    #print('dh=',dh.shape)
+                    #raise Exception()
+                    
+                    M_transfer = Mbins_old+M_net*dh[:,None,:]
+                    N_transfer = Nbins_old+N_net*dh[:,None,:]   
+                    
+                    M_new = np.maximum(M_transfer,0.) # Should be positive if not over fragmented.
+                    Mbins[M_new>=0.] = M_new[M_new>=0.].copy()
+                    
+                    N_new = np.maximum(N_transfer,0.) # Should be positive if not over fragmented.
+                    Nbins[N_new>=0.] = N_new[N_new>=0.].copy()
+    
+                    self.Ikernel.Mbins = Mbins.copy()
+                    self.Ikernel.Nbins = Nbins.copy()
+    
+                    self.Ikernel.unpack() # Unpack the interaction 3D array to each object in the (dist x height) object array
+                    self.Ikernel.pack(self.Ikernel.dists) # Update moments and parameters of 2D array of distribution objects
+   
                     # Save dist copies at each time/height
                     for d1 in range(self.dnum):
-                        self.full[d1,tt] = deepcopy(self.dists[d1])
-        else:
+                        self.full[d1,tt] = deepcopy(self.dists[d1,0])
+
+    
+    def run_full(self):
+        ''' 
+        Run bin model
+        '''
             
-            print('int_type is {}. Choose int_type to be: t, z, or tz)')
-            raise Exception()
+        self.full = np.empty((self.dnum,self.Hlen,self.Tlen),dtype=object)
+        
+        # use Butcher table to get rk order coefficients
+        RK = init_rk(self.rk_order)
+        a = RK['a']
+        b = RK['b']
+        c = RK['c']
+        
+        rlen = len(b)
+        
+        for d1 in range(self.dnum):
+            self.full[d1,0,0] = deepcopy(self.dists[d1,0])
+        
+        # ELD NOTE: At some point it probably will be worthwhile to do R-K timesteps
+        if self.Ecb>0.:
+            for tt in range(1,self.Tlen):
+
+                print('Running 1D spectral bin model: step = {} out of {}'.format(tt,self.Tlen-1))
+                print('Total Mass = {:.2f} g/m^3 | Total Mass Flux = {:.2f} g/(m^2*s)'.format(1000.*np.nansum(self.Ikernel.Mbins),
+                                                                                              1000.*np.nansum(self.Ikernel.Mfbins)))
+                M_old = self.Ikernel.Mbins.copy() 
+                N_old = self.Ikernel.Nbins.copy()
+                
+                Mbins = np.zeros_like(M_old)
+                Nbins = np.zeros_like(N_old)
+                
+                M_net, N_net = self.Ikernel.interact(self.dt)
+               
+                M_sed = np.zeros((self.dnum,self.Hlen,self.bins)) 
+                N_sed = np.zeros((self.dnum,self.Hlen,self.bins)) 
+               
+                M_sed[:,0,:] = (self.dt/self.dz)*(-self.Ikernel.Mfbins[:,0,:]) 
+                N_sed[:,0,:] = (self.dt/self.dz)*(-self.Ikernel.Nfbins[:,0,:]) 
+                
+                M_sed[:,1:,:] = (self.dt/self.dz)*(self.Ikernel.Mfbins[:,:-1,:]-self.Ikernel.Mfbins[:,1:,:]) 
+                N_sed[:,1:,:] = (self.dt/self.dz)*(self.Ikernel.Nfbins[:,:-1,:]-self.Ikernel.Nfbins[:,1:,:]) 
+                          
+                M_transfer = M_old+M_sed+M_net
+                N_transfer = N_old+N_sed+N_net   
+                
+                M_new = np.maximum(M_transfer,0.) # Should be positive if not over fragmented.
+                Mbins[M_new>=0.] = M_new[M_new>=0.].copy()
+                
+                N_new = np.maximum(N_transfer,0.) # Should be positive if not over fragmented.
+                Nbins[N_new>=0.] = N_new[N_new>=0.].copy()
+
+                self.Ikernel.Mbins = Mbins.copy()
+                self.Ikernel.Nbins = Nbins.copy()
+
+                self.Ikernel.unpack() # Unpack the interaction 3D array to each object in the (dist x height) object array
+                self.Ikernel.pack(self.Ikernel.dists) # Update moments and parameters of 2D array of distribution objects
+
+                for hh in range(self.Hlen):
+                    for d1 in range(self.dnum):
+                        self.full[d1,hh,tt] = deepcopy(self.dists[d1,hh])
+
+
+    def run(self):
+        ''' 
+        Run bin model
+        '''
+            
+        if self.int_type==0:
+            self.run_full()
+            
+        else:
+            self.run_steady_state()
+ 
