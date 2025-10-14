@@ -7,6 +7,7 @@ Created on Wed Sep 24 08:17:50 2025
 import numpy as np
 import math
 import scipy.special as scip
+from functools import lru_cache
 
 def init_rk(rk_order):
     
@@ -186,16 +187,16 @@ def integrate_rect_kernel(x1, x2, y1, y2, px, py, m, f, ax, cx, ay, cy):
     
     total = np.zeros_like(a)
     
-    coeffs_F_N = compute_combined_coeffs_NxNy_vectorized(px, py, m, a, b, c, d, ax, cx, ay, cy)
+    coeffs_F_N = compute_combined_coeffs_NxNy_vectorized(px, py, m, a, b, c, d, 
+                                                         ax, cx, ay, cy)
  
     for (i, j), coeff in coeffs_F_N.items():
         total += coeff * Pn(i,x1,x2) * Pn(j,y1,y2)  
               
     return total
 
-def integrate_tri_kernel(px, py, m, f,
-                               ax, cx, ay, cy,
-                               xt1, yt1, xt2, yt2, xt3, yt3):
+def integrate_tri_kernel(px, py, m, f, ax, cx, ay, cy,
+                         xt1, yt1, xt2, yt2, xt3, yt3):
     
     a = f[0,:] 
     b = f[1,:] 
@@ -211,6 +212,190 @@ def integrate_tri_kernel(px, py, m, f,
         total += Cij * Iij
         
     return total
+
+def integrate_fast_kernel(px, py, m, f, ax, cx, ay, cy, domain_type, **params):
+    
+    a = f[0,:] 
+    b = f[1,:] 
+    c = f[2,:] 
+    d = f[3,:]
+    
+    coeffs_F_N = compute_combined_coeffs_NxNy_vectorized(px, py, m, a, b, c, d,
+                                                         ax, cx, ay, cy)
+    total = np.zeros_like(a, dtype=float)
+    
+    if domain_type=='triangle':
+        for (i, j), Cij in coeffs_F_N.items():
+            Iij = triangle_monomial_integral(i, j, params['xt1'], params['yt1'], 
+                                                   params['xt2'], params['yt2'], 
+                                                   params['xt3'], params['yt3'])
+            total += Cij * Iij
+            
+    else:
+        for (i, j), coeff in coeffs_F_N.items():
+            total += coeff * Pn(i,params['x1'],params['x2']) * Pn(j,params['y1'],params['y2'])  
+        
+        
+    return total
+
+
+
+# ============================================================
+# 1. Coefficient builders for the 3 cases
+# ============================================================
+
+def coeffs_case_A(a, b, c, d):
+    # (px=1, py=0, m=0)
+    return {
+        (2,0): a * c,
+        (1,0): a * d + b * c,
+        (0,0): b * d,
+        (1,1): a * c,
+        (0,1): a * d + b * c,
+        (0,2): b * d,
+    }
+
+def coeffs_case_B(a, b, c, d):
+    # (px=0, py=1, m=0)
+    return {
+        (0,2): a * c,
+        (0,1): a * d + b * c,
+        (0,0): b * d,
+        (1,1): a * c,
+        (1,0): a * d + b * c,
+        (2,0): b * d,
+    }
+
+def coeffs_case_C(a, b, c, d):
+    # (px=0, py=0, m=1)
+    return {
+        (1,0): a * c,
+        (0,0): a * d + b * c,
+        (0,1): b * d,
+    }
+
+def coeffs_case_D(a, b, c, d):
+    # (px=0, py=0, m=0)
+    return {
+        (0,0): a,
+        (1,0): b,
+        (0,1): c,
+        (1,1): d,
+    }
+
+# ============================================================
+# 2. Apply affine transform (x = ax + cx, y = ay + cy)
+# ============================================================
+
+def apply_NxNy(coeffs, ax, cx, ay, cy):
+    new_coeffs = {}
+    for (i,j), Cij in coeffs.items():
+        for p in range(i+1):
+            for q in range(j+1):
+                ci = math.comb(i,p) * (ax**p) * (cx**(i-p))
+                cj = math.comb(j,q) * (ay**q) * (cy**(j-q))
+                new_coeffs[(p,q)] = new_coeffs.get((p,q), 0) + Cij * ci * cj
+    return new_coeffs
+
+# ============================================================
+# 3. Rectangle integrals (cached)
+# ============================================================
+
+def precompute_rectangle_monomials(x1, x2, y1, y2, max_i, max_j):
+    x_int = {i: (x2**(i+1) - x1**(i+1)) / (i+1) for i in range(max_i+1)}
+    y_int = {j: (y2**(j+1) - y1**(j+1)) / (j+1) for j in range(max_j+1)}
+    return x_int, y_int
+
+def integrate_rectangle_cached(coeffs, x_int, y_int):
+    total = np.zeros_like(next(iter(coeffs.values())), dtype=float)
+    for (i, j), Cij in coeffs.items():
+        total += Cij * x_int[i] * y_int[j]
+    return total
+
+# ============================================================
+# 4. Triangle integrals (cached)
+# ============================================================
+
+#@lru_cache(maxsize=None)
+def reference_triangle_integral(p, q):
+    return math.factorial(p) * math.factorial(q) / math.factorial(p+q+2)
+
+def triangle_monomial_integral_vectorized_cached(i, j, xt1, yt1, xt2, yt2, xt3, yt3):
+    dx2 = xt2 - xt1; dy2 = yt2 - yt1
+    dx3 = xt3 - xt1; dy3 = yt3 - yt1
+    J = np.abs(dx2 * dy3 - dx3 * dy2)
+
+    integral = np.zeros_like(xt1, dtype=float)
+    for p in range(i+1):
+        for q in range(j+1):
+            coeff = math.comb(i,p) * math.comb(j,q) * (xt1**(i-p)) * (yt1**(j-q))
+            for r in range(p+1):
+                for s in range(q+1):
+                    upow = r+s
+                    vpow = (p-r)+(q-s)
+                    coeff_uv = coeff * math.comb(p,r)*math.comb(q,s) * \
+                               (dx2**r)*(dy2**s)*(dx3**(p-r))*(dy3**(q-s))
+                    integral += coeff_uv * reference_triangle_integral(upow,vpow)
+    return J * integral
+
+def integrate_triangle_cached(coeffs, xt1, yt1, xt2, yt2, xt3, yt3):
+    total = np.zeros_like(next(iter(coeffs.values())), dtype=float)
+    for (i, j), Cij in coeffs.items():
+        total += Cij * triangle_monomial_integral_vectorized_cached(i,j,xt1,yt1,xt2,yt2,xt3,yt3)
+    return total
+
+# ============================================================
+# 5. Unified Integrator
+# ============================================================
+
+def integrate_fast(px, py, m,
+                   f,
+                   ax, cx, ay, cy,
+                   domain_type="rectangle",
+                   **domain_params):
+    """
+    Unified fast integrator for cases A, B, C, D.
+    domain_type = "rectangle" or "triangle"
+    """
+    
+    a = f[0,:] 
+    b = f[1,:] 
+    c = f[2,:] 
+    d = f[3,:]
+    
+    # Pick coefficient builder
+    if (px,py,m) == (1,0,0):
+        coeffs = coeffs_case_A(a,b,c,d)
+    elif (px,py,m) == (0,1,0):
+        coeffs = coeffs_case_B(a,b,c,d)
+    elif (px,py,m) == (0,0,1):
+        coeffs = coeffs_case_C(a,b,c,d)
+    elif (px, py, m) == (0, 0, 0):
+        coeffs = coeffs_case_D(a,b,c,d)
+    else:
+        raise ValueError("Only cases A(px=1,py=0,m=0), B(px=0,py=1,m=0), C(px=0,py=0,m=1), D(px=0,py=0,m=0) supported.")
+
+    coeffs = apply_NxNy(coeffs, ax, cx, ay, cy)
+
+    if domain_type == "rectangle":
+        x1, x2, y1, y2 = domain_params["x1"], domain_params["x2"], domain_params["y1"], domain_params["y2"]
+        max_i = max(i for i,_ in coeffs)
+        max_j = max(j for _,j in coeffs)
+        x_int, y_int = precompute_rectangle_monomials(x1, x2, y1, y2, max_i, max_j)
+        result = integrate_rectangle_cached(coeffs, x_int, y_int)
+        
+        
+        
+    elif domain_type == "triangle":
+        result = integrate_triangle_cached(coeffs,
+                                           domain_params["xt1"], domain_params["yt1"],
+                                           domain_params["xt2"], domain_params["yt2"],
+                                           domain_params["xt3"], domain_params["yt3"])
+    else:
+        raise ValueError("domain_type must be 'rectangle' or 'triangle'")
+
+    return result
+
 
 def LGN_int(n,muf,sig2f,x1,x2):
     # 

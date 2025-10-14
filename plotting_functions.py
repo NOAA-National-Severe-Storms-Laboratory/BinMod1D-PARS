@@ -11,7 +11,7 @@ def get_cmap_vars(varname):
     
     if varname == 'Z':
         cmap = cmp.NWSRef
-        levels = np.arange(-10.,80,5.)
+        levels = np.arange(-10.,80,1.)
         levels_ticks = np.arange(-10,80,5)
         clabel = r'Reflectivity [dBZ]'
         slabel = r'Z [dBZ]'
@@ -22,7 +22,7 @@ def get_cmap_vars(varname):
         
         cmap = cmp.NWSRef
         levels = [-1.,0.,0.2,0.4,0.6,0.8,1.0,1.5,2.0,2.5,3.0,4.,6.]
-        levels_ticks = levels.copy()
+        levels_ticks = [-1.,0.,0.2,0.4,0.6,0.8,1.0,1.5,2.0,2.5,3.0,4.,6.]
         clabel =r'$\mathrm{Z}_{\mathrm{DR}}$ [dB]'
         slabel =r'$\mathrm{Z}_{\mathrm{DR}}$ [dB]'
         labelpad = 45

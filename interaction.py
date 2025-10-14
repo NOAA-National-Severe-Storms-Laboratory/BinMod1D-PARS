@@ -8,7 +8,7 @@ Created on Thu Oct  2 11:31:38 2025
 import numpy as np
 
 from collection_kernels import Prod_kernel, Constant_kernel, Golovin_kernel, hydro_kernel
-from bin_integrals import In_int, gam_int, LGN_int, integrate_rect_kernel, integrate_tri_kernel
+from bin_integrals import In_int, gam_int, LGN_int, integrate_rect_kernel, integrate_tri_kernel, integrate_fast_kernel
 
 class Interaction():
     
@@ -381,10 +381,16 @@ class Interaction():
         # Calculate transfer rates (rectangular integration, source space)
         # Collection (eqs. 23-25 in Wang et al. 2007)
         # ii collecting jj 
-        dMi_loss[k1,i1,j1] = integrate_rect_kernel(x11[k1,i1],x21[k1,i1],x12[k1,j1],x22[k1,j1],1, 0, 0, PK[:,i1,j1],ak1[k1,i1],ck1[k1,i1],ak2[k1,j1],ck2[k1,j1])
-        dMj_loss[k1,i1,j1] = integrate_rect_kernel(x11[k1,i1],x21[k1,i1],x12[k1,j1],x22[k1,j1],0, 1, 0, PK[:,i1,j1],ak1[k1,i1],ck1[k1,i1],ak2[k1,j1],ck2[k1,j1])
-        dNi_loss[k1,i1,j1] = integrate_rect_kernel(x11[k1,i1],x21[k1,i1],x12[k1,j1],x22[k1,j1],0, 0, 0, PK[:,i1,j1],ak1[k1,i1],ck1[k1,i1],ak2[k1,j1],ck2[k1,j1])
+        #dMi_loss[k1,i1,j1] = integrate_rect_kernel(x11[k1,i1],x21[k1,i1],x12[k1,j1],x22[k1,j1],1, 0, 0, PK[:,i1,j1],ak1[k1,i1],ck1[k1,i1],ak2[k1,j1],ck2[k1,j1])
+        #dMj_loss[k1,i1,j1] = integrate_rect_kernel(x11[k1,i1],x21[k1,i1],x12[k1,j1],x22[k1,j1],0, 1, 0, PK[:,i1,j1],ak1[k1,i1],ck1[k1,i1],ak2[k1,j1],ck2[k1,j1])
+        #dNi_loss[k1,i1,j1] = integrate_rect_kernel(x11[k1,i1],x21[k1,i1],x12[k1,j1],x22[k1,j1],0, 0, 0, PK[:,i1,j1],ak1[k1,i1],ck1[k1,i1],ak2[k1,j1],ck2[k1,j1])
+        #dNj_loss = dNi_loss.copy() # Nj loss should be same as Ni loss
+        
+        dMi_loss[k1,i1,j1] = integrate_fast_kernel(1,0,0,PK[:,i1,j1],ak1[k1,i1],ck1[k1,i1],ak2[k1,j1],ck2[k1,j1],'rectangle',x1=x11[k1,i1],x2=x21[k1,i1],y1=x12[k1,j1],y2=x22[k1,j1])
+        dMj_loss[k1,i1,j1] = integrate_fast_kernel(0,1,0,PK[:,i1,j1],ak1[k1,i1],ck1[k1,i1],ak2[k1,j1],ck2[k1,j1],'rectangle',x1=x11[k1,i1],x2=x21[k1,i1],y1=x12[k1,j1],y2=x22[k1,j1])
+        dNi_loss[k1,i1,j1] = integrate_fast_kernel(0,0,0,PK[:,i1,j1],ak1[k1,i1],ck1[k1,i1],ak2[k1,j1],ck2[k1,j1],'rectangle',x1=x11[k1,i1],x2=x21[k1,i1],y1=x12[k1,j1],y2=x22[k1,j1])
         dNj_loss = dNi_loss.copy() # Nj loss should be same as Ni loss
+        
         
         # Condition 4: Self collection. All Mass/Number goes into ii+sbin = jj+sbin kbin
         xi1 = x11[k4,i4].copy()
@@ -392,8 +398,12 @@ class Interaction():
         xj1 = x12[k4,j4].copy()
         xj2 = x22[k4,j4].copy()
         
-        dM_gain[k4,i4,j4,0]  = integrate_rect_kernel(xi1,xi2,xj1,xj2,0, 0, 1, PK[:,i4,j4],ak1[k4,i4],ck1[k4,i4],ak2[k4,j4],ck2[k4,j4]) 
-        dN_gain[k4,i4,j4,0]  = integrate_rect_kernel(xi1,xi2,xj1,xj2,0, 0, 0, PK[:,i4,j4],ak1[k4,i4],ck1[k4,i4],ak2[k4,j4],ck2[k4,j4]) 
+        #dM_gain[k4,i4,j4,0]  = integrate_rect_kernel(xi1,xi2,xj1,xj2,0, 0, 1, PK[:,i4,j4],ak1[k4,i4],ck1[k4,i4],ak2[k4,j4],ck2[k4,j4]) 
+        #dN_gain[k4,i4,j4,0]  = integrate_rect_kernel(xi1,xi2,xj1,xj2,0, 0, 0, PK[:,i4,j4],ak1[k4,i4],ck1[k4,i4],ak2[k4,j4],ck2[k4,j4]) 
+
+        dM_gain[k4,i4,j4,0]  = integrate_fast_kernel(0,0,1,PK[:,i4,j4],ak1[k4,i4],ck1[k4,i4],ak2[k4,j4],ck2[k4,j4],'rectangle',x1=xi1,x2=xi2,y1=xj1,y2=xj2) 
+        dN_gain[k4,i4,j4,0]  = integrate_fast_kernel(0,0,0,PK[:,i4,j4],ak1[k4,i4],ck1[k4,i4],ak2[k4,j4],ck2[k4,j4],'rectangle',x1=xi1,x2=xi2,y1=xj1,y2=xj2) 
+
 
         # Condition 2:
         # k bin: Lower triangle region. Just clips BR corner.
@@ -405,10 +415,17 @@ class Interaction():
         xt3 = x21[k2,i2].copy()
         yt3 = x12[k2,j2].copy()
         
-        dM_gain[k2,i2,j2,0] = integrate_tri_kernel(0, 0, 1, PK[:,i2,j2], ak1[k2,i2], ck1[k2,i2], ak2[k2,j2], ck2[k2,j2], xt1, yt1, xt2, yt2, xt3, yt3)
+        #dM_gain[k2,i2,j2,0] = integrate_tri_kernel(0, 0, 1, PK[:,i2,j2], ak1[k2,i2], ck1[k2,i2], ak2[k2,j2], ck2[k2,j2], xt1, yt1, xt2, yt2, xt3, yt3)
+        #dM_gain[k2,i2,j2,1] = (dMi_loss[k2,i2,j2]+dMj_loss[k2,i2,j2])-dM_gain[k2,i2,j2,0]
+        
+        #dN_gain[k2,i2,j2,0] = integrate_tri_kernel(0, 0, 0, PK[:,i2,j2], ak1[k2,i2], ck1[k2,i2], ak2[k2,j2], ck2[k2,j2], xt1, yt1, xt2, yt2, xt3, yt3)
+        #dN_gain[k2,i2,j2,1] = (dNi_loss[k2,i2,j2])-dN_gain[k2,i2,j2,0]
+        
+        
+        dM_gain[k2,i2,j2,0] = integrate_fast_kernel(0,0,1,PK[:,i2,j2],ak1[k2,i2],ck1[k2,i2],ak2[k2,j2],ck2[k2,j2],'triangle',xt1=xt1,yt1=yt1,xt2=xt2,yt2=yt2,xt3=xt3,yt3=yt3)
         dM_gain[k2,i2,j2,1] = (dMi_loss[k2,i2,j2]+dMj_loss[k2,i2,j2])-dM_gain[k2,i2,j2,0]
         
-        dN_gain[k2,i2,j2,0] = integrate_tri_kernel(0, 0, 0, PK[:,i2,j2], ak1[k2,i2], ck1[k2,i2], ak2[k2,j2], ck2[k2,j2], xt1, yt1, xt2, yt2, xt3, yt3)
+        dN_gain[k2,i2,j2,0] = integrate_fast_kernel(0,0,0,PK[:,i2,j2],ak1[k2,i2],ck1[k2,i2],ak2[k2,j2],ck2[k2,j2],'triangle',xt1=xt1,yt1=yt1,xt2=xt2,yt2=yt2,xt3=xt3,yt3=yt3)
         dN_gain[k2,i2,j2,1] = (dNi_loss[k2,i2,j2])-dN_gain[k2,i2,j2,0]
             
         # Condition 3:
@@ -421,10 +438,16 @@ class Interaction():
         xt3 = x_bottom_edge[k3,i3,j3].copy()
         yt3 = x12[k3,j3].copy()
         
-        dM_gain[k3,i3,j3,0] = integrate_tri_kernel(0, 0, 1, PK[:,i3,j3], ak1[k3,i3], ck1[k3,i3], ak2[k3,j3], ck2[k3,j3], xt1, yt1, xt2, yt2, xt3, yt3)
+        #dM_gain[k3,i3,j3,0] = integrate_tri_kernel(0, 0, 1, PK[:,i3,j3], ak1[k3,i3], ck1[k3,i3], ak2[k3,j3], ck2[k3,j3], xt1, yt1, xt2, yt2, xt3, yt3)
+        #dM_gain[k3,i3,j3,1] = (dMi_loss[k3,i3,j3]+dMj_loss[k3,i3,j3])-dM_gain[k3,i3,j3,0]
+            
+        #dN_gain[k3,i3,j3,0] = integrate_tri_kernel(0, 0, 0, PK[:,i3,j3], ak1[k3,i3], ck1[k3,i3], ak2[k3,j3], ck2[k3,j3], xt1, yt1, xt2, yt2, xt3, yt3)
+        #dN_gain[k3,i3,j3,1] = (dNi_loss[k3,i3,j3])-dN_gain[k3,i3,j3,0]
+        
+        dM_gain[k3,i3,j3,0] = integrate_fast_kernel(0,0,1,PK[:,i3,j3],ak1[k3,i3],ck1[k3,i3],ak2[k3,j3],ck2[k3,j3],'triangle',xt1=xt1,yt1=yt1,xt2=xt2,yt2=yt2,xt3=xt3,yt3=yt3)
         dM_gain[k3,i3,j3,1] = (dMi_loss[k3,i3,j3]+dMj_loss[k3,i3,j3])-dM_gain[k3,i3,j3,0]
             
-        dN_gain[k3,i3,j3,0] = integrate_tri_kernel(0, 0, 0, PK[:,i3,j3], ak1[k3,i3], ck1[k3,i3], ak2[k3,j3], ck2[k3,j3], xt1, yt1, xt2, yt2, xt3, yt3)
+        dN_gain[k3,i3,j3,0] = integrate_fast_kernel(0,0,0,PK[:,i3,j3],ak1[k3,i3],ck1[k3,i3],ak2[k3,j3],ck2[k3,j3],'triangle',xt1=xt1,yt1=yt1,xt2=xt2,yt2=yt2,xt3=xt3,yt3=yt3)
         dN_gain[k3,i3,j3,1] = (dNi_loss[k3,i3,j3])-dN_gain[k3,i3,j3,0]
             
         # Condition 5: 
@@ -445,15 +468,27 @@ class Interaction():
         xt3 = x_bottom_edge[k5,i5,j5].copy()
         yt3 = x12[k5,j5].copy()
         
-        dM_gain[k5,i5,j5,0] = integrate_rect_kernel(xr1,xr2,yr1,yr2,0, 0, 1, PK[:,i5,j5],ak1[k5,i5],ck1[k5,i5],ak2[k5,j5],ck2[k5,j5])+\
-                           integrate_tri_kernel(0, 0, 1, PK[:,i5,j5], ak1[k5,i5], ck1[k5,i5], ak2[k5,j5], ck2[k5,j5], xt1, yt1, xt2, yt2, xt3, yt3)
+        # dM_gain[k5,i5,j5,0] = integrate_rect_kernel(xr1,xr2,yr1,yr2,0, 0, 1, PK[:,i5,j5],ak1[k5,i5],ck1[k5,i5],ak2[k5,j5],ck2[k5,j5])+\
+        #                    integrate_tri_kernel(0, 0, 1, PK[:,i5,j5], ak1[k5,i5], ck1[k5,i5], ak2[k5,j5], ck2[k5,j5], xt1, yt1, xt2, yt2, xt3, yt3)
+        
+        # dM_gain[k5,i5,j5,1] = (dMi_loss[k5,i5,j5]+dMj_loss[k5,i5,j5])-dM_gain[k5,i5,j5,0]
+            
+        # dN_gain[k5,i5,j5,0] = integrate_rect_kernel(xr1,xr2,yr1,yr2,0, 0, 0, PK[:,i5,j5],ak1[k5,i5],ck1[k5,i5],ak2[k5,j5],ck2[k5,j5])+\
+        #                    integrate_tri_kernel(0, 0, 0, PK[:,i5,j5], ak1[k5,i5], ck1[k5,i5], ak2[k5,j5], ck2[k5,j5], xt1, yt1, xt2, yt2, xt3, yt3)
+                           
+        # dN_gain[k5,i5,j5,1] = (dNi_loss[k5,i5,j5])-dN_gain[k5,i5,j5,0]
+        
+        
+        dM_gain[k5,i5,j5,0] = integrate_fast_kernel(0,0,1,PK[:,i5,j5],ak1[k5,i5],ck1[k5,i5],ak2[k5,j5],ck2[k5,j5],'rectangle',x1=xr1,x2=xr2,y1=yr1,y2=yr2)+\
+                              integrate_fast_kernel(0,0,1,PK[:,i5,j5],ak1[k5,i5],ck1[k5,i5],ak2[k5,j5],ck2[k5,j5],'triangle',xt1=xt1,yt1=yt1,xt2=xt2,yt2=yt2,xt3=xt3,yt3=yt3)
         
         dM_gain[k5,i5,j5,1] = (dMi_loss[k5,i5,j5]+dMj_loss[k5,i5,j5])-dM_gain[k5,i5,j5,0]
             
-        dN_gain[k5,i5,j5,0] = integrate_rect_kernel(xr1,xr2,yr1,yr2,0, 0, 0, PK[:,i5,j5],ak1[k5,i5],ck1[k5,i5],ak2[k5,j5],ck2[k5,j5])+\
-                           integrate_tri_kernel(0, 0, 0, PK[:,i5,j5], ak1[k5,i5], ck1[k5,i5], ak2[k5,j5], ck2[k5,j5], xt1, yt1, xt2, yt2, xt3, yt3)
+        dN_gain[k5,i5,j5,0] = integrate_fast_kernel(0,0,0,PK[:,i5,j5],ak1[k5,i5],ck1[k5,i5],ak2[k5,j5],ck2[k5,j5],'rectangle',x1=xr1,x2=xr2,y1=yr1,y2=yr2)+\
+                              integrate_fast_kernel(0,0,0,PK[:,i5,j5],ak1[k5,i5],ck1[k5,i5],ak2[k5,j5],ck2[k5,j5],'triangle',xt1=xt1,yt1=yt1,xt2=xt2,yt2=yt2,xt3=xt3,yt3=yt3)
                            
         dN_gain[k5,i5,j5,1] = (dNi_loss[k5,i5,j5])-dN_gain[k5,i5,j5,0]
+        
         
         # Condition 6:
         # k bin: Left/Right clip: Rectangle on bottom, triangle on top
@@ -472,13 +507,24 @@ class Interaction():
         xt3 = x21[k6,i6].copy()
         yt3 = y_right_edge[k6,i6,j6].copy()
         
-        dM_gain[k6,i6,j6,0] = integrate_rect_kernel(xr1,xr2,yr1,yr2,0, 0, 1, PK[:,i6,j6],ak1[k6,i6],ck1[k6,i6],ak2[k6,j6],ck2[k6,j6])+\
-                           integrate_tri_kernel(0, 0, 1, PK[:,i6,j6], ak1[k6,i6], ck1[k6,i6], ak2[k6,j6], ck2[k6,j6], xt1, yt1, xt2, yt2, xt3, yt3)
+        # dM_gain[k6,i6,j6,0] = integrate_rect_kernel(xr1,xr2,yr1,yr2,0, 0, 1, PK[:,i6,j6],ak1[k6,i6],ck1[k6,i6],ak2[k6,j6],ck2[k6,j6])+\
+        #                    integrate_tri_kernel(0, 0, 1, PK[:,i6,j6], ak1[k6,i6], ck1[k6,i6], ak2[k6,j6], ck2[k6,j6], xt1, yt1, xt2, yt2, xt3, yt3)
+        
+        # dM_gain[k6,i6,j6,1] = (dMi_loss[k6,i6,j6]+dMj_loss[k6,i6,j6])-dM_gain[k6,i6,j6,0]
+            
+        # dN_gain[k6,i6,j6,0] = integrate_rect_kernel(xr1,xr2,yr1,yr2,0, 0, 0, PK[:,i6,j6],ak1[k6,i6],ck1[k6,i6],ak2[k6,j6],ck2[k6,j6])+\
+        #                    integrate_tri_kernel(0, 0, 0, PK[:,i6,j6], ak1[k6,i6], ck1[k6,i6], ak2[k6,j6], ck2[k6,j6], xt1, yt1, xt2, yt2, xt3, yt3)
+                           
+        # dN_gain[k6,i6,j6,1] = (dNi_loss[k6,i6,j6])-dN_gain[k6,i6,j6,0]
+        
+        
+        dM_gain[k6,i6,j6,0] = integrate_fast_kernel(0,0,1,PK[:,i6,j6],ak1[k6,i6],ck1[k6,i6],ak2[k6,j6],ck2[k6,j6],'rectangle',x1=xr1,x2=xr2,y1=yr1,y2=yr2)+\
+                              integrate_fast_kernel(0,0,1,PK[:,i6,j6],ak1[k6,i6],ck1[k6,i6],ak2[k6,j6],ck2[k6,j6],'triangle',xt1=xt1,yt1=yt1,xt2=xt2,yt2=yt2,xt3=xt3,yt3=yt3)
         
         dM_gain[k6,i6,j6,1] = (dMi_loss[k6,i6,j6]+dMj_loss[k6,i6,j6])-dM_gain[k6,i6,j6,0]
             
-        dN_gain[k6,i6,j6,0] = integrate_rect_kernel(xr1,xr2,yr1,yr2,0, 0, 0, PK[:,i6,j6],ak1[k6,i6],ck1[k6,i6],ak2[k6,j6],ck2[k6,j6])+\
-                           integrate_tri_kernel(0, 0, 0, PK[:,i6,j6], ak1[k6,i6], ck1[k6,i6], ak2[k6,j6], ck2[k6,j6], xt1, yt1, xt2, yt2, xt3, yt3)
+        dN_gain[k6,i6,j6,0] = integrate_fast_kernel(0,0,0,PK[:,i6,j6],ak1[k6,i6],ck1[k6,i6],ak2[k6,j6],ck2[k6,j6],'rectangle',x1=xr1,x2=xr2,y1=yr1,y2=yr2)+\
+                              integrate_fast_kernel(0,0,0,PK[:,i6,j6],ak1[k6,i6],ck1[k6,i6],ak2[k6,j6],ck2[k6,j6],'triangle',xt1=xt1,yt1=yt1,xt2=xt2,yt2=yt2,xt3=xt3,yt3=yt3)
                            
         dN_gain[k6,i6,j6,1] = (dNi_loss[k6,i6,j6])-dN_gain[k6,i6,j6,0]
             
@@ -493,11 +539,18 @@ class Interaction():
         xt3 = x21[k7,i7].copy()
         yt3 = y_right_edge[k7,i7,j7].copy()
         
-        dM_gain[k7,i7,j7,1] = integrate_tri_kernel(0, 0, 1, PK[:,i7,j7], ak1[k7,i7], ck1[k7,i7], ak2[k7,j7], ck2[k7,j7], xt1, yt1, xt2, yt2, xt3, yt3)
+        # dM_gain[k7,i7,j7,1] = integrate_tri_kernel(0, 0, 1, PK[:,i7,j7], ak1[k7,i7], ck1[k7,i7], ak2[k7,j7], ck2[k7,j7], xt1, yt1, xt2, yt2, xt3, yt3)
+        # dM_gain[k7,i7,j7,0] = (dMi_loss[k7,i7,j7]+dMj_loss[k7,i7,j7])-dM_gain[k7,i7,j7,1]
+        
+        # dN_gain[k7,i7,j7,1] = integrate_tri_kernel(0, 0, 0, PK[:,i7,j7], ak1[k7,i7], ck1[k7,i7], ak2[k7,j7], ck2[k7,j7], xt1, yt1, xt2, yt2, xt3, yt3)
+        # dN_gain[k7,i7,j7,0] = (dNi_loss[k7,i7,j7])-dN_gain[k7,i7,j7,1]
+        
+        dM_gain[k7,i7,j7,1] = integrate_fast_kernel(0,0,1,PK[:,i7,j7],ak1[k7,i7],ck1[k7,i7],ak2[k7,j7],ck2[k7,j7],'triangle',xt1=xt1,yt1=yt1,xt2=xt2,yt2=yt2,xt3=xt3,yt3=yt3)
         dM_gain[k7,i7,j7,0] = (dMi_loss[k7,i7,j7]+dMj_loss[k7,i7,j7])-dM_gain[k7,i7,j7,1]
         
-        dN_gain[k7,i7,j7,1] = integrate_tri_kernel(0, 0, 0, PK[:,i7,j7], ak1[k7,i7], ck1[k7,i7], ak2[k7,j7], ck2[k7,j7], xt1, yt1, xt2, yt2, xt3, yt3)
+        dN_gain[k7,i7,j7,1] = integrate_fast_kernel(0,0,0,PK[:,i7,j7],ak1[k7,i7],ck1[k7,i7],ak2[k7,j7],ck2[k7,j7],'triangle',xt1=xt1,yt1=yt1,xt2=xt2,yt2=yt2,xt3=xt3,yt3=yt3)
         dN_gain[k7,i7,j7,0] = (dNi_loss[k7,i7,j7])-dN_gain[k7,i7,j7,1]
+        
             
         # Condition 8:
         #  k bin: Triangle in lower left corner
@@ -509,10 +562,16 @@ class Interaction():
         xt3 = x_bottom_edge[k8,i8,j8].copy()
         yt3 = x12[k8,j8].copy()
         
-        dM_gain[k8,i8,j8,0] = integrate_tri_kernel(0, 0, 1, PK[:,i8,j8], ak1[k8,i8], ck1[k8,i8], ak2[k8,j8], ck2[k8,j8], xt1, yt1, xt2, yt2, xt3, yt3)
+        # dM_gain[k8,i8,j8,0] = integrate_tri_kernel(0, 0, 1, PK[:,i8,j8], ak1[k8,i8], ck1[k8,i8], ak2[k8,j8], ck2[k8,j8], xt1, yt1, xt2, yt2, xt3, yt3)
+        # dM_gain[k8,i8,j8,1] = (dMi_loss[k8,i8,j8]+dMj_loss[k8,i8,j8])-dM_gain[k8,i8,j8,0]
+        
+        # dN_gain[k8,i8,j8,0] = integrate_tri_kernel(0, 0, 0, PK[:,i8,j8], ak1[k8,i8], ck1[k8,i8], ak2[k8,j8], ck2[k8,j8], xt1, yt1, xt2, yt2, xt3, yt3)
+        # dN_gain[k8,i8,j8,1] = (dNi_loss[k8,i8,j8])-dN_gain[k8,i8,j8,0]
+        
+        dM_gain[k8,i8,j8,0] = integrate_fast_kernel(0,0,1,PK[:,i8,j8],ak1[k8,i8],ck1[k8,i8],ak2[k8,j8],ck2[k8,j8],'triangle',xt1=xt1,yt1=yt1,xt2=xt2,yt2=yt2,xt3=xt3,yt3=yt3)
         dM_gain[k8,i8,j8,1] = (dMi_loss[k8,i8,j8]+dMj_loss[k8,i8,j8])-dM_gain[k8,i8,j8,0]
         
-        dN_gain[k8,i8,j8,0] = integrate_tri_kernel(0, 0, 0, PK[:,i8,j8], ak1[k8,i8], ck1[k8,i8], ak2[k8,j8], ck2[k8,j8], xt1, yt1, xt2, yt2, xt3, yt3)
+        dN_gain[k8,i8,j8,0] = integrate_fast_kernel(0,0,0,PK[:,i8,j8],ak1[k8,i8],ck1[k8,i8],ak2[k8,j8],ck2[k8,j8],'triangle',xt1=xt1,yt1=yt1,xt2=xt2,yt2=yt2,xt3=xt3,yt3=yt3)
         dN_gain[k8,i8,j8,1] = (dNi_loss[k8,i8,j8])-dN_gain[k8,i8,j8,0]
             
         # Condition 9: Rectangle collection within k bin. All Mass/Number goes into kbin
@@ -521,8 +580,11 @@ class Interaction():
         xj1 = x12[k9,j9].copy()
         xj2 = x22[k9,j9].copy()
         
-        dM_gain[k9,i9,j9,0]  = integrate_rect_kernel(xi1,xi2,xj1,xj2,0, 0, 1, PK[:,i9,j9],ak1[k9,i9],ck1[k9,i9],ak2[k9,j9],ck2[k9,j9]) 
-        dN_gain[k9,i9,j9,0]  = integrate_rect_kernel(xi1,xi2,xj1,xj2,0, 0, 0, PK[:,i9,j9],ak1[k9,i9],ck1[k9,i9],ak2[k9,j9],ck2[k9,j9]) 
+        #dM_gain[k9,i9,j9,0]  = integrate_rect_kernel(xi1,xi2,xj1,xj2,0, 0, 1, PK[:,i9,j9],ak1[k9,i9],ck1[k9,i9],ak2[k9,j9],ck2[k9,j9]) 
+        #dN_gain[k9,i9,j9,0]  = integrate_rect_kernel(xi1,xi2,xj1,xj2,0, 0, 0, PK[:,i9,j9],ak1[k9,i9],ck1[k9,i9],ak2[k9,j9],ck2[k9,j9]) 
+
+        dM_gain[k9,i9,j9,0]  = integrate_fast_kernel(0,0,1,PK[:,i9,j9],ak1[k9,i9],ck1[k9,i9],ak2[k9,j9],ck2[k9,j9],'rectangle',x1=xi1,x2=xi2,y1=xj1,y2=xj2) 
+        dN_gain[k9,i9,j9,0]  = integrate_fast_kernel(0,0,0,PK[:,i9,j9],ak1[k9,i9],ck1[k9,i9],ak2[k9,j9],ck2[k9,j9],'rectangle',x1=xi1,x2=xi2,y1=xj1,y2=xj2) 
 
         # Condition 10: Rectangle collection within k+1 bin. All Mass/Number goes into kbin
         xi1 = x11[k10,i10].copy()
@@ -530,8 +592,12 @@ class Interaction():
         xj1 = x12[k10,j10].copy()
         xj2 = x22[k10,j10].copy()
         
-        dM_gain[k10,i10,j10,1]  = integrate_rect_kernel(xi1,xi2,xj1,xj2,0, 0, 1, PK[:,i10,j10],ak1[k10,i10],ck1[k10,i10],ak2[k10,j10],ck2[k10,j10]) 
-        dN_gain[k10,i10,j10,1]  = integrate_rect_kernel(xi1,xi2,xj1,xj2,0, 0, 0, PK[:,i10,j10],ak1[k10,i10],ck1[k10,i10],ak2[k10,j10],ck2[k10,j10]) 
+        #dM_gain[k10,i10,j10,1]  = integrate_rect_kernel(xi1,xi2,xj1,xj2,0, 0, 1, PK[:,i10,j10],ak1[k10,i10],ck1[k10,i10],ak2[k10,j10],ck2[k10,j10]) 
+        #dN_gain[k10,i10,j10,1]  = integrate_rect_kernel(xi1,xi2,xj1,xj2,0, 0, 0, PK[:,i10,j10],ak1[k10,i10],ck1[k10,i10],ak2[k10,j10],ck2[k10,j10]) 
+       
+        
+        dM_gain[k10,i10,j10,1]  = integrate_fast_kernel(0,0,1,PK[:,i10,j10],ak1[k10,i10],ck1[k10,i10],ak2[k10,j10],ck2[k10,j10],'rectangle',x1=xi1,x2=xi2,y1=xj1,y2=xj2) 
+        dN_gain[k10,i10,j10,1]  = integrate_fast_kernel(0,0,0,PK[:,i10,j10],ak1[k10,i10],ck1[k10,i10],ak2[k10,j10],ck2[k10,j10],'rectangle',x1=xi1,x2=xi2,y1=xj1,y2=xj2) 
        
        
         M1_loss = np.nansum(dMi_loss,axis=2) 

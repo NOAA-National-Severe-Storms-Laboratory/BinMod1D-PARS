@@ -43,7 +43,7 @@ class spectral_1d:
                  tmax=800.,dz=10.,ztop=0.,zbot=0.,D1=0.25,Nt0=1.,Dm0=2.0,
                  mu0=3.,Ecol=1.53,Es=0.001,Eb=0.,dist_var='mass',
                  kernel='Golovin',frag_dist='exp',habit_list=['rain'],
-                 ptype='rain',Tc=10.,dist_num=1,cc_dest=1,br_dest=1, 
+                 ptype='rain',Tc=10.,boundary=None,dist_num=1,cc_dest=1,br_dest=1, 
                  radar=False,rk_order=1):
         '''
         Initialize model and PSD        
@@ -52,12 +52,12 @@ class spectral_1d:
         self.setup_case(sbin=sbin,D1=D1,bins=bins,dt=dt,tmax=tmax,
                         dz=dz,ztop=ztop,zbot=zbot,Nt0=Nt0,Dm0=Dm0,mu0=mu0,Ecol=Ecol,
                         Es=Es,Eb=Eb,dist_var=dist_var,kernel=kernel,frag_dist=frag_dist,
-                        habit_list=habit_list,ptype=ptype,Tc=Tc,radar=radar, 
+                        habit_list=habit_list,ptype=ptype,Tc=Tc,radar=radar,boundary=boundary,
                         dist_num=dist_num,cc_dest=cc_dest,br_dest=br_dest,rk_order=rk_order)
         
     def setup_case(self,D1=0.001,sbin=4,bins=160,Nt0=1.,Dm0=2.0,mu0=3,dist_var='mass',kernel='Golovin',Ecol=1.53,Es=0.001,Eb=0.,
                         ztop=3000.0,zbot=0.,tmax=800.,dt=10.,dz=10.,frag_dist='exp',habit_list=['rain'],ptype='rain',Tc=10.,
-                        radar=False,dist_num=1,cc_dest=1,br_dest=1,rk_order=1):
+                        radar=False,boundary=None,dist_num=1,cc_dest=1,br_dest=1,rk_order=1):
         self.Tc = Tc
         self.radar = radar
         self.sbin = sbin 
@@ -85,6 +85,7 @@ class spectral_1d:
         self.dist_var = dist_var
         self.ptype = ptype
         self.rk_order = rk_order
+        self.boundary = boundary
         
         self.indc = cc_dest 
         self.indb = br_dest
@@ -291,11 +292,15 @@ class spectral_1d:
 
         cax = ax.pcolor(t,h,var_temp,norm=Rnorm,cmap=cmap)
         
-        cbar = fig.colorbar(cax,ax=ax)
+        #cax = ax.pcolor(t,h,var_temp,cmap=cmap)
+        
+        cbar = fig.colorbar(cax,ax=ax,ticks=levels_ticks)
         
         cbar.ax.tick_params(labelsize=16)
         
         cbar.ax.set_yticklabels(levels_ticks,usetex=True)
+        
+        cbar.ax.minorticks_off()
         
         cbar.set_label(clabel,usetex=True,rotation=270,fontsize=fontsize,labelpad=labelpad) 
 
@@ -812,7 +817,6 @@ class spectral_1d:
   
                     M_net, N_net = self.Ikernel.interact(1.0)
                    
-                    
                    # Ndists x bins
                    
                     Mbins = np.zeros_like(Mbins_old)
@@ -881,8 +885,9 @@ class spectral_1d:
             M_sed = np.zeros((self.dnum,self.Hlen,self.bins)) 
             N_sed = np.zeros((self.dnum,self.Hlen,self.bins)) 
            
-            M_sed[:,0,:] = (self.dt/self.dz)*(-self.Ikernel.Mfbins[:,0,:]) 
-            N_sed[:,0,:] = (self.dt/self.dz)*(-self.Ikernel.Nfbins[:,0,:]) 
+            if self.boundary is None:
+                M_sed[:,0,:] = (self.dt/self.dz)*(-self.Ikernel.Mfbins[:,0,:]) 
+                N_sed[:,0,:] = (self.dt/self.dz)*(-self.Ikernel.Nfbins[:,0,:]) 
             
             M_sed[:,1:,:] = (self.dt/self.dz)*(self.Ikernel.Mfbins[:,:-1,:]-self.Ikernel.Mfbins[:,1:,:]) 
             N_sed[:,1:,:] = (self.dt/self.dz)*(self.Ikernel.Nfbins[:,:-1,:]-self.Ikernel.Nfbins[:,1:,:]) 
@@ -895,6 +900,10 @@ class spectral_1d:
             
             N_new = np.maximum(N_transfer,0.) # Should be positive if not over fragmented.
             Nbins[N_new>=0.] = N_new[N_new>=0.].copy()
+            
+            if self.boundary=='fixed': # If fixing top distribution. Can be helpful if trying to determine steady-state time.
+                Mbins[:,0,:] = M_old[:,0,:].copy()
+                Nbins[:,0,:] = N_old[:,0,:].copy()
             
             self.Ikernel.Mbins = Mbins.copy()
             self.Ikernel.Nbins = Nbins.copy()
@@ -911,7 +920,8 @@ class spectral_1d:
         ''' 
         Run bin model
         '''
-            
+        
+        
         if self.int_type==0:
             self.run_full()
             
