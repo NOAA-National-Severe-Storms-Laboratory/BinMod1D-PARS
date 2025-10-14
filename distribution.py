@@ -267,7 +267,7 @@ class dist():
         #self.Nfbins =self.av*(self.am)**(-self.bv/self.bm)*self.moments((self.bv)/self.bm)
         
         self.Mfbins = self.vt*self.Mbins
-        self.Nfbins =self.vt*self.Nbins
+        self.Nfbins = self.vt*self.Nbins
         
         vt_fill = (self.Mbins>0.) & (self.Nbins>0.) & (self.vtm>0.) & (self.vtn>0.)\
                   & (self.Mfbins>0.) & (self.Nfbins>0.)

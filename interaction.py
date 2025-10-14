@@ -237,8 +237,15 @@ class Interaction():
             self.dMb_gain_frac = self.dMb_gain_frac/dMb_gain_tot[None,:]
             self.dNb_gain_frac = self.dNb_gain_frac/dMb_gain_tot[None,:]
             
-            self.dMb_gain_frac[np.isnan(dMb_gain_tot)] = 0.
-            self.dNb_gain_frac[np.isnan(dMb_gain_tot)] = 0.
+            self.dMb_gain_frac[np.isnan(self.dMb_gain_frac)|np.isnan(self.dNb_gain_frac)] = 0.
+            self.dNb_gain_frac[np.isnan(self.dMb_gain_frac)|np.isnan(self.dNb_gain_frac)] = 0.
+            
+            #print(np.isnan(self.dMb_gain_frac).any())
+            #print(np.isnan(self.dNb_gain_frac).any())
+            #raise Exception()
+            
+            #self.dMb_gain_frac = np.tile(self.dMb_gain_frac,(self.Hlen,1,1))
+            #self.dNb_gain_frac = np.tile(self.dNb_gain_frac,(self.Hlen,1,1))
 
       
     def calculate(self,ind1,ind2,PK,self_col=False):
@@ -526,13 +533,13 @@ class Interaction():
         dM_gain[k10,i10,j10,1]  = integrate_rect_kernel(xi1,xi2,xj1,xj2,0, 0, 1, PK[:,i10,j10],ak1[k10,i10],ck1[k10,i10],ak2[k10,j10],ck2[k10,j10]) 
         dN_gain[k10,i10,j10,1]  = integrate_rect_kernel(xi1,xi2,xj1,xj2,0, 0, 0, PK[:,i10,j10],ak1[k10,i10],ck1[k10,i10],ak2[k10,j10],ck2[k10,j10]) 
        
+       
         M1_loss = np.nansum(dMi_loss,axis=2) 
         N1_loss = np.nansum(dNi_loss,axis=2) 
         
         M2_loss = np.nansum(dMj_loss,axis=1) 
         N2_loss = np.nansum(dNj_loss,axis=1)
-        
-        
+           
         # ChatGPT is the GOAT for telling me about np.add.at!
         M_gain = np.zeros((self.Hlen,self.bins))
         np.add.at(M_gain, (np.arange(self.Hlen)[:,None,None],self.kmin), dM_gain[:,:,:,0])
@@ -547,10 +554,11 @@ class Interaction():
         if self.Ebr>0.:
             
             Mij_loss = dMi_loss[k1,i1,j1]+dMj_loss[k1,i1,j1]
+  
+            np.add.at(Mb_gain,  k1, np.transpose(self.dMb_gain_frac[:,self.kmin[i1,j1]]*Mij_loss))
+            np.add.at(Nb_gain,  k1, np.transpose(self.dNb_gain_frac[:,self.kmin[i1,j1]]*Mij_loss))
             
-            Mb_gain = np.nansum(self.dMb_gain_frac[:,self.kmin[i1,j1]][None,:,:]*Mij_loss,axis=2) 
-            Nb_gain = np.nansum(self.dNb_gain_frac[:,self.kmin[i1,j1]][None,:,:]*Mij_loss,axis=2) 
-                
+
         return M1_loss, M2_loss, M_gain, Mb_gain, N1_loss, N2_loss, N_gain, Nb_gain
         
     # Advance PSD Mbins and Nbins by one time/height step

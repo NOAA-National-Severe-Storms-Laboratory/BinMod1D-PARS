@@ -30,6 +30,12 @@ from bin_integrals import init_rk
 
 from habits import habits, fragments
 
+from cmweather import cm as cmp
+
+from matplotlib.colors import LinearSegmentedColormap, ColorConverter, BoundaryNorm, LogNorm
+
+from plotting_functions import get_cmap_vars
+
 # 1D Spectral Bin Model Class
 class spectral_1d:
     
@@ -188,6 +194,120 @@ class spectral_1d:
             print('Initial Differential Reflectivity = {:.2f} dB'.format(self.dist0.ZDR))
             print('------')
             print('Initial Specific Differential Phase = {:.2f} deg/km'.format(self.dist0.KDP))
+    
+    def plot_time_height(self,var='Z'):
+        
+        dist_num = len(self.dists) 
+
+        t = self.t
+        h = self.z/1000.
+             
+        N  = np.full((dist_num,len(h),len(t)),np.nan)
+        M  = np.full((dist_num,len(h),len(t)),np.nan)
+        Dm = np.full((dist_num,len(h),len(t)),np.nan)
+        Rm = np.full((dist_num,len(h),len(t)),np.nan)
+        M3 = np.full((dist_num,len(h),len(t)),np.nan)
+        M4 = np.full((dist_num,len(h),len(t)),np.nan)
+
+        ZH = np.full((len(h),len(t)),np.nan)
+        ZDR = np.full((len(h),len(t)),np.nan)
+        KDP = np.zeros((len(h),len(t)))
+        RHOHV = np.full((len(h),len(t)),np.nan)
+
+        for tt in range(len(t)):
+            
+            for ff in range(len(h)):
+                
+                Zh = 0. 
+                Zv = 0. 
+                Zhhvv = 0. 
+     
+                for d1 in range(dist_num):
+                    
+                    am = self.full[d1,ff,tt].am
+                    bm = self.full[d1,ff,tt].bm
+                    
+                    M3[d1,ff,tt] = (am**(-3./bm)*self.full[d1,ff,tt].moments(3./bm)).sum()
+                    M4[d1,ff,tt] = (am**(-4./bm)*self.full[d1,ff,tt].moments(4./bm)).sum()
+                      
+                    N[d1,ff,tt]  = np.nansum(self.full[d1,ff,tt].Nbins)
+                    M[d1,ff,tt]  = 1000.*np.nansum(self.full[d1,ff,tt].Mbins)
+                    Rm[d1,ff,tt] = 1000.*3.6*np.nansum(self.full[d1,ff,tt].Mfbins)
+                    
+                    Zh      += np.nansum(self.full[d1,ff,tt].zh)
+                    Zv      += np.nansum(self.full[d1,ff,tt].zv)
+                    Zhhvv   += np.nansum(self.full[d1,ff,tt].zhhvv)
+                    KDP[ff,tt] += np.nansum(self.full[d1,ff,tt].KDP)
+            
+    
+                if Zv>0.:
+                    ZDR[ff,tt] = 10.*np.log10(Zh/Zv)
+                  
+                if Zh>0.:    
+                    ZH[ff,tt] = 10.*np.log10(Zh)    
+                  
+                if (Zh>0.) & (Zv>0.):
+                    RHOHV[ff,tt] = np.abs(Zhhvv)/np.sqrt(Zh*Zv)
+                
+        M3_tot = np.nansum(M3,axis=0)
+        M4_tot = np.nansum(M4,axis=0)
+        
+        M3_tot[M3_tot==0.] = np.nan
+        
+        Dm = M4_tot/M3_tot
+        
+        M3[M3==0.] = np.nan 
+        
+        #Dm = M4/M3
+        
+        Nt = np.nansum(N,axis=0)
+        M_tot = np.nansum(M,axis=0)
+        Rm_tot = np.nansum(Rm,axis=0)
+        
+        fig, ax = plt.subplots(1,1,figsize=(14,8))
+
+        match var:
+            case 'Z':
+                var_temp = ZH.copy() 
+            case 'ZDR':
+                var_temp = ZDR.copy() 
+            case 'KDP':
+                var_temp = KDP.copy() 
+            case 'RHOHV':
+                var_temp = RHOHV.copy() 
+            case 'Nt':
+                var_temp = Nt.copy() 
+            case 'Dm':
+                var_temp = Dm.copy() 
+            case 'WC':
+                var_temp = M_tot.copy()
+            case 'R':
+                var_temp = Rm_tot.copy()
+        
+        
+        cmap, levels, levels_ticks, clabel, labelpad, fontsize, slabel = get_cmap_vars(var)
+        
+        Rnorm = BoundaryNorm(levels,cmap.N,extend='both') 
+
+        cax = ax.pcolor(t,h,var_temp,norm=Rnorm,cmap=cmap)
+        
+        cbar = fig.colorbar(cax,ax=ax)
+        
+        cbar.ax.tick_params(labelsize=16)
+        
+        cbar.ax.set_yticklabels(levels_ticks,usetex=True)
+        
+        cbar.set_label(clabel,usetex=True,rotation=270,fontsize=fontsize,labelpad=labelpad) 
+
+        ax.set_xlabel('Time (seconds)',fontsize=16,usetex=True)
+        ax.set_ylabel('Height (km)',fontsize=16,usetex=True)
+        
+        ax.axes.tick_params('both',labelsize=14)
+
+        fig.tight_layout()  
+        
+        return fig, ax
+    
     
     def plot_moments_radar(self,plot_habits=False):
         
@@ -690,7 +810,7 @@ class spectral_1d:
                     Mbins_old = self.Ikernel.Mbins.copy() 
                     Nbins_old = self.Ikernel.Nbins.copy()
   
-                    M_net, N_net = self.Ikernel.interact(self.dt)
+                    M_net, N_net = self.Ikernel.interact(1.0)
                    
                     
                    # Ndists x bins
@@ -739,51 +859,52 @@ class spectral_1d:
         
         rlen = len(b)
         
-        for d1 in range(self.dnum):
-            self.full[d1,0,0] = deepcopy(self.dists[d1,0])
+        for hh in range(self.Hlen):
+            for d1 in range(self.dnum):
+                self.full[d1,hh,0] = deepcopy(self.dists[d1,hh])
         
         # ELD NOTE: At some point it probably will be worthwhile to do R-K timesteps
-        if self.Ecb>0.:
-            for tt in range(1,self.Tlen):
 
-                print('Running 1D spectral bin model: step = {} out of {}'.format(tt,self.Tlen-1))
-                print('Total Mass = {:.2f} g/m^3 | Total Mass Flux = {:.2f} g/(m^2*s)'.format(1000.*np.nansum(self.Ikernel.Mbins),
-                                                                                              1000.*np.nansum(self.Ikernel.Mfbins)))
-                M_old = self.Ikernel.Mbins.copy() 
-                N_old = self.Ikernel.Nbins.copy()
-                
-                Mbins = np.zeros_like(M_old)
-                Nbins = np.zeros_like(N_old)
-                
-                M_net, N_net = self.Ikernel.interact(self.dt)
-               
-                M_sed = np.zeros((self.dnum,self.Hlen,self.bins)) 
-                N_sed = np.zeros((self.dnum,self.Hlen,self.bins)) 
-               
-                M_sed[:,0,:] = (self.dt/self.dz)*(-self.Ikernel.Mfbins[:,0,:]) 
-                N_sed[:,0,:] = (self.dt/self.dz)*(-self.Ikernel.Nfbins[:,0,:]) 
-                
-                M_sed[:,1:,:] = (self.dt/self.dz)*(self.Ikernel.Mfbins[:,:-1,:]-self.Ikernel.Mfbins[:,1:,:]) 
-                N_sed[:,1:,:] = (self.dt/self.dz)*(self.Ikernel.Nfbins[:,:-1,:]-self.Ikernel.Nfbins[:,1:,:]) 
-                          
-                M_transfer = M_old+M_sed+M_net
-                N_transfer = N_old+N_sed+N_net   
-                
-                M_new = np.maximum(M_transfer,0.) # Should be positive if not over fragmented.
-                Mbins[M_new>=0.] = M_new[M_new>=0.].copy()
-                
-                N_new = np.maximum(N_transfer,0.) # Should be positive if not over fragmented.
-                Nbins[N_new>=0.] = N_new[N_new>=0.].copy()
+        for tt in range(1,self.Tlen):
 
-                self.Ikernel.Mbins = Mbins.copy()
-                self.Ikernel.Nbins = Nbins.copy()
+            print('Running 1D spectral bin model: step = {} out of {}'.format(tt,self.Tlen-1))
+            print('Total Mass = {:.2f} g/m^3 | Total Mass Flux = {:.2f} g/(m^2*s)'.format(1000.*np.nansum(self.Ikernel.Mbins),
+                                                                                          1000.*np.nansum(self.Ikernel.Mfbins)))
+            M_old = self.Ikernel.Mbins.copy() 
+            N_old = self.Ikernel.Nbins.copy()
+            
+            Mbins = np.zeros_like(M_old)
+            Nbins = np.zeros_like(N_old)
+            
+            M_net, N_net = self.Ikernel.interact(self.dt)
+           
+            M_sed = np.zeros((self.dnum,self.Hlen,self.bins)) 
+            N_sed = np.zeros((self.dnum,self.Hlen,self.bins)) 
+           
+            M_sed[:,0,:] = (self.dt/self.dz)*(-self.Ikernel.Mfbins[:,0,:]) 
+            N_sed[:,0,:] = (self.dt/self.dz)*(-self.Ikernel.Nfbins[:,0,:]) 
+            
+            M_sed[:,1:,:] = (self.dt/self.dz)*(self.Ikernel.Mfbins[:,:-1,:]-self.Ikernel.Mfbins[:,1:,:]) 
+            N_sed[:,1:,:] = (self.dt/self.dz)*(self.Ikernel.Nfbins[:,:-1,:]-self.Ikernel.Nfbins[:,1:,:]) 
+                      
+            M_transfer = M_old+M_sed+M_net
+            N_transfer = N_old+N_sed+N_net   
+            
+            M_new = np.maximum(M_transfer,0.) # Should be positive if not over fragmented.
+            Mbins[M_new>=0.] = M_new[M_new>=0.].copy()
+            
+            N_new = np.maximum(N_transfer,0.) # Should be positive if not over fragmented.
+            Nbins[N_new>=0.] = N_new[N_new>=0.].copy()
+            
+            self.Ikernel.Mbins = Mbins.copy()
+            self.Ikernel.Nbins = Nbins.copy()
 
-                self.Ikernel.unpack() # Unpack the interaction 3D array to each object in the (dist x height) object array
-                self.Ikernel.pack(self.Ikernel.dists) # Update moments and parameters of 2D array of distribution objects
+            self.Ikernel.unpack() # Unpack the interaction 3D array to each object in the (dist x height) object array
+            self.Ikernel.pack(self.Ikernel.dists) # Update moments and parameters of 2D array of distribution objects
 
-                for hh in range(self.Hlen):
-                    for d1 in range(self.dnum):
-                        self.full[d1,hh,tt] = deepcopy(self.dists[d1,hh])
+            for hh in range(self.Hlen):
+               for d1 in range(self.dnum):
+                   self.full[d1,hh,tt] = deepcopy(self.dists[d1,hh])
 
 
     def run(self):
