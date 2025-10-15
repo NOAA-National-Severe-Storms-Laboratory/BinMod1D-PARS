@@ -239,13 +239,6 @@ class Interaction():
             
             self.dMb_gain_frac[np.isnan(self.dMb_gain_frac)|np.isnan(self.dNb_gain_frac)] = 0.
             self.dNb_gain_frac[np.isnan(self.dMb_gain_frac)|np.isnan(self.dNb_gain_frac)] = 0.
-            
-            #print(np.isnan(self.dMb_gain_frac).any())
-            #print(np.isnan(self.dNb_gain_frac).any())
-            #raise Exception()
-            
-            #self.dMb_gain_frac = np.tile(self.dMb_gain_frac,(self.Hlen,1,1))
-            #self.dNb_gain_frac = np.tile(self.dNb_gain_frac,(self.Hlen,1,1))
 
       
     def calculate(self,ind1,ind2,PK,self_col=False):
@@ -677,11 +670,6 @@ class Interaction():
 
         return M_net, N_net
 
-        # # Update bin masses, numbers and subgrid linear distribution parameters
-        # for d1 in range(self.dnum):    
-        #     self.dists[d1].Mbins = Mbins[d1]
-        #     self.dists[d1].Nbins = Nbins[d1]
-        #     self.dists[d1].diagnose()    
 
  
         

@@ -824,10 +824,6 @@ class spectral_1d:
                    
                     dh = np.vstack([self.dists[ff,0].dh for ff in range(self.dnum)])
                     
-                    #print('Mbins=',Mbins.shape)
-                    #print('dh=',dh.shape)
-                    #raise Exception()
-                    
                     M_transfer = Mbins_old+M_net*dh[:,None,:]
                     N_transfer = Nbins_old+N_net*dh[:,None,:]   
                     

@@ -9,6 +9,8 @@ import math
 import scipy.special as scip
 from functools import lru_cache
 
+from numba import njit
+
 def init_rk(rk_order):
     
     # --- Butcher tableaux (a_ij, b_i, c_i) for RK1–RK4 ---
@@ -42,8 +44,55 @@ def init_rk(rk_order):
     
     return RK 
 
+#---------- Cached functions ------------#
+
+@lru_cache(maxsize=None)
 def kronecker_delta(i, j):
     return 1 if i == j else 0
+
+@lru_cache(maxsize=None)
+def reference_triangle_integral(p, q):
+    return math.factorial(p) * math.factorial(q) / math.factorial(p+q+2)
+
+@lru_cache(maxsize=None)
+def factorial_cached(n):
+    """Cached factorial for small integer n."""
+    from math import factorial
+    return factorial(n)
+
+@lru_cache(maxsize=None)
+def comb_cached(n, k):
+    """Cached combination function."""
+    from math import comb
+    if k < 0 or k > n:
+        return 0
+    return comb(n, k)
+
+@lru_cache(maxsize=None)
+def ref_triangle_integral_table(max_deg):
+    """Return lookup table T[p,q] = ∫_0^1∫_0^{1-v} u^p v^q du dv."""
+    T = np.zeros((max_deg + 1, max_deg + 1), dtype=np.float64)
+    for p in range(max_deg + 1):
+        for q in range(max_deg + 1):
+            T[p, q] = math.factorial(p) * math.factorial(q) / math.factorial(p + q + 2)
+    return T
+
+
+# ============================================================
+# Precompute binomial coefficients table
+# ============================================================
+
+@lru_cache(maxsize=None)
+def binomial_table(max_n):
+    """Return Pascal’s triangle table of comb(n,k)."""
+    B = np.zeros((max_n + 1, max_n + 1), dtype=np.float64)
+    for n in range(max_n + 1):
+        B[n, 0] = B[n, n] = 1.0
+        for k in range(1, n):
+            B[n, k] = B[n - 1, k - 1] + B[n - 1, k]
+    return B
+
+#---------- Cached functions ------------#
 
 def compute_coeffs(px, py, m, a, b, c, d):
     coeffs = {}
@@ -54,22 +103,22 @@ def compute_coeffs(px, py, m, a, b, c, d):
             # term with "a"
             k = i - px
             if 0 <= k <= m:
-                Cij += a * math.comb(m, k) * kronecker_delta(j, py + m - k)
+                Cij += a * comb_cached(m, k) * kronecker_delta(j, py + m - k)
 
             # term with "b*x"
             k = i - px - 1
             if 0 <= k <= m:
-                Cij += b * math.comb(m, k) * kronecker_delta(j, py + m - k)
+                Cij += b * comb_cached(m, k) * kronecker_delta(j, py + m - k)
 
             # term with "c*y"
             k = i - px
             if 0 <= k <= m:
-                Cij += c * math.comb(m, k) * kronecker_delta(j, py + m - k + 1)
+                Cij += c * comb_cached(m, k) * kronecker_delta(j, py + m - k + 1)
 
             # term with "d*x*y"
             k = i - px - 1
             if 0 <= k <= m:
-                Cij += d * math.comb(m, k) * kronecker_delta(j, py + m - k + 1)
+                Cij += d * comb_cached(m, k) * kronecker_delta(j, py + m - k + 1)
 
             if Cij != 0:
                 coeffs[(i, j)] = Cij
@@ -106,22 +155,22 @@ def compute_coeffs_vectorized(px, py, m, a, b, c, d):
             # term with "a"
             k = i - px
             if 0 <= k <= m and j == py + m - k:
-                Cij += a * math.comb(m, k)
+                Cij += a * comb_cached(m, k)
 
             # term with "b*x"
             k = i - px - 1
             if 0 <= k <= m and j == py + m - k:
-                Cij += b * math.comb(m, k)
+                Cij += b * comb_cached(m, k)
 
             # term with "c*y"
             k = i - px
             if 0 <= k <= m and j == py + m - k + 1:
-                Cij += c * math.comb(m, k)
+                Cij += c * comb_cached(m, k)
 
             # term with "d*x*y"
             k = i - px - 1
             if 0 <= k <= m and j == py + m - k + 1:
-                Cij += d * math.comb(m, k)
+                Cij += d * comb_cached(m, k)
 
             if not np.all(Cij == 0):
                 coeffs[(i, j)] = Cij
@@ -148,6 +197,7 @@ def compute_combined_coeffs_NxNy_vectorized(px, py, m, a, b, c, d, ax, cx, ay, c
 
     return coeffs_F_N
 
+
 def triangle_monomial_integral(i, j, xt1, yt1, xt2, yt2, xt3, yt3):
     """
     Vectorized integral of x^i y^j over many triangles defined by vertices arrays.
@@ -164,16 +214,84 @@ def triangle_monomial_integral(i, j, xt1, yt1, xt2, yt2, xt3, yt3):
     integral = np.zeros_like(xt1, dtype=float)
     for p in range(i+1):
         for q in range(j+1):
-            coeff = math.comb(i, p) * math.comb(j, q) * (xt1**(i-p)) * (yt1**(j-q))
+            coeff = comb_cached(i, p) * comb_cached(j, q) * (xt1**(i-p)) * (yt1**(j-q))
             for r in range(p+1):
                 for s in range(q+1):
                     upow = r + s
                     vpow = (p-r) + (q-s)
-                    coeff_uv = coeff * math.comb(p, r) * math.comb(q, s) * \
+                    coeff_uv = coeff * comb_cached(p, r) * comb_cached(q, s) * \
                                (dx2**r) * (dy2**s) * (dx3**(p-r)) * (dy3**(q-s))
-                    Iuv = math.factorial(upow) * math.factorial(vpow) / math.factorial(upow + vpow + 2)
+                    Iuv = factorial_cached(upow) * factorial_cached(vpow) / factorial_cached(upow + vpow + 2)
+                                       
                     integral += coeff_uv * Iuv
     return J * integral
+
+
+
+def triangle_monomial_integral_fast(i, j, xt1, yt1, xt2, yt2, xt3, yt3):
+    """
+    Optimized version of triangle_monomial_integral with aggressive precomputation
+    and partial vectorization.
+    """
+    dx2 = xt2 - xt1
+    dy2 = yt2 - yt1
+    dx3 = xt3 - xt1
+    dy3 = yt3 - yt1
+    J = np.abs(dx2 * dy3 - dx3 * dy2)
+
+    # Precompute factorials and combinations up to max degrees
+    maxdeg = max(i, j)
+    fact = np.array([factorial_cached(n) for n in range(maxdeg + 3)], dtype=float)
+    comb_i = np.array([[comb_cached(i, p) for p in range(i + 1)]], dtype=float)
+    comb_j = np.array([[comb_cached(j, q) for q in range(j + 1)]], dtype=float)
+
+    # Precompute powers for all needed exponents (avoid recomputing inside loops)
+    xt1_pow = np.array([xt1 ** (i - p) for p in range(i + 1)])
+    yt1_pow = np.array([yt1 ** (j - q) for q in range(j + 1)])
+    dx2_pow = np.array([dx2 ** r for r in range(i + 1)])
+    dx3_pow = np.array([dx3 ** (i - r) for r in range(i + 1)])
+    dy2_pow = np.array([dy2 ** s for s in range(j + 1)])
+    dy3_pow = np.array([dy3 ** (j - s) for s in range(j + 1)])
+
+    # Initialize result
+    integral = np.zeros_like(xt1, dtype=float)
+
+    # Main loop (only over 4 small integer ranges)
+    for p in range(i + 1):
+        Bi = comb_i[0, p]
+        xpow = xt1_pow[p]
+        for q in range(j + 1):
+            Bj = comb_j[0, q]
+            ypow = yt1_pow[q]
+            base = Bi * Bj * xpow * ypow
+
+            # Inner r,s expansion — use broadcasting instead of nested loops
+            r_idx = np.arange(p + 1)
+            s_idx = np.arange(q + 1)
+            R, S = np.meshgrid(r_idx, s_idx, indexing='ij')
+
+            upow = R + S
+            vpow = (p - R) + (q - S)
+            Iuv = fact[upow] * fact[vpow] / fact[upow + vpow + 2]
+
+            coeff_rs = (
+                comb_cached(p, 0)  # dummy to trigger cache fill
+                + comb_cached(q, 0)
+            ) * 0  # just ensures caching is warmed up
+
+            # Vectorize coefficient construction
+            comb_p = np.array([comb_cached(p, r) for r in range(p + 1)])
+            comb_q = np.array([comb_cached(q, s) for s in range(q + 1)])
+
+            coeff_r = comb_p[:, None] * (dx2_pow[:p + 1, None]) * (dx3_pow[p::-1, None])
+            coeff_s = comb_q[None, :] * (dy2_pow[None, :q + 1]) * (dy3_pow[None, q::-1])
+            coeff_uv = base * coeff_r * coeff_s
+
+            # Integrate over reference triangle weights
+            integral += np.sum(coeff_uv * Iuv, axis=(0, 1))
+
+    return J * integral
+
 
 
 def integrate_rect_kernel(x1, x2, y1, y2, px, py, m, f, ax, cx, ay, cy):
@@ -225,13 +343,21 @@ def integrate_fast_kernel(px, py, m, f, ax, cx, ay, cy, domain_type, **params):
     total = np.zeros_like(a, dtype=float)
     
     if domain_type=='triangle':
-        for (i, j), Cij in coeffs_F_N.items():
-            Iij = triangle_monomial_integral(i, j, params['xt1'], params['yt1'], 
-                                                   params['xt2'], params['yt2'], 
-                                                   params['xt3'], params['yt3'])
-            total += Cij * Iij
+         
+        for (i, j), coeff in coeffs_F_N.items():
+            
+            total += coeff * triangle_monomial_integral(i, j, params['xt1'], params['yt1'], 
+                                                 params['xt2'], params['yt2'], 
+                                                 params['xt3'], params['yt3'])
+            
+            # total += coeff * triangle_monomial_integral_fast(i, j, params['xt1'], params['yt1'], 
+            #                                       params['xt2'], params['yt2'], 
+            #                                       params['xt3'], params['yt3'])
+            
+            
             
     else:
+        
         for (i, j), coeff in coeffs_F_N.items():
             total += coeff * Pn(i,params['x1'],params['x2']) * Pn(j,params['y1'],params['y2'])  
         
@@ -292,8 +418,8 @@ def apply_NxNy(coeffs, ax, cx, ay, cy):
     for (i,j), Cij in coeffs.items():
         for p in range(i+1):
             for q in range(j+1):
-                ci = math.comb(i,p) * (ax**p) * (cx**(i-p))
-                cj = math.comb(j,q) * (ay**q) * (cy**(j-q))
+                ci = comb_cached(i,p) * (ax**p) * (cx**(i-p))
+                cj = comb_cached(j,q) * (ay**q) * (cy**(j-q))
                 new_coeffs[(p,q)] = new_coeffs.get((p,q), 0) + Cij * ci * cj
     return new_coeffs
 
@@ -316,9 +442,8 @@ def integrate_rectangle_cached(coeffs, x_int, y_int):
 # 4. Triangle integrals (cached)
 # ============================================================
 
-#@lru_cache(maxsize=None)
-def reference_triangle_integral(p, q):
-    return math.factorial(p) * math.factorial(q) / math.factorial(p+q+2)
+
+
 
 def triangle_monomial_integral_vectorized_cached(i, j, xt1, yt1, xt2, yt2, xt3, yt3):
     dx2 = xt2 - xt1; dy2 = yt2 - yt1
