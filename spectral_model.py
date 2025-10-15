@@ -44,7 +44,7 @@ class spectral_1d:
                  mu0=3.,Ecol=1.53,Es=0.001,Eb=0.,dist_var='mass',
                  kernel='Golovin',frag_dist='exp',habit_list=['rain'],
                  ptype='rain',Tc=10.,boundary=None,dist_num=1,cc_dest=1,br_dest=1, 
-                 radar=False,rk_order=1):
+                 radar=False,rk_order=1,parallel=False,n_jobs=12):
         '''
         Initialize model and PSD        
         '''       
@@ -53,11 +53,12 @@ class spectral_1d:
                         dz=dz,ztop=ztop,zbot=zbot,Nt0=Nt0,Dm0=Dm0,mu0=mu0,Ecol=Ecol,
                         Es=Es,Eb=Eb,dist_var=dist_var,kernel=kernel,frag_dist=frag_dist,
                         habit_list=habit_list,ptype=ptype,Tc=Tc,radar=radar,boundary=boundary,
-                        dist_num=dist_num,cc_dest=cc_dest,br_dest=br_dest,rk_order=rk_order)
+                        dist_num=dist_num,cc_dest=cc_dest,br_dest=br_dest,rk_order=rk_order, 
+                        parallel=parallel,n_jobs=n_jobs)
         
     def setup_case(self,D1=0.001,sbin=4,bins=160,Nt0=1.,Dm0=2.0,mu0=3,dist_var='mass',kernel='Golovin',Ecol=1.53,Es=0.001,Eb=0.,
                         ztop=3000.0,zbot=0.,tmax=800.,dt=10.,dz=10.,frag_dist='exp',habit_list=['rain'],ptype='rain',Tc=10.,
-                        radar=False,boundary=None,dist_num=1,cc_dest=1,br_dest=1,rk_order=1):
+                        radar=False,boundary=None,dist_num=1,cc_dest=1,br_dest=1,rk_order=1,parallel=False,n_jobs=12):
         self.Tc = Tc
         self.radar = radar
         self.sbin = sbin 
@@ -86,6 +87,8 @@ class spectral_1d:
         self.ptype = ptype
         self.rk_order = rk_order
         self.boundary = boundary
+        self.parallel = parallel
+        self.n_jobs = n_jobs
         
         self.indc = cc_dest 
         self.indb = br_dest
@@ -153,7 +156,8 @@ class spectral_1d:
         # Interaction() takes a (Ndist x height) array of dist objects
         # and sets up arrays for calculating interaction (i.e., source) terms
         # in the stochastic collection/breakup equation for multiple categories
-        self.Ikernel = Interaction(dists,cc_dest,br_dest,self.Eagg,self.Ecb,self.Ebr,frag_dict,self.kernel)
+        self.Ikernel = Interaction(dists,cc_dest,br_dest,self.Eagg,self.Ecb,self.Ebr, 
+                                   frag_dict,self.kernel,parallel=self.parallel,n_jobs=self.n_jobs)
 
         self.dists = dists # 3D array of distribution objects (dist_num x height x time)
 
