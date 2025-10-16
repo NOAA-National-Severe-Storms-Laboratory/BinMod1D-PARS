@@ -30,17 +30,17 @@ from bin_integrals import init_rk
 
 from habits import habits, fragments
 
-from cmweather import cm as cmp
-
-from matplotlib.colors import LinearSegmentedColormap, ColorConverter, BoundaryNorm, LogNorm
+from matplotlib.colors import BoundaryNorm
 
 from plotting_functions import get_cmap_vars
+
+from datetime import datetime
 
 # 1D Spectral Bin Model Class
 class spectral_1d:
     
     def __init__(self,sbin=8,bins=140,dt=2,
-                 tmax=800.,dz=10.,ztop=0.,zbot=0.,D1=0.25,Nt0=1.,Dm0=2.0,
+                 tmax=800.,output_freq=60.,dz=10.,ztop=0.,zbot=0.,D1=0.25,Nt0=1.,Dm0=2.0,
                  mu0=3.,Ecol=1.53,Es=0.001,Eb=0.,dist_var='mass',
                  kernel='Golovin',frag_dist='exp',habit_list=['rain'],
                  ptype='rain',Tc=10.,boundary=None,dist_num=1,cc_dest=1,br_dest=1, 
@@ -50,14 +50,14 @@ class spectral_1d:
         '''       
         
         self.setup_case(sbin=sbin,D1=D1,bins=bins,dt=dt,tmax=tmax,
-                        dz=dz,ztop=ztop,zbot=zbot,Nt0=Nt0,Dm0=Dm0,mu0=mu0,Ecol=Ecol,
+                        output_freq=output_freq,dz=dz,ztop=ztop,zbot=zbot,Nt0=Nt0,Dm0=Dm0,mu0=mu0,Ecol=Ecol,
                         Es=Es,Eb=Eb,dist_var=dist_var,kernel=kernel,frag_dist=frag_dist,
                         habit_list=habit_list,ptype=ptype,Tc=Tc,radar=radar,boundary=boundary,
                         dist_num=dist_num,cc_dest=cc_dest,br_dest=br_dest,rk_order=rk_order, 
                         parallel=parallel,n_jobs=n_jobs)
         
     def setup_case(self,D1=0.001,sbin=4,bins=160,Nt0=1.,Dm0=2.0,mu0=3,dist_var='mass',kernel='Golovin',Ecol=1.53,Es=0.001,Eb=0.,
-                        ztop=3000.0,zbot=0.,tmax=800.,dt=10.,dz=10.,frag_dist='exp',habit_list=['rain'],ptype='rain',Tc=10.,
+                        ztop=3000.0,zbot=0.,tmax=800.,output_freq=60.,dt=10.,dz=10.,frag_dist='exp',habit_list=['rain'],ptype='rain',Tc=10.,
                         radar=False,boundary=None,dist_num=1,cc_dest=1,br_dest=1,rk_order=1,parallel=False,n_jobs=12):
         self.Tc = Tc
         self.radar = radar
@@ -77,10 +77,13 @@ class spectral_1d:
         self.ztop = ztop 
         self.zbot = zbot 
         self.tmax = tmax
+        self.output_freq = output_freq
         self.dt = dt 
         self.dz = dz
         # If tmax = -1 then run model as steady-state in vertical
         self.t = np.arange(0,self.tmax+self.dt,step=self.dt)
+        self.tout = np.arange(0,self.tmax+self.output_freq,step=self.output_freq)
+        self.Tout_len = len(self.tout)
         # If zbot == ztop == const. then run as box model
         self.z = np.arange(self.ztop,self.zbot-self.dz,step=-self.dz)
         self.dist_var = dist_var
@@ -204,7 +207,7 @@ class spectral_1d:
         
         dist_num = len(self.dists) 
 
-        t = self.t
+        t = self.tout
         h = self.z/1000.
              
         N  = np.full((dist_num,len(h),len(t)),np.nan)
@@ -793,6 +796,47 @@ class spectral_1d:
         return fig, ax
   
     
+    def advance(self,M_old,N_old,dt):
+        
+        #M_old = self.Ikernel.Mbins.copy() 
+       # N_old = self.Ikernel.Nbins.copy()
+        
+        Mbins = np.zeros_like(M_old)
+        Nbins = np.zeros_like(N_old)
+            
+        
+        M_net, N_net = self.Ikernel.interact(dt)
+       
+        M_sed = np.zeros((self.dnum,self.Hlen,self.bins)) 
+        N_sed = np.zeros((self.dnum,self.Hlen,self.bins)) 
+       
+        if self.boundary is None:
+            M_sed[:,0,:] = (dt/self.dz)*(-self.Ikernel.Mfbins[:,0,:]) 
+            N_sed[:,0,:] = (dt/self.dz)*(-self.Ikernel.Nfbins[:,0,:]) 
+        
+        M_sed[:,1:,:] = (dt/self.dz)*(self.Ikernel.Mfbins[:,:-1,:]-self.Ikernel.Mfbins[:,1:,:]) 
+        N_sed[:,1:,:] = (dt/self.dz)*(self.Ikernel.Nfbins[:,:-1,:]-self.Ikernel.Nfbins[:,1:,:]) 
+                  
+        M_transfer = M_old+M_sed+M_net
+        N_transfer = N_old+N_sed+N_net   
+        
+        M_new = np.maximum(M_transfer,0.) # Should be positive if not over fragmented.
+        Mbins[M_new>=0.] = M_new[M_new>=0.].copy()
+        
+        N_new = np.maximum(N_transfer,0.) # Should be positive if not over fragmented.
+        Nbins[N_new>=0.] = N_new[N_new>=0.].copy()
+        
+        if self.boundary=='fixed': # If fixing top distribution. Can be helpful if trying to determine steady-state time.
+            Mbins[:,0,:] = M_old[:,0,:].copy()
+            Nbins[:,0,:] = N_old[:,0,:].copy()
+            
+            
+        dM = (Mbins-M_old)/dt
+        dN = (Nbins-N_old)/dt
+        
+        return dM, dN
+        
+    
     def run_steady_state(self):
         
             self.full = np.empty((self.dnum,self.Tlen),dtype=object)
@@ -831,10 +875,10 @@ class spectral_1d:
                     M_transfer = Mbins_old+M_net*dh[:,None,:]
                     N_transfer = Nbins_old+N_net*dh[:,None,:]   
                     
-                    M_new = np.maximum(M_transfer,0.) # Should be positive if not over fragmented.
+                    M_new = np.maximum(M_transfer,0.) # Should be positive if not over transferred.
                     Mbins[M_new>=0.] = M_new[M_new>=0.].copy()
                     
-                    N_new = np.maximum(N_transfer,0.) # Should be positive if not over fragmented.
+                    N_new = np.maximum(N_transfer,0.) # Should be positive if not over transferred.
                     Nbins[N_new>=0.] = N_new[N_new>=0.].copy()
     
                     self.Ikernel.Mbins = Mbins.copy()
@@ -852,20 +896,26 @@ class spectral_1d:
         ''' 
         Run bin model
         '''
+        
             
-        self.full = np.empty((self.dnum,self.Hlen,self.Tlen),dtype=object)
+        #self.full = np.empty((self.dnum,self.Hlen,self.Tlen),dtype=object)
+        
+        # Full is an object array that holds
+        self.full = np.empty((self.dnum,self.Hlen,self.Tout_len),dtype=object)
         
         # use Butcher table to get rk order coefficients
         RK = init_rk(self.rk_order)
         a = RK['a']
         b = RK['b']
-        c = RK['c']
+        #c = RK['c']
         
-        rlen = len(b)
+        rklen = len(b)
+        
+        tf = 0
         
         for hh in range(self.Hlen):
             for d1 in range(self.dnum):
-                self.full[d1,hh,0] = deepcopy(self.dists[d1,hh])
+                self.full[d1,hh,tf] = deepcopy(self.dists[d1,hh])
         
         # ELD NOTE: At some point it probably will be worthwhile to do R-K timesteps
 
@@ -874,36 +924,60 @@ class spectral_1d:
             print('Running 1D spectral bin model: step = {} out of {}'.format(tt,self.Tlen-1))
             print('Total Mass = {:.2f} g/m^3 | Total Mass Flux = {:.2f} g/(m^2*s)'.format(1000.*np.nansum(self.Ikernel.Mbins),
                                                                                           1000.*np.nansum(self.Ikernel.Mfbins)))
-            M_old = self.Ikernel.Mbins.copy() 
-            N_old = self.Ikernel.Nbins.copy()
             
-            Mbins = np.zeros_like(M_old)
-            Nbins = np.zeros_like(N_old)
+            dM = np.zeros((self.dnum,self.Hlen,self.bins,rklen))
+            dN = np.zeros((self.dnum,self.Hlen,self.bins,rklen))
             
-            M_net, N_net = self.Ikernel.interact(self.dt)
+            M_old = self.Ikernel.Mbins.copy()
+            N_old= self.Ikernel.Nbins.copy()
+            
+            # Generalized Explicit Runge-Kutta time steps
+            # Keep in mind that for stiff equations higher
+            # order Runge-Kutta steps might not be beneficial
+            # due to stability issues.
+            for ii in range(rklen):
+                M_stage = M_old + self.dt*np.nansum(a[ii,:ii][None,None,None,:]*dM[:,:,:,:ii],axis=3)
+                N_stage = N_old + self.dt*np.nansum(a[ii,:ii][None,None,None,:]*dN[:,:,:,:ii],axis=3)
+
+                dM[:,:,:,ii], dN[:,:,:,ii] = self.advance(M_stage,N_stage,self.dt)
+            
+            Mbins = M_old + self.dt*np.nansum(b[None,None,None,:]*dM,axis=3)
+            Nbins = N_old + self.dt*np.nansum(b[None,None,None,:]*dN,axis=3)
+            
+
+            
+            # vvvv ORIGINAL vvvv
+            
+            # Mbins = np.zeros_like(M_old)
+            # Nbins = np.zeros_like(N_old)
+            
+            # M_net, N_net = self.Ikernel.interact(self.dt)
            
-            M_sed = np.zeros((self.dnum,self.Hlen,self.bins)) 
-            N_sed = np.zeros((self.dnum,self.Hlen,self.bins)) 
+            # M_sed = np.zeros((self.dnum,self.Hlen,self.bins)) 
+            # N_sed = np.zeros((self.dnum,self.Hlen,self.bins)) 
            
-            if self.boundary is None:
-                M_sed[:,0,:] = (self.dt/self.dz)*(-self.Ikernel.Mfbins[:,0,:]) 
-                N_sed[:,0,:] = (self.dt/self.dz)*(-self.Ikernel.Nfbins[:,0,:]) 
+            # if self.boundary is None:
+            #     M_sed[:,0,:] = (self.dt/self.dz)*(-self.Ikernel.Mfbins[:,0,:]) 
+            #     N_sed[:,0,:] = (self.dt/self.dz)*(-self.Ikernel.Nfbins[:,0,:]) 
             
-            M_sed[:,1:,:] = (self.dt/self.dz)*(self.Ikernel.Mfbins[:,:-1,:]-self.Ikernel.Mfbins[:,1:,:]) 
-            N_sed[:,1:,:] = (self.dt/self.dz)*(self.Ikernel.Nfbins[:,:-1,:]-self.Ikernel.Nfbins[:,1:,:]) 
+            # M_sed[:,1:,:] = (self.dt/self.dz)*(self.Ikernel.Mfbins[:,:-1,:]-self.Ikernel.Mfbins[:,1:,:]) 
+            # N_sed[:,1:,:] = (self.dt/self.dz)*(self.Ikernel.Nfbins[:,:-1,:]-self.Ikernel.Nfbins[:,1:,:]) 
                       
-            M_transfer = M_old+M_sed+M_net
-            N_transfer = N_old+N_sed+N_net   
+            # M_transfer = M_old+M_sed+M_net
+            # N_transfer = N_old+N_sed+N_net   
             
-            M_new = np.maximum(M_transfer,0.) # Should be positive if not over fragmented.
-            Mbins[M_new>=0.] = M_new[M_new>=0.].copy()
+            # M_new = np.maximum(M_transfer,0.) # Should be positive if not over fragmented.
+            # Mbins[M_new>=0.] = M_new[M_new>=0.].copy()
             
-            N_new = np.maximum(N_transfer,0.) # Should be positive if not over fragmented.
-            Nbins[N_new>=0.] = N_new[N_new>=0.].copy()
+            # N_new = np.maximum(N_transfer,0.) # Should be positive if not over fragmented.
+            # Nbins[N_new>=0.] = N_new[N_new>=0.].copy()
             
-            if self.boundary=='fixed': # If fixing top distribution. Can be helpful if trying to determine steady-state time.
-                Mbins[:,0,:] = M_old[:,0,:].copy()
-                Nbins[:,0,:] = N_old[:,0,:].copy()
+            # if self.boundary=='fixed': # If fixing top distribution. Can be helpful if trying to determine steady-state time.
+            #     Mbins[:,0,:] = M_old[:,0,:].copy()
+            #     Nbins[:,0,:] = N_old[:,0,:].copy()
+                
+            # ^^^^ ORIGINAL ^^^^
+                
             
             self.Ikernel.Mbins = Mbins.copy()
             self.Ikernel.Nbins = Nbins.copy()
@@ -911,15 +985,24 @@ class spectral_1d:
             self.Ikernel.unpack() # Unpack the interaction 3D array to each object in the (dist x height) object array
             self.Ikernel.pack(self.Ikernel.dists) # Update moments and parameters of 2D array of distribution objects
 
-            for hh in range(self.Hlen):
-               for d1 in range(self.dnum):
-                   self.full[d1,hh,tt] = deepcopy(self.dists[d1,hh])
 
+            if np.isin(self.t[tt],self.tout):
+                tf += 1
+                print('Saving output')
+                for hh in range(self.Hlen):
+                   for d1 in range(self.dnum):
+                       self.full[d1,hh,tf] = deepcopy(self.dists[d1,hh])
+
+        
+        delattr(self,'Ikernel')
+        
 
     def run(self):
         ''' 
         Run bin model
         '''
+        time_start = datetime.now()
+        
         
         
         if self.int_type==0:
@@ -928,3 +1011,6 @@ class spectral_1d:
         else:
             self.run_steady_state()
  
+    
+        time_end = datetime.now() 
+        print('Model Complete! Time Elapsed = {:.2f} min'.format((time_end-time_start).total_seconds()/60.))
