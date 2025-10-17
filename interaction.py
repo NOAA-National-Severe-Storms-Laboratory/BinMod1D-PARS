@@ -1016,6 +1016,7 @@ class Interaction():
         M_loss *= self.Ecb
         N_loss *= self.Ecb 
         
+
         M_net = dt*(M_gain-M_loss) 
         N_net = dt*(N_gain-N_loss)
 

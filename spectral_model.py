@@ -108,8 +108,11 @@ class spectral_1d:
             self.Tlen = len(self.z)
             self.dt = 1
             
-        #elif (self.Tlen>1) & (self.Hlen==0):
-        #    self.int_type = 2
+        elif (self.Tlen>1) & (self.Hlen==1):
+            self.int_type = 2
+            self.Hlen = 1
+            self.Tlen = len(self.t) 
+            self.dh = self.t
             
         else:
             self.int_type=0
@@ -540,7 +543,10 @@ class spectral_1d:
         
         fig, ax = plt.subplots(2,1,figsize=((8,10)),sharex=True)
         
-        primary_init  = self.full[0,0,0]
+        if self.int_type==0:
+            primary_init  = self.full[0,0,0]
+        else:
+            primary_init = self.full[0,0]
         
         mbins = primary_init.xbins.copy() 
         
@@ -557,11 +563,27 @@ class spectral_1d:
         ak_final = np.full((self.dnum,self.bins),np.nan)
         ck_final = np.full((self.dnum,self.bins),np.nan)
 
-        for d1 in range(self.dnum):
-            x1_final[d1,:] = self.full[d1,hind,tind].x1 
-            x2_final[d1,:] = self.full[d1,hind,tind].x2 
-            ak_final[d1,:] = self.full[d1,hind,tind].aki 
-            ck_final[d1,:] = self.full[d1,hind,tind].cki
+        if self.int_type==0:
+            for d1 in range(self.dnum):
+                x1_final[d1,:] = self.full[d1,hind,tind].x1 
+                x2_final[d1,:] = self.full[d1,hind,tind].x2 
+                ak_final[d1,:] = self.full[d1,hind,tind].aki 
+                ck_final[d1,:] = self.full[d1,hind,tind].cki
+                
+        elif self.int_type==1:
+            for d1 in range(self.dnum):
+                x1_final[d1,:] = self.full[d1,hind].x1 
+                x2_final[d1,:] = self.full[d1,hind].x2 
+                ak_final[d1,:] = self.full[d1,hind].aki 
+                ck_final[d1,:] = self.full[d1,hind].cki
+                
+        elif self.int_type==2:
+            for d1 in range(self.dnum):
+                x1_final[d1,:] = self.full[d1,tind].x1 
+                x2_final[d1,:] = self.full[d1,tind].x2 
+                ak_final[d1,:] = self.full[d1,tind].aki 
+                ck_final[d1,:] = self.full[d1,tind].cki
+            
    
         # Distscale toggles between dN/dlog(m) plots and dN/dm plots, for example.
         if distscale=='log':
@@ -630,6 +652,7 @@ class spectral_1d:
         nN_final = prefN*np.heaviside(mbins[None,:]-x1_final,1)*np.heaviside(x2_final-mbins[None,:],1)*(ak_final*mbins[None,:]+ck_final)
         nM_final = prefM*np.heaviside(mbins[None,:]-x1_final,1)*np.heaviside(x2_final-mbins[None,:],1)*(ak_final*mbins[None,:]+ck_final)
 
+
         if xscale=='log':
             x = np.log10(xbins)
             
@@ -675,17 +698,17 @@ class spectral_1d:
         #print('number test=',np.nansum(mbins*n_init*(np.log(medges[1:])-np.log(medges[:-1]))))
        # print('mass test=',np.nansum(mbins**2*1000.*n_init*(np.log(medges[1:])-np.log(medges[:-1]))))
         
-        if (scott_solution & (self.int_type=='t')):
+        if (scott_solution & (self.int_type==2)):
             
             kernel_type = self.kernel
             
             if not (hasattr(self,'n_scott')):
                 self.n_scott = Scott_dists(self.xbins,self.mu0+1,self.t,kernel_type=kernel_type)
         
-            ax[0].plot(x,prefN[0,:]*self.n_scott[:,0],':r')
+            ax[0].plot(x,prefN[0,:]*self.n_scott[:,tind],':r')
             ax[1].plot(x,1000.*prefM[0,:]*self.n_scott[:,tind],':r')
         
-        if (feingold_solution & (self.int_type=='t')):
+        if (feingold_solution & (self.int_type==2)):
             
             kernel_type = self.kernel
             
@@ -804,7 +827,6 @@ class spectral_1d:
         Mbins = np.zeros_like(M_old)
         Nbins = np.zeros_like(N_old)
             
-        
         M_net, N_net = self.Ikernel.interact(dt)
        
         M_sed = np.zeros((self.dnum,self.Hlen,self.bins)) 
@@ -830,7 +852,6 @@ class spectral_1d:
             Mbins[:,0,:] = M_old[:,0,:].copy()
             Nbins[:,0,:] = N_old[:,0,:].copy()
             
-            
         dM = (Mbins-M_old)/dt
         dN = (Nbins-N_old)/dt
         
@@ -839,10 +860,17 @@ class spectral_1d:
     
     def run_steady_state(self):
         
+            tf = 0
+        
             self.full = np.empty((self.dnum,self.Tlen),dtype=object)
             
             for d1 in range(self.dnum):
                 self.full[d1,0] = deepcopy(self.dists[d1,0])
+                
+            if self.int_type==1:    
+                dh = np.vstack([self.dists[ff,0].dh for ff in range(self.dnum)])
+            elif self.int_type==2:
+                dh = self.dt*np.ones((self.dnum,self.bins))
             
             # ELD NOTE: At some point it probably will be worthwhile to do R-K timesteps
             if self.Ecb>0.:
@@ -870,7 +898,7 @@ class spectral_1d:
                     Mbins = np.zeros_like(Mbins_old)
                     Nbins = np.zeros_like(Nbins_old)
                    
-                    dh = np.vstack([self.dists[ff,0].dh for ff in range(self.dnum)])
+                    #dh = np.vstack([self.dists[ff,0].dh for ff in range(self.dnum)])
                     
                     M_transfer = Mbins_old+M_net*dh[:,None,:]
                     N_transfer = Nbins_old+N_net*dh[:,None,:]   
@@ -888,6 +916,9 @@ class spectral_1d:
                     self.Ikernel.pack(self.Ikernel.dists) # Update moments and parameters of 2D array of distribution objects
    
                     # Save dist copies at each time/height
+                    #if np.isin(self.t[tt],self.tout):
+                       # tf += 1
+                        #print('Saving output')
                     for d1 in range(self.dnum):
                         self.full[d1,tt] = deepcopy(self.dists[d1,0])
 
@@ -1002,8 +1033,7 @@ class spectral_1d:
         Run bin model
         '''
         time_start = datetime.now()
-        
-        
+
         
         if self.int_type==0:
             self.run_full()

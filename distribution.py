@@ -50,13 +50,12 @@ class dist():
         
         self.binl = np.arange(0,self.bins+1,1)
         self.rhobins = 2**(1./self.sbin) # scaling param for mass bins 
-        
-       # if self.kernel=='Hydro':
+
         if x0 is None:
             if dist_var=='size':
                 self.x0= self.am*self.D1**self.bm # In grams
             else:
-                self.x0 = 0.00001
+                self.x0 = 0.001
         else:
             self.x0 = x0
         
