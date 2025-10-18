@@ -494,6 +494,8 @@ class spectral_1d:
         
         return fig, ax
     
+
+    
  
     def plot_init(self,log_switch=True,x_axis='mass'):
 
@@ -903,11 +905,18 @@ class spectral_1d:
                     M_transfer = Mbins_old+M_net*dh[:,None,:]
                     N_transfer = Nbins_old+N_net*dh[:,None,:]   
                     
-                    M_new = np.maximum(M_transfer,0.) # Should be positive if not over transferred.
-                    Mbins[M_new>=0.] = M_new[M_new>=0.].copy()
+                    #if np.abs(1000.*np.nansum(M_transfer[0,0,:] - Mbins_old[0,0,:]))>1e-2:
+                        
+                    #    print('M_transfer=',np.sum(M_transfer-Mbins_old))
+                    #    raise Exception()
                     
-                    N_new = np.maximum(N_transfer,0.) # Should be positive if not over transferred.
-                    Nbins[N_new>=0.] = N_new[N_new>=0.].copy()
+                    #M_new = np.maximum(M_transfer,0.) # Should be positive if not over transferred.
+                    #Mbins[M_new>=0.] = M_new[M_new>=0.].copy()
+                    Mbins = M_transfer.copy()
+                    
+                    #N_new = np.maximum(N_transfer,0.) # Should be positive if not over transferred.
+                    #Nbins[N_new>=0.] = N_new[N_new>=0.].copy()
+                    Nbins = N_transfer.copy()
     
                     self.Ikernel.Mbins = Mbins.copy()
                     self.Ikernel.Nbins = Nbins.copy()
