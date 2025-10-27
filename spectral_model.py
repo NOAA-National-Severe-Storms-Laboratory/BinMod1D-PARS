@@ -1019,8 +1019,6 @@ class spectral_1d:
         delattr(self,'Ikernel')
 
 
-       
-    
     def run_steady_state_2mom(self):
         
             self.full = np.empty((self.dnum,self.Tlen),dtype=object)
@@ -1053,11 +1051,9 @@ class spectral_1d:
   
                     M_net, N_net = self.Ikernel.interact(1.0)
                    
- 
                     self.Ikernel.Mbins = np.maximum(Mbins_old+M_net*dh[:,None,:],0.)
                     self.Ikernel.Nbins = np.maximum(Nbins_old+N_net*dh[:,None,:],0.)
 
-    
                     self.Ikernel.unpack() # Unpack the interaction 3D array to each object in the (dist x height) object array
                     self.Ikernel.pack(self.Ikernel.dists) # Update moments and parameters of 2D array of distribution objects
    
@@ -1073,8 +1069,6 @@ class spectral_1d:
         ''' 
         Run bin model
         '''
-        
-        #self.full = np.empty((self.dnum,self.Hlen,self.Tlen),dtype=object)
         
         # Full is an object array that holds
         self.full = np.empty((self.dnum,self.Hlen,self.Tout_len),dtype=object)
@@ -1119,40 +1113,7 @@ class spectral_1d:
             
             Mbins = np.maximum(M_old + self.dt*np.nansum(b[None,None,None,:]*dM,axis=3),0.)
             Nbins = np.maximum(N_old + self.dt*np.nansum(b[None,None,None,:]*dN,axis=3),0.)
-            
-            # vvvv ORIGINAL vvvv
-            
-            # Mbins = np.zeros_like(M_old)
-            # Nbins = np.zeros_like(N_old)
-            
-            # M_net, N_net = self.Ikernel.interact(self.dt)
-           
-            # M_sed = np.zeros((self.dnum,self.Hlen,self.bins)) 
-            # N_sed = np.zeros((self.dnum,self.Hlen,self.bins)) 
-           
-            # if self.boundary is None:
-            #     M_sed[:,0,:] = (self.dt/self.dz)*(-self.Ikernel.Mfbins[:,0,:]) 
-            #     N_sed[:,0,:] = (self.dt/self.dz)*(-self.Ikernel.Nfbins[:,0,:]) 
-            
-            # M_sed[:,1:,:] = (self.dt/self.dz)*(self.Ikernel.Mfbins[:,:-1,:]-self.Ikernel.Mfbins[:,1:,:]) 
-            # N_sed[:,1:,:] = (self.dt/self.dz)*(self.Ikernel.Nfbins[:,:-1,:]-self.Ikernel.Nfbins[:,1:,:]) 
-                      
-            # M_transfer = M_old+M_sed+M_net
-            # N_transfer = N_old+N_sed+N_net   
-            
-            # M_new = np.maximum(M_transfer,0.) # Should be positive if not over fragmented.
-            # Mbins[M_new>=0.] = M_new[M_new>=0.].copy()
-            
-            # N_new = np.maximum(N_transfer,0.) # Should be positive if not over fragmented.
-            # Nbins[N_new>=0.] = N_new[N_new>=0.].copy()
-            
-            # if self.boundary=='fixed': # If fixing top distribution. Can be helpful if trying to determine steady-state time.
-            #     Mbins[:,0,:] = M_old[:,0,:].copy()
-            #     Nbins[:,0,:] = N_old[:,0,:].copy()
-                
-            # ^^^^ ORIGINAL ^^^^
-                
-            
+                                 
             self.Ikernel.Mbins = Mbins.copy()
             self.Ikernel.Nbins = Nbins.copy()
 
