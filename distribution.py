@@ -15,19 +15,24 @@ from habits import habits
 class dist():
     
     def __init__(self,sbin=4,bins=80,D1=0.01,Nt0=1.,mu0=3,Dm0=2,gam_init=True,dist_var='mass',
-                 kernel='Hydro',habit_dict=None,ptype='rain',Tc=10.,x0=None,radar=False):
+                 kernel='Hydro',habit_dict=None,ptype='rain',Tc=10.,x0=None,radar=False,mom_num=2):
+        
+        self.mom_num = mom_num
         
         if habit_dict is None:
             habit_dict = habits()[ptype]
         
-        self.init_dist(sbin,bins,D1,dist_var=dist_var,kernel=kernel,habit_dict=habit_dict,ptype=ptype,x0=x0,Tc=Tc,radar=radar)
+        self.init_dist(sbin,bins,D1,dist_var=dist_var,kernel=kernel,habit_dict=habit_dict,ptype=ptype,x0=x0,Tc=Tc,radar=radar,mom_num=mom_num)
         
         if gam_init:
             self.bin_gamma_dist(Nt0=Nt0,mu0=mu0,Dm0=Dm0)
         
-        self.diagnose() 
+        if mom_num==2:
+            self.diagnose() 
+        elif mom_num==1:
+            self.diagnose_1mom()
         
-    def init_dist(self,sbin,bins,D1,kernel='Hydro',habit_dict=None,ptype='rain',Tc=10.,dist_var='mass',x0=None,radar=False):
+    def init_dist(self,sbin,bins,D1,kernel='Hydro',habit_dict=None,ptype='rain',Tc=10.,dist_var='mass',x0=None,radar=False,mom_num=2):
         
         if habit_dict is None:
             habit_dict = habits()[ptype]
@@ -47,9 +52,11 @@ class dist():
         self.am = habit_dict['am']    # Units: g * mm^(-(3+brho)) 
         self.bm = habit_dict['bm']
         self.ptype = ptype
+        self.mom_num = mom_num
         
         self.binl = np.arange(0,self.bins+1,1)
         self.rhobins = 2**(1./self.sbin) # scaling param for mass bins 
+        
 
         if x0 is None:
             if dist_var=='size':
@@ -69,6 +76,13 @@ class dist():
         
         self.xbins = 0.5*(self.xedges[:-1]+self.xedges[1:])
         self.dxbins = self.xedges[1:]-self.xedges[:-1]
+        self.dxi = Pn(1,self.xi1,self.xi2)
+        
+        if mom_num == 1: 
+            self.aki = np.zeros_like(self.xbins) 
+            self.cki = np.ones_like(self.xbins)
+            self.x1 = self.xi1.copy() 
+            self.x2 = self.xi2.copy()
         
         self.d = (self.xbins / self.am)**(1. / self.bm)  
         self.dmax = self.ar**(-1./3.)*self.d**(1.-(self.br/3.))      
@@ -191,14 +205,44 @@ class dist():
 
     # Function for diagnosing linear distribution function following Wang et al. (2008)
     # NOTE: Need to clip xm to left/right bin boundaries
+    def diagnose_1mom(self):
+         
+            
+        self.Nbins = self.Mbins/self.xbins
+        
+        self.n1 = self.n2 = self.cki = self.Mbins/self.dxi 
+               
+            
+        if self.radar:
+            self.radar_bins() 
+                  
+        # Diagnose mass- number-weighted bin fallspeeds and bin residence times
+        self.vtm = self.vt.copy()
+        self.vtn = self.vt.copy()
+        
+        #self.Mfbins =self.av*(self.am)**(-self.bv/self.bm)*self.moments((self.bm+self.bv)/self.bm)
+        #self.Nfbins =self.av*(self.am)**(-self.bv/self.bm)*self.moments((self.bv)/self.bm)
+        
+        self.Mfbins = self.vt*self.Mbins
+        self.Nfbins = self.vt*self.Nbins
+        
+        vt_fill = (self.Mbins>0.) & (self.Nbins>0.) & (self.vtm>0.) & (self.vtn>0.)\
+                  & (self.Mfbins>0.) & (self.Nfbins>0.)
+        self.vtm[vt_fill] = self.Mfbins[vt_fill]/self.Mbins[vt_fill]
+        self.vtn[vt_fill] = self.Nfbins[vt_fill]/self.Nbins[vt_fill] 
+
+        self.vtm[self.vtm>10.] = 10. 
+        self.vtn[self.vtn>10.] = 10.
+
+
+    # Function for diagnosing linear distribution function following Wang et al. (2008)
+    # NOTE: Need to clip xm to left/right bin boundaries
     def diagnose(self):
-           
-        #dx = self.x2-self.x1
-        
+
         dx = self.xi2-self.xi1 #?
-        
+    
         dx2 = dx**2
-        
+
         xm = self.xbins.copy()
         
         Mbins = self.Mbins.copy() # Mass will be conserved totally
@@ -206,10 +250,8 @@ class dist():
         
         xm[Nbins>0.] = Mbins[Nbins>0.]/Nbins[Nbins>0.]
 
-        
         xm1 = xm/self.xi1 #?
 
-        
         cond_null = (Mbins==0.)|(Nbins==0.)   
         cond_a = ((2.+self.rhobins)/3.<=xm1) & (xm1<=(1.+2.*self.rhobins)/3.) & (~cond_null) 
         cond_b = (1.<= xm1) & (xm1 < (2.+self.rhobins)/3.) & (~cond_null) 
@@ -254,10 +296,10 @@ class dist():
         self.n1 = n1i.copy() 
         self.n2 = n2i.copy() 
         self.flag = flag.copy()
-        
+            
         if self.radar:
-            self.radar_bins()
-        
+            self.radar_bins() 
+                  
         # Diagnose mass- number-weighted bin fallspeeds and bin residence times
         self.vtm = self.vt.copy()
         self.vtn = self.vt.copy()

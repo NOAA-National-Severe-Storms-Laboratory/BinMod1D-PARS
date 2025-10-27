@@ -9,8 +9,6 @@ import math
 import scipy.special as scip
 from functools import lru_cache
 
-from numba import njit
-
 def init_rk(rk_order):
     
     # --- Butcher tableaux (a_ij, b_i, c_i) for RK1–RK4 ---

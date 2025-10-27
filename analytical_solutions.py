@@ -33,7 +33,16 @@ def Scott_moments(r,t,nu,E,B,kernel_type='Golovin'):
         
         #T = (7/40)*0.00959*t # ELD NOTE: Apparently 7/40 factor is necessary to get Scott's solutions in his paper.
         
-        T =  (7/48)*E*t 
+        #T = (7/40)*0.00959*t
+        
+        #T = 0.*t
+        
+        T = 0.0016*t # This is approximately the correct factor.
+        
+        
+        #T = 0.043*t
+        
+        #T =  (7/48)*E*t 
         
         M_rt = np.zeros_like(tau)
         
@@ -133,7 +142,11 @@ def Scott_dists(xbins,nu,t,kernel_type='Golovin'):
     
     elif kernel_type=='Product':
         
-        T = (7/40)*0.00959*t # 7/40 factor apparently is necessary here
+        #T = (7/40)*0.00959*t # 7/40 factor apparently is necessary here
+        
+        T = 0.0016*t # This seems right
+        
+        #T = 0.00959*t # 7/40 factor apparently is necessary here
         
         
         for xx in range(1,len(xbins)):
