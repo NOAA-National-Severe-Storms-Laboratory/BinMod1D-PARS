@@ -2,7 +2,7 @@ This repository contains the BinMod1D python code. This is a python-based 1D bin
 
 1.) Initialize the spectral model using the spectral_1d class: 
 
-```
+```python
 from spectral_model import spectral_1d
 
 s1 = spectral_1D()
@@ -12,7 +12,7 @@ The inputs to this class will specify the initial gamma particle size distributi
 
 2.) Use the spectral_1D.run() method to run the model with the inputs specified in spectral_1D()
 
-```
+```python
 s1.run()
 ```
 
