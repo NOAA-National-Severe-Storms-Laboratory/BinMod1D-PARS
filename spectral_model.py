@@ -36,12 +36,29 @@ from plotting_functions import get_cmap_vars
 
 from datetime import datetime
 
+import sys
+
+
+# # Use this function to set your tqdm class dynamically
+# if 'IPython' in sys.modules and 'IPKernelApp' in sys.modules:
+#     # ... import tqdm.notebook ...
+#     from tqdm.autonotebook import tqdm
+# else:
+#     # ... import tqdm ...
+#     from tqdm import tqdm
+
+if 'ipykernel_launcher.py' in sys.argv[0]:
+    from tqdm.auto import tqdm
+else:
+    from tqdm import tqdm
+       
+
 # 1D Spectral Bin Model Class
 class spectral_1d:
     
     def __init__(self,sbin=8,bins=140,dt=2,
-                 tmax=800.,output_freq=60.,dz=10.,ztop=0.,zbot=0.,D1=0.25,Nt0=1.,Dm0=2.0,
-                 mu0=3.,Ecol=1.53,Es=0.001,Eb=0.,moments=2,dist_var='mass',
+                 tmax=800.,output_freq=60.,dz=10.,ztop=0.,zbot=0.,D1=0.25,x0=0.01,Nt0=1.,Dm0=2.0,
+                 mu0=3.,gam_norm=False,Ecol=0.001,Es=1.0,Eb=0.,moments=2,dist_var='mass',
                  kernel='Golovin',frag_dist='exp',habit_list=['rain'],
                  ptype='rain',Tc=10.,boundary=None,dist_num=1,cc_dest=1,br_dest=1, 
                  radar=False,rk_order=1,parallel=False,n_jobs=12):
@@ -49,14 +66,14 @@ class spectral_1d:
         Initialize model and PSD        
         '''       
         
-        self.setup_case(sbin=sbin,D1=D1,bins=bins,dt=dt,tmax=tmax,
-                        output_freq=output_freq,dz=dz,ztop=ztop,zbot=zbot,Nt0=Nt0,Dm0=Dm0,mu0=mu0,Ecol=Ecol,
+        self.setup_case(sbin=sbin,bins=bins,D1=D1,x0=x0,dt=dt,tmax=tmax,
+                        output_freq=output_freq,dz=dz,ztop=ztop,zbot=zbot,Nt0=Nt0,Dm0=Dm0,mu0=mu0,gam_norm=gam_norm,Ecol=Ecol,
                         Es=Es,Eb=Eb,moments=moments,dist_var=dist_var,kernel=kernel,frag_dist=frag_dist,
                         habit_list=habit_list,ptype=ptype,Tc=Tc,radar=radar,boundary=boundary,
                         dist_num=dist_num,cc_dest=cc_dest,br_dest=br_dest,rk_order=rk_order, 
                         parallel=parallel,n_jobs=n_jobs)
         
-    def setup_case(self,D1=0.001,sbin=4,bins=160,Nt0=1.,Dm0=2.0,mu0=3,dist_var='mass',kernel='Golovin',Ecol=1.53,Es=0.001,Eb=0.,
+    def setup_case(self,sbin=4,bins=160,D1=0.001,x0=0.01,Nt0=1.,Dm0=2.0,mu0=3,gam_norm=False,dist_var='mass',kernel='Golovin',Ecol=1.53,Es=0.001,Eb=0.,
                         moments=2,ztop=3000.0,zbot=0.,tmax=800.,output_freq=60.,dt=10.,dz=10.,frag_dist='exp',habit_list=['rain'],ptype='rain',Tc=10.,
                         radar=False,boundary=None,dist_num=1,cc_dest=1,br_dest=1,rk_order=1,parallel=False,n_jobs=12):
         self.Tc = Tc
@@ -67,6 +84,7 @@ class spectral_1d:
         self.Nt0 = Nt0 
         self.Dm0 = Dm0 
         self.mu0 = mu0 
+        self.gam_norm = gam_norm
         self.kernel = kernel
         self.Ecol = Ecol # Collision efficiency
         self.Es = Es # Sticking efficiency
@@ -128,6 +146,11 @@ class spectral_1d:
            
         # Initialize distribution objects
         
+        if dist_var=='size':
+            x0=None
+        elif dist_var=='mass':
+            D1=None
+        
         # If dnum > habit list then just use first element for all habits
         if len(habit_list) < self.dnum:
             habit_list = [habit_list[0] for dd in range(self.dnum)]
@@ -137,8 +160,8 @@ class spectral_1d:
         dists = np.empty((self.dnum,self.Hlen),dtype=object)
         
         # initial distribution
-        dists[0,0] = dist(sbin=sbin,D1=D1,bins=bins,Nt0=Nt0,mu0=mu0,Dm0=Dm0,
-                      gam_init=True,dist_var=dist_var,kernel=kernel,
+        dists[0,0] = dist(sbin=sbin,bins=bins,D1=D1,x0=x0,Nt0=Nt0,mu0=mu0,Dm0=Dm0,
+                      gam_init=True,gam_norm=gam_norm,dist_var=dist_var,kernel=kernel,
                       habit_dict=habit_dict[0],ptype=ptype,Tc=Tc,radar=radar,mom_num=moments)
 
         self.dist0 = deepcopy(dists[0,0])
@@ -170,6 +193,8 @@ class spectral_1d:
         self.Ikernel = Interaction(dists,cc_dest,br_dest,self.Eagg,self.Ecb,self.Ebr, 
                                    frag_dict,self.kernel,parallel=self.parallel,n_jobs=self.n_jobs,
                                    mom_num=self.moments)
+        
+        self.lamf = frag_dict['lamf']
 
         self.dists = dists # 3D array of distribution objects (dist_num x height x time)
 
@@ -515,13 +540,23 @@ class spectral_1d:
             prefactor = bm*np.log(10)
             xbins = (mbins/am)**(1./bm)
             
+            ylabel_num = r'dN/dlog(D)'
+            ylabel_mass = r'dM/dlog(D)'
+            
+            xlabel = r'log(D) [log(mm)]'
+            
         elif x_axis=='mass':
             prefactor = np.log(10)
             xbins = mbins
+            
+            ylabel_num = r'dN/dlog(m)'
+            ylabel_mass = r'dM/dlog(m)'
+            
+            xlabel = r'log(m) [log(g)]'
                  
         n_init = prefactor*np.heaviside(mbins-xp1,1)*np.heaviside(xp2-mbins,1)*(ap*mbins+cp)
 
-        fig, ax = plt.subplots(2,1)
+        fig, ax = plt.subplots(2,1,figsize=((8,10)),sharex=True)
         
         # Plot m*n(m) for number (N=int m*n(m)*dln(m)) | g_n(ln(r)) = bm*m*n(m), N = int g_n(ln(r))*dln(r)
         # Plot m^2*n(m) for mass (M=int m^2*n(m)*dln(m)) | g_m(ln(r)) = bm*m^2*n(m), M = int g_m(ln(r))*dln(r) 
@@ -530,8 +565,12 @@ class spectral_1d:
         ax[0].plot(np.log10(xbins),mbins*n_init,'k')
         ax[1].plot(np.log10(xbins),1000.*mbins**2*n_init,'k')
         
-        print('number test=',np.nansum(mbins*n_init*(np.log10(medges[1:])-np.log10(medges[:-1]))))
-        print('mass test=',np.nansum(1000.*mbins**2*n_init*(np.log10(medges[1:])-np.log10(medges[:-1]))))
+        ax[0].set_ylabel(ylabel_num)
+        ax[1].set_ylabel(ylabel_mass)
+        ax[1].set_xlabel(xlabel)
+        
+        print('Initial Number = {:.2f} #/L'.format(np.nansum(mbins*n_init*(np.log10(medges[1:])-np.log10(medges[:-1])))))
+        print('Initial Mass = {:.2f} g/cm^3'.format(np.nansum(1000.*mbins**2*n_init*(np.log10(medges[1:])-np.log10(medges[:-1])))))
         
         #print('number test size=',np.nansum(mbins*n_init*(np.log10(dedges[1:])-np.log10(dedges[:-1]))))
         #print('mass test size=',np.nansum(1000.*mbins**2*n_init*(np.log10(dedges[1:])-np.log10(dedges[:-1]))))
@@ -540,12 +579,18 @@ class spectral_1d:
         return fig, ax
     
     
-    def plot_dists(self,tind,hind,x_axis='mass',y_axis='mass',xscale='log',yscale='linear',distscale='log',scott_solution=False,feingold_solution=False,plot_habits=False):
-        
+    def plot_dists(self,tind=-1,hind=-1,x_axis='mass',y_axis='mass',xscale='log',yscale='linear',distscale='log',scott_solution=False,feingold_solution=False,plot_habits=False):
+   # def plot_dists(self,*inds,x_axis='mass',y_axis='mass',xscale='log',yscale='linear',distscale='log',scott_solution=False,feingold_solution=False,plot_habits=False):
+                
         # NOTE: probably need to figure out how to deal with x_axis='size' when
         # am and bm parameters are different for each habit.
         
         fig, ax = plt.subplots(2,1,figsize=((8,10)),sharex=True)
+        
+       # if (len(self.t)>1) & (len(self.z)==1):
+            
+        
+        print('Plotting distributions...')
         
         if self.int_type==0:
             primary_init  = self.full[0,0,0]
@@ -721,7 +766,7 @@ class spectral_1d:
             kernel_type = self.kernel
             
             if not (hasattr(self,'n_scott')):
-                self.n_scott = Scott_dists(self.xbins,self.mu0+1,self.t,kernel_type=kernel_type)
+                self.n_scott = Scott_dists(self.xbins,self.Eagg,self.mu0+1,self.t,kernel_type=kernel_type)
         
             ax[0].plot(x,prefN[0,:]*self.n_scott[:,tind],':r')
             ax[1].plot(x,1000.*prefM[0,:]*self.n_scott[:,tind],':r')
@@ -743,8 +788,13 @@ class spectral_1d:
                 if not (hasattr(self,'n_fein')):
                     self.n_fein = Feingold_dists(self.xbins,self.t,self.mu0+1,self.Eagg,self.Ebr,self.lamf,kernel_type=kernel_type)
 
-                ax[0].plot(x,prefN[0,:]*self.n_fein[:,tind],':r')
-                ax[1].plot(x,1000.*prefM[0,:]*self.n_fein[:,tind],':r')
+                if kernel_type=='SBE':
+                    ax[0].plot(x,prefN[0,:]*self.n_fein[:,tind],':r')
+                    ax[1].plot(x,1000.*prefM[0,:]*self.n_fein[:,tind],':r')
+                elif kernel_type=='SCE/SBE':
+                    ax[0].plot(x,prefN[0,:]*self.n_fein,':r')
+                    ax[1].plot(x,1000.*prefM[0,:]*self.n_fein,':r')
+                    
          
         plt.tight_layout()
         
@@ -917,9 +967,10 @@ class spectral_1d:
             
             # ELD NOTE: At some point it probably will be worthwhile to do R-K time/height steps
             if self.Ecb>0.:
-                for tt in range(1,self.Tlen):
+                pbar = tqdm(position=0, leave=True, mininterval=0,miniters=1,desc="Running 1D spectral bin model\n")
+                for tt in tqdm(range(1,self.Tlen)):
     
-                    print('Running 1D spectral bin model: step = {} out of {}'.format(tt,self.Tlen-1))
+                    #print('Running 1D spectral bin model: step = {} out of {}'.format(tt,self.Tlen-1))
         
                     M  = 0.
                     Mf = 0.
@@ -928,7 +979,10 @@ class spectral_1d:
                         M += np.nansum(self.dists[d1,0].Mbins) 
                         Mf+= np.nansum(self.dists[d1,0].Mbins*self.dists[d1,0].vt)
     
-                    print('Total Mass = {:.2f} g/m^3 | Total Mass Flux = {:.2f} g/(m^2*s)'.format(1000.*M,1000.*Mf))
+                    #print('Total Mass = {:.2f} g/m^3 | Total Mass Flux = {:.2f} g/(m^2*s)'.format(1000.*M,1000.*Mf))
+    
+                    pbar.set_description('Total Mass = {:.2f} g/m^3 | Total Mass Flux = {:.2f} g/(m^2*s)'.format(1000.*M,1000.*Mf))
+                    
     
                     Mbins_old = self.Ikernel.Mbins.copy() 
   
@@ -971,13 +1025,16 @@ class spectral_1d:
         
         # ELD NOTE: 
             # Make sure to cap min M and N and 0 to prevent numerical errors.
-
+        pbar = tqdm(position=0, leave=True, mininterval=0,miniters=1,desc="Running 1D spectral bin model\n")
         for tt in range(1,self.Tlen):
 
-            print('Running 1D spectral bin model: step = {} out of {}'.format(tt,self.Tlen-1))
-            print('Total Mass = {:.2f} g/m^3 | Total Mass Flux = {:.2f} g/(m^2*s)'.format(1000.*np.nansum(self.Ikernel.Mbins),
-                                                                                          1000.*np.nansum(self.Ikernel.Mfbins)))
+            #print('Running 1D spectral bin model: step = {} out of {}'.format(tt,self.Tlen-1))
+            #print('Total Mass = {:.2f} g/m^3 | Total Mass Flux = {:.2f} g/(m^2*s)'.format(1000.*np.nansum(self.Ikernel.Mbins),
+           #                                                                               1000.*np.nansum(self.Ikernel.Mfbins)))
             
+            pbar.set_description('Total Mass = {:.2f} g/m^3 | Total Mass Flux = {:.2f} g/(m^2*s)'.format(1000.*np.nansum(self.Ikernel.Mbins),
+                                                                                                         1000.*np.nansum(self.Ikernel.Mfbins)))
+
             dM = np.zeros((self.dnum,self.Hlen,self.bins,rklen))
             
             M_old = self.Ikernel.Mbins.copy()
@@ -1033,10 +1090,13 @@ class spectral_1d:
             
             # ELD NOTE: At some point it probably will be worthwhile to do R-K timesteps
             if self.Ecb>0.:
-                for tt in range(1,self.Tlen):
+                
+                pbar = tqdm(position=0, leave=True, mininterval=0,miniters=1,desc="Running 1D spectral bin model\n")
+                #with tqdm(position=0, leave=True) as pbar:
+                for tt in tqdm(range(1,self.Tlen)):
     
-                    print('Running 1D spectral bin model: step = {} out of {}'.format(tt,self.Tlen-1))
-        
+                    #print('Running 1D spectral bin model: step = {} out of {}'.format(tt,self.Tlen-1))
+
                     M  = 0.
                     Mf = 0.
                     
@@ -1044,7 +1104,18 @@ class spectral_1d:
                         M += np.nansum(self.dists[d1,0].Mbins) 
                         Mf+= np.nansum(self.dists[d1,0].Mbins*self.dists[d1,0].vt)
     
-                    print('Total Mass = {:.2f} g/m^3 | Total Mass Flux = {:.2f} g/(m^2*s)'.format(1000.*M,1000.*Mf))
+                   # print('Total Mass = {:.2f} g/m^3 | Total Mass Flux = {:.2f} g/(m^2*s)'.format(1000.*M,1000.*Mf))
+    
+                    #tqdm.write('Running 1D spectral bin model: step = {} out of {}\n Total Mass = {:.2f} g/m^3 | Total Mass Flux = {:.2f} g/(m^2*s)'.format(tt,self.Tlen-1,1000.*M,1000.*Mf))
+                    
+                    #pbar.set_description('Running 1D spectral bin model: step = {} out of {}'.format(tt,self.Tlen-1))
+                    
+                    pbar.set_description('Total Mass = {:.2f} g/m^3 | Total Mass Flux = {:.2f} g/(m^2*s)'.format(1000.*M,1000.*Mf))
+                    
+                    #time.sleep(1)
+                    #tqdm.write('Total Mass = {:.2f} g/m^3 | Total Mass Flux = {:.2f} g/(m^2*s)'.format(1000.*M,1000.*Mf))
+    
+                    #sys.stdout.flush()  # Flush the output stream after each iteration
     
                     Mbins_old = self.Ikernel.Mbins.copy() 
                     Nbins_old = self.Ikernel.Nbins.copy()
@@ -1089,11 +1160,16 @@ class spectral_1d:
         # ELD NOTE: 
             # Make sure to cap min M and N and 0 to prevent numerical errors.
 
-        for tt in range(1,self.Tlen):
+        pbar = tqdm(position=0, leave=True, mininterval=0,miniters=1,desc="Running 1D spectral bin model\n")
+        for tt in tqdm(range(1,self.Tlen)):
 
-            print('Running 1D spectral bin model: step = {} out of {}'.format(tt,self.Tlen-1))
-            print('Total Mass = {:.2f} g/m^3 | Total Mass Flux = {:.2f} g/(m^2*s)'.format(1000.*np.nansum(self.Ikernel.Mbins),
-                                                                                          1000.*np.nansum(self.Ikernel.Mfbins)))
+            #print('Running 1D spectral bin model: step = {} out of {}'.format(tt,self.Tlen-1))
+            #print('Total Mass = {:.2f} g/m^3 | Total Mass Flux = {:.2f} g/(m^2*s)'.format(1000.*np.nansum(self.Ikernel.Mbins),
+            #                                                                              1000.*np.nansum(self.Ikernel.Mfbins)))
+            
+            pbar.set_description('Total Mass = {:.2f} g/m^3 | Total Mass Flux = {:.2f} g/(m^2*s)'.format(1000.*np.nansum(self.Ikernel.Mbins),
+                                                                                                         1000.*np.nansum(self.Ikernel.Mfbins)))
+                    
             
             dM = np.zeros((self.dnum,self.Hlen,self.bins,rklen))
             dN = np.zeros((self.dnum,self.Hlen,self.bins,rklen))
@@ -1158,4 +1234,4 @@ class spectral_1d:
  
     
         time_end = datetime.now() 
-        print('Model Complete! Time Elapsed = {:.2f} min'.format((time_end-time_start).total_seconds()/60.))
+        print('\nModel Complete! Time Elapsed = {:.2f} min'.format((time_end-time_start).total_seconds()/60.))

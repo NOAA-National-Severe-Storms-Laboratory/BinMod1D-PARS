@@ -9,7 +9,6 @@ import numpy as np
 
 def habits():
     
-    
     habits = {}
     
     habits['rain'] = {'arho':1.0,
@@ -46,31 +45,28 @@ def habits():
     habits['fragments']['am'] =  0.001*(np.pi/6.)*habits['fragments']['arho'] 
     habits['fragments']['bm'] =  3.-habits['fragments']['brho']
     
-    
     return habits
-
 
 def fragments(dist='exp'):
     
-    
     if dist=='exp':
         fragments = {'dist':dist,
-                     'lamf':100., 
+                     'lamf':10., 
                      'Dmf':0.25, 
                      'muf':0.,}
         
     elif dist=='gamma':
         
         fragments = {'dist':dist,
+                     'lamf':10.,
                      'Dmf':0.25, 
                      'muf':0.,}
         
     elif dist=='LGN':
         
         fragments = {'dist':dist,
-                     'Df_med':0.25, 
-                     'Df_mode':0.22,}
+                     'lamf':10.,
+                     'Df_med':0.35, 
+                     'Df_mode':0.3,}
         
-
-    
     return fragments

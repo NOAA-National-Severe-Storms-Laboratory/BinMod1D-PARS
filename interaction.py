@@ -858,20 +858,9 @@ def calculate_1mom(i1,j1,k1,n1,n2,dMi_loss,dMj_loss,dM_gain,kmin,kmid,dMb_gain_f
      each distribution.
     '''
     
-    #print('n1=',n1.shape)
-    #print('n2=',n2.shape)
-    #raise Exception()
-    
     Hlen,bins = n1.shape
     
     n12 = n1[:,:,None]*n2[:,None,:]
-    
-    # print('n1=',n1.shape)
-    # print('n2=',n2.shape)
-    # print('n12=',n12.shape)
-    # print('dMi_loss=',dMi_loss.shape)
-    # print('dM_gain=',dM_gain.shape)
-    # raise Exception()
     
     M1_loss = np.nansum(n12*(dMi_loss[None,:,:]),axis=2) 
     M2_loss = np.nansum(n12*(dMj_loss[None,:,:]),axis=1) 
@@ -900,6 +889,60 @@ def calculate_1mom(i1,j1,k1,n1,n2,dMi_loss,dMj_loss,dM_gain,kmin,kmid,dMb_gain_f
         
         
     return M1_loss, M2_loss, M_gain, Mb_gain   
+
+
+def calculate_2mom(x11,x21,ak1,ck1,M1, 
+                   x12,x22,ak2,ck2,M2,
+                   PK,xi1,xi2,kmin,kmid,cond_1_orig, 
+                   dMb_gain_frac,dNb_gain_frac, 
+                   sc_inds,breakup=False):
+    
+    '''
+     This function calculate mass and number transfer rates
+     for collision-coalescence and collisional breakup between
+     each distribution.
+    '''
+    
+    Hlen,bins = x11.shape
+    
+    regions = setup_regions(x11,x21,ak1,ck1,x12,x22,ak2,ck2,xi1,xi2,kmin,cond_1_orig,sc_inds)
+    
+    dMi_loss, dMj_loss, dM_gain, dNi_loss, dN_gain = calculate_regions(x11,x21,ak1,ck1,x12,x22,ak2,ck2,PK,xi1,xi2,regions)
+    
+    M1_loss = np.nansum(dMi_loss,axis=2) 
+    N1_loss = np.nansum(dNi_loss,axis=2) 
+    
+    M2_loss = np.nansum(dMj_loss,axis=1) 
+    N2_loss = np.nansum(dNi_loss,axis=1)
+       
+    # ChatGPT is the GOAT for telling me about np.add.at!
+    M_gain = np.zeros((Hlen,bins))
+    np.add.at(M_gain, (np.arange(Hlen)[:,None,None],kmin), dM_gain[:,:,:,0])
+    np.add.at(M_gain,  (np.arange(Hlen)[:,None,None],kmid), dM_gain[:,:,:,1])
+    
+    N_gain = np.zeros((Hlen,bins))
+    np.add.at(N_gain,  (np.arange(Hlen)[:,None,None],kmin), dN_gain[:,:,:,0])
+    np.add.at(N_gain,  (np.arange(Hlen)[:,None,None],kmid), dN_gain[:,:,:,1])
+      
+    # ELD NOTE: Breakup here can take losses from each pair and calculate gains
+    # for breakup. Breakup gain arrays will be 3D.
+    if breakup:
+        
+        k1 = regions['1']['k']
+        i1 = regions['1']['i']
+        j1 = regions['1']['j']
+        
+        # Initialize gain term arrays
+        Mb_gain  = np.zeros((Hlen,bins))
+        Nb_gain  = np.zeros((Hlen,bins))
+        
+        Mij_loss = dMi_loss[k1,i1,j1]+dMj_loss[k1,i1,j1]
+  
+        np.add.at(Mb_gain,  k1, np.transpose(dMb_gain_frac[:,kmin[i1,j1]]*Mij_loss))
+        np.add.at(Nb_gain,  k1, np.transpose(dNb_gain_frac[:,kmin[i1,j1]]*Mij_loss))
+        
+   
+    return M1_loss, M2_loss, M_gain, Mb_gain, N1_loss, N2_loss, N_gain, Nb_gain    
 
 
 
@@ -1046,6 +1089,7 @@ class Interaction():
             kmin_file     = os.path.join(self.temp_dir,'kmin.pkl')
             kmid_file     = os.path.join(self.temp_dir,'kmid.pkl')
             cond1_file    = os.path.join(self.temp_dir,'cond_1.pkl')
+            selfcol_file  = os.path.join(self.temp_dir,'self_col.pkl')
             
             dump(self.dMb_gain_frac,dMb_gain_file)
             dump(self.dNb_gain_frac,dNb_gain_file)
@@ -1053,6 +1097,7 @@ class Interaction():
             dump(self.kmin,kmin_file)
             dump(self.kmid,kmid_file)
             dump(self.cond_1,cond1_file)
+            dump(self.self_col,selfcol_file)
  
             self.dMb_gain_frac = load(dMb_gain_file,mmap_mode='r')
             self.dNb_gain_frac = load(dNb_gain_file,mmap_mode='r')
@@ -1060,8 +1105,7 @@ class Interaction():
             self.kmin          = load(kmin_file,mmap_mode='r')
             self.kmid          = load(kmid_file,mmap_mode='r')
             self.cond_1        = load(cond1_file,mmap_mode='r')
-        
-        
+            self.self_col      = load(selfcol_file,mmap_mode='r')
         
     
         # Calculate transfer rates if single-moment scheme is chosen.
@@ -1557,47 +1601,6 @@ class Interaction():
     
         return fig, ax, cond, cond_full
 
-
-
-
-    def calculate_2mom(self,i1,j1,k1,dMi_loss,dMj_loss,dM_gain,dNi_loss,dN_gain):
-        
-        '''
-         This function calculate mass and number transfer rates
-         for collision-coalescence and collisional breakup between
-         each distribution.
-        '''
-        
-        M1_loss = np.nansum(dMi_loss,axis=2) 
-        N1_loss = np.nansum(dNi_loss,axis=2) 
-        
-        M2_loss = np.nansum(dMj_loss,axis=1) 
-        N2_loss = np.nansum(dNi_loss,axis=1)
-           
-        # ChatGPT is the GOAT for telling me about np.add.at!
-        M_gain = np.zeros((self.Hlen,self.bins))
-        np.add.at(M_gain, (np.arange(self.Hlen)[:,None,None],self.kmin), dM_gain[:,:,:,0])
-        np.add.at(M_gain,  (np.arange(self.Hlen)[:,None,None],self.kmid), dM_gain[:,:,:,1])
-        
-        N_gain = np.zeros((self.Hlen,self.bins))
-        np.add.at(N_gain,  (np.arange(self.Hlen)[:,None,None],self.kmin), dN_gain[:,:,:,0])
-        np.add.at(N_gain,  (np.arange(self.Hlen)[:,None,None],self.kmid), dN_gain[:,:,:,1])
-          
-        # ELD NOTE: Breakup here can take losses from each pair and calculate gains
-        # for breakup. Breakup gain arrays will be 3D.
-        if self.breakup:
-            
-            # Initialize gain term arrays
-            Mb_gain  = np.zeros((self.Hlen,self.bins))
-            Nb_gain  = np.zeros((self.Hlen,self.bins))
-            
-            Mij_loss = dMi_loss[k1,i1,j1]+dMj_loss[k1,i1,j1]
-      
-            np.add.at(Mb_gain,  k1, np.transpose(self.dMb_gain_frac[:,self.kmin[i1,j1]]*Mij_loss))
-            np.add.at(Nb_gain,  k1, np.transpose(self.dNb_gain_frac[:,self.kmin[i1,j1]]*Mij_loss))
-            
-       
-        return M1_loss, M2_loss, M_gain, Mb_gain, N1_loss, N2_loss, N_gain, Nb_gain    
         
     # Advance PSD Mbins and Nbins by one time/height step
     def interact_1mom(self,dt):
@@ -1612,8 +1615,7 @@ class Interaction():
         indc = self.indc
         indb = self.indb
         
-        
-        
+
         dd = 0
         
         for d1 in range(self.dnum):
@@ -1649,7 +1651,18 @@ class Interaction():
                     ck1  = self.cki[d1,:,:]               
                     ck2  = self.cki[d2,:,:] 
                     
-    
+                    
+                    # Batch each (bin x bin) combination. Make sure only to include
+                    # pairs that will actually be used.
+                    #ck12 = ck1[:,:,None]*ck2[:,None,:].reshape(self.dnum,-1)
+                    
+                    # self.dMi_loss[dd,0,:,:].reshape(1,-1)
+                    # self.dMj_loss[dd,0,:,:].reshape(1,-1)
+                    # self.dM_gain[dd,0,:,:,:].reshape(-1,2)
+                    # kmin = kmin.flatten() 
+                    # kmid = kmid.flatten()
+                    # self.dMb_gain_frac.flatten()
+                    
                     M1_loss_temp,M2_loss_temp,\
                     M_gain_temp,Mb_gain_temp =\
                     calculate_1mom(self.regions[dd]['1']['i'],
@@ -1705,16 +1718,14 @@ class Interaction():
         indc = self.indc
         indb = self.indb
         
-        
+        dd = 0
         for d1 in range(self.dnum):
             for d2 in range(d1,self.dnum):
-                if d1==d2:
-                    self_col = True 
-                else:
-                    self_col = False
-                    
-
-                    
+                #if d1==d2:
+                #    self_col = True 
+                #else:
+                #    self_col = False
+                           
 
                 if self.parallel:
                     
@@ -1746,11 +1757,11 @@ class Interaction():
                     cond_1 = self.cond_1 | Mcheck # New cond_1. Basically exclude bin-pairs that are off grid and ones involving empty bins.
                     
                     
-                    gain_loss_temp = Parallel(n_jobs=self.n_jobs,verbose=0)(delayed(calculate_integrals)(x11[batch,:],x21[batch,:],ak1[batch,:],ck1[batch,:],M1[batch,:],
+                    gain_loss_temp = Parallel(n_jobs=self.n_jobs,verbose=0)(delayed(calculate_2mom)(x11[batch,:],x21[batch,:],ak1[batch,:],ck1[batch,:],M1[batch,:],
                                             x12[batch,:],x22[batch,:],ak2[batch,:],ck2[batch,:],M2[batch,:],
                                             self.PK[:,d1,d2,:,:],self.xi1,self.xi2,self.kmin,self.kmid,cond_1[batch,:,:], 
                                             self.dMb_gain_frac,self.dNb_gain_frac, 
-                                            self_col=self_col,breakup=self.breakup) for batch in self.batches)
+                                            self_col=self.self_col[:,dd,:,:],breakup=self.breakup) for batch in self.batches)
                     
                     
                     # gain_loss_temp = Parallel(n_jobs=self.n_jobs,verbose=0)(delayed(calculate_integrals)(x11[batch,:],x21[batch,:],ak1[batch,:],ck1[batch,:],M1[batch,:],
@@ -1802,12 +1813,12 @@ class Interaction():
                     N1_loss_temp, N2_loss_temp, N_gain_temp, Nb_gain_temp = calculate_integrals(x11,x21,ak1,ck1,M1, 
                                     x12,x22,ak2,ck2,M2,self.PK[:,d1,d2,:,:],self.xi1,self.xi2,self.kmin,self.kmid,self.cond_1, 
                                     self.dMb_gain_frac,self.dNb_gain_frac, 
-                                    self_col=self_col,breakup=self.breakup)
+                                    self_col=self.self_col[:,dd,:,:],breakup=self.breakup)
         
         
-                if self.cnz:
-                   self.plot_source_target_vec(self.dists[0][0],self.dists[0][0],28,27,full=False)
-                   raise Exception()
+                #if self.cnz:
+                #   self.plot_source_target_vec(self.dists[0][0],self.dists[0][0],28,27,full=False)
+                #   raise Exception()
                     
         
                 M_loss[d1,:,:]    += M1_loss_temp 
@@ -1821,6 +1832,8 @@ class Interaction():
                  
                 N_gain[indc,:,:]  += self.Eagg*N_gain_temp
                 N_gain[indb,:,:]  += self.Ebr*Nb_gain_temp
+                
+                dd += 1
                 
         M_loss *= self.Ecb
         N_loss *= self.Ecb 

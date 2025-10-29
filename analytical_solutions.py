@@ -12,11 +12,13 @@ from scipy.optimize import fsolve
 
 def Scott_moments(r,t,nu,E,B,kernel_type='Golovin'):
     
+    T = E*t
+    
     if kernel_type=='Golovin':
     
         #tau = 1 - np.exp(-0.00153*t) # normalized time
         
-        tau = 1 - np.exp(-E*t) # normalized time
+        tau = 1 - np.exp(-T) # normalized time
         
         gam_series = np.zeros_like(tau)
         M_rt = np.zeros_like(tau)
@@ -37,7 +39,7 @@ def Scott_moments(r,t,nu,E,B,kernel_type='Golovin'):
         
         #T = 0.*t
         
-        T = 0.0016*t # This is approximately the correct factor.
+        #T = 0.0016*t # This is approximately the correct factor.
         
         
         #T = 0.043*t
@@ -55,7 +57,9 @@ def Scott_moments(r,t,nu,E,B,kernel_type='Golovin'):
         
         #T =  0.0429*t
         
-        T = E*t
+        #T = E*t
+        
+       # T = 0.0016
         
         M_rt = np.zeros_like(tau)
         
@@ -96,7 +100,7 @@ def Feingold_moments(r,t,nu,B,gam,kernel_type='SBE'):
     return M_rt
 
 
-def Scott_dists(xbins,nu,t,kernel_type='Golovin'):
+def Scott_dists(xbins,Eagg,nu,t,kernel_type='Golovin'):
     
     xt = 50
     
@@ -116,9 +120,16 @@ def Scott_dists(xbins,nu,t,kernel_type='Golovin'):
     # Calculate initial grid
     npbins[:,0] = (1./gamma(nu))*(nu**nu)*xbins**(nu-1)*np.exp(-nu*xbins)
     
+    
+    #T = 0.00153*t # This seems right
+    
+    T = Eagg*t # This seems right
+    
     if kernel_type=='Golovin':
         
-        tau = 1 - np.exp(-0.00153*t) #  normalized time
+        #tau = 1 - np.exp(-0.00153*t) #  normalized time
+        
+        tau = 1 - np.exp(-T) #  normalized time
     
         for xx in range(1,len(xbins)):
             
@@ -144,7 +155,7 @@ def Scott_dists(xbins,nu,t,kernel_type='Golovin'):
         
         #T = (7/40)*0.00959*t # 7/40 factor apparently is necessary here
         
-        T = 0.0016*t # This seems right
+        #T = 0.00153*t # This seems right
         
         #T = 0.00959*t # 7/40 factor apparently is necessary here
         
@@ -169,7 +180,9 @@ def Scott_dists(xbins,nu,t,kernel_type='Golovin'):
         
     elif kernel_type=='Constant':
         
-        T = 0.0429*t 
+        #T = 0.0429*t 
+        
+        #T = 0.0016*t
         
         for xx in range(1,len(xbins)):
             
@@ -177,7 +190,7 @@ def Scott_dists(xbins,nu,t,kernel_type='Golovin'):
                 
                 for tt in range(1,len(t)):
                 
-                    npbins[xx,tt] = ((4.*np.exp(-nu*xbins[xx]))/\
+                    npbins[xx,tt] =  ((4.*np.exp(-nu*xbins[xx]))/\
                                      (xbins[xx]*(T[tt]+2)**2))*mpmath.nsum(lambda k:\
                                     ((xbins[xx]*nu)**(nu*(k+1))/\
                                     mpmath.gamma(nu*(k+1)))*(T[tt]/(T[tt]+2))**k,[0,np.inf],method='direct')
@@ -211,11 +224,21 @@ def Feingold_dists(xbins,t,nu,E,B,gam,kernel_type='SBE'):
         # NOTE: only valid for C = K*E and B = K*(1-E)
         
         
-        E_new = 1.*E
+        #E_new = 1.*E
+        
+        E_new = 1000.*E
     
         eta = 0.5*E_new*gam*(2.-E_new)
     
         npbins = (1-E_new)*gam**2*(i0(eta*xbins)-i1(eta*xbins))*np.exp(-(gam-eta)*xbins)
+    
+    
+        #print('kernel test')
+    
+    # Check total mass
+   # Mt = Feingold_moments(1,t,nu,B,gam,kernel_type=kernel_type)
+    
+    #print('Total Mass = ',Mt)
     
     
     return npbins
