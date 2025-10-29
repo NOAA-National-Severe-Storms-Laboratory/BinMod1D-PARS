@@ -38,15 +38,6 @@ from datetime import datetime
 
 import sys
 
-
-# # Use this function to set your tqdm class dynamically
-# if 'IPython' in sys.modules and 'IPKernelApp' in sys.modules:
-#     # ... import tqdm.notebook ...
-#     from tqdm.autonotebook import tqdm
-# else:
-#     # ... import tqdm ...
-#     from tqdm import tqdm
-
 if 'ipykernel_launcher.py' in sys.argv[0]:
     from tqdm.auto import tqdm
 else:
