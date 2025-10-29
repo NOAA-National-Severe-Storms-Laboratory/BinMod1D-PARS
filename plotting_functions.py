@@ -57,7 +57,7 @@ def get_cmap_vars(varname):
         
     if varname == 'Nt':
         cmap = cmp.NWSRef
-        levels = [0.,0.001,0.01,0.1,1.,5.,10.,15,20.,25.,50,100,150,200.]
+        levels = [0.,0.001,0.01,0.1,1.,2.5,5.,7.5,10.,12.5,15,17.50,20.,22.5,25.,50,100,150,200.]
         levels_ticks = levels.copy()
         clabel = r'Number Concentration (1/L)'
         slabel = r'$N_{t}$ (1/L)'
@@ -66,9 +66,18 @@ def get_cmap_vars(varname):
         
     if varname == 'Dm':
         cmap = cmp.NWSRef
-        levels = [0.1,0.25,0.5,0.75,1.,2., 3., 4.,5.,10.,15,20.]
-        levels_ticks = levels.copy()
-        clabel = r'Median Volume Diameter (mm)'
+        #levels = [0.1,0.25,0.5,0.75,1.,2., 3., 4.,5.,10.,15,20.]
+        
+        #levels = 2.**(np.arange(-3,6,1))
+        
+        levels = 2.**(np.arange(-3,5.25,0.25))
+        
+       # levels_ticks = levels.copy()
+        
+        levels_ticks =  2.**(np.arange(-3,6,1))
+        
+        
+        clabel = r'Mean Volume Diameter (mm)'
         slabel = r'$D_{0}$ (mm)'
         labelpad = 30
         fontsize=22

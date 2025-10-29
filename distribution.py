@@ -14,8 +14,8 @@ from habits import habits
 # Number Distribution function class for arbitrary category
 class dist():
     
-    def __init__(self,sbin=4,bins=80,D1=0.01,Nt0=1.,mu0=3,Dm0=2,gam_init=True,dist_var='mass',
-                 kernel='Hydro',habit_dict=None,ptype='rain',Tc=10.,x0=None,radar=False,mom_num=2):
+    def __init__(self,sbin=4,bins=80,D1=0.01,x0=None,Nt0=1.,mu0=3,Dm0=2,gam_init=True,gam_norm=False,dist_var='mass',
+                 kernel='Hydro',habit_dict=None,ptype='rain',Tc=10.,radar=False,mom_num=2):
         
         self.mom_num = mom_num
         
@@ -25,7 +25,7 @@ class dist():
         self.init_dist(sbin,bins,D1,dist_var=dist_var,kernel=kernel,habit_dict=habit_dict,ptype=ptype,x0=x0,Tc=Tc,radar=radar,mom_num=mom_num)
         
         if gam_init:
-            self.bin_gamma_dist(Nt0=Nt0,mu0=mu0,Dm0=Dm0)
+            self.bin_gamma_dist(Nt0=Nt0,mu0=mu0,Dm0=Dm0,normalize=gam_norm)
         
         if mom_num==2:
             self.diagnose() 
@@ -57,12 +57,11 @@ class dist():
         self.binl = np.arange(0,self.bins+1,1)
         self.rhobins = 2**(1./self.sbin) # scaling param for mass bins 
         
-
         if x0 is None:
             if dist_var=='size':
                 self.x0= self.am*self.D1**self.bm # In grams
             else:
-                self.x0 = 0.001
+                self.x0 = 0.01
         else:
             self.x0 = x0
         
@@ -166,13 +165,13 @@ class dist():
                 self.eps2 = (1+2*(self.rho2/self.rhoi)*Ki)/(1-(self.rho2/self.rhoi)*Ki)
             
         
-    def bin_gamma_dist(self,Nt0=1.,mu0=3,Dm0=2):
+    def bin_gamma_dist(self,Nt0=1.,mu0=3,Dm0=2,normalize=False):
         
         '''
         Description: Set up bins and integrals if using only mass moment
         '''
         nu = mu0+1
-        kernel = self.kernel
+        #kernel = self.kernel
         
         self.Nt0 = Nt0 
         self.mu0 = mu0 
@@ -184,17 +183,31 @@ class dist():
 
         # Number distribution function in terms of mass (n(x))
         
-        if kernel=='Hydro': # 1/L /g
-            self.nedges = (self.Nt0/self.bm)*(1./scip.gamma(self.mu0+1.))*\
-                (1./self.mn)*(self.xedges/self.mn)**((nu/self.bm)-1.)*np.exp(-(self.xedges/self.mn)**(1./self.bm))
-                
-            self.nbins = (self.Nt0/self.bm)*(1./scip.gamma(self.mu0+1.))*\
-                (1./self.mn)*(self.xbins/self.mn)**((nu/self.bm)-1.)*np.exp(-(self.xbins/self.mn)**(1./self.bm))
-                       
-        else: # Use Scott's normalized gamma distribution if not using hydro kernel.
+        if normalize:
             self.nedges = (nu)**(nu)/scip.gamma(nu)*self.xedges**(nu-1.)*np.exp(-nu*self.xedges)
         
             self.nbins = (nu)**(nu)/scip.gamma(nu)*self.xbins**(nu-1.)*np.exp(-nu*self.xbins)
+            
+        else:
+           self.nedges = (self.Nt0/self.bm)*(1./scip.gamma(self.mu0+1.))*\
+               (1./self.mn)*(self.xedges/self.mn)**((nu/self.bm)-1.)*np.exp(-(self.xedges/self.mn)**(1./self.bm))
+               
+           self.nbins = (self.Nt0/self.bm)*(1./scip.gamma(self.mu0+1.))*\
+               (1./self.mn)*(self.xbins/self.mn)**((nu/self.bm)-1.)*np.exp(-(self.xbins/self.mn)**(1./self.bm))
+            
+            
+        
+        # if kernel=='Hydro': # 1/L /g
+        #     self.nedges = (self.Nt0/self.bm)*(1./scip.gamma(self.mu0+1.))*\
+        #         (1./self.mn)*(self.xedges/self.mn)**((nu/self.bm)-1.)*np.exp(-(self.xedges/self.mn)**(1./self.bm))
+                
+        #     self.nbins = (self.Nt0/self.bm)*(1./scip.gamma(self.mu0+1.))*\
+        #         (1./self.mn)*(self.xbins/self.mn)**((nu/self.bm)-1.)*np.exp(-(self.xbins/self.mn)**(1./self.bm))
+                       
+        # else: # Use Scott's normalized gamma distribution if not using hydro kernel.
+        #     self.nedges = (nu)**(nu)/scip.gamma(nu)*self.xedges**(nu-1.)*np.exp(-nu*self.xedges)
+        
+        #     self.nbins = (nu)**(nu)/scip.gamma(nu)*self.xbins**(nu-1.)*np.exp(-nu*self.xbins)
             
         self.Nbins = 0.5*(self.nedges[:-1]+self.nedges[1:])*(self.x2-self.x1)
         self.Mbins = (1./6.)*(self.nedges[:-1]*(2.*self.x1+self.x2)+self.nedges[1:]*(self.x1+2.*self.x2))*(self.x2-self.x1)
