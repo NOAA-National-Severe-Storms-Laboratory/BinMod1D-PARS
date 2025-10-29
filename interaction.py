@@ -923,6 +923,10 @@ def calculate_2mom(x11,x21,ak1,ck1,M1,
     N_gain = np.zeros((Hlen,bins))
     np.add.at(N_gain,  (np.arange(Hlen)[:,None,None],kmin), dN_gain[:,:,:,0])
     np.add.at(N_gain,  (np.arange(Hlen)[:,None,None],kmid), dN_gain[:,:,:,1])
+    
+    # Initialize gain term arrays
+    Mb_gain  = np.zeros((Hlen,bins))
+    Nb_gain  = np.zeros((Hlen,bins))
       
     # ELD NOTE: Breakup here can take losses from each pair and calculate gains
     # for breakup. Breakup gain arrays will be 3D.
@@ -931,10 +935,6 @@ def calculate_2mom(x11,x21,ak1,ck1,M1,
         k1 = regions['1']['k']
         i1 = regions['1']['i']
         j1 = regions['1']['j']
-        
-        # Initialize gain term arrays
-        Mb_gain  = np.zeros((Hlen,bins))
-        Nb_gain  = np.zeros((Hlen,bins))
         
         Mij_loss = dMi_loss[k1,i1,j1]+dMj_loss[k1,i1,j1]
   
@@ -1139,7 +1139,7 @@ class Interaction():
                 for d2 in range(d1,self.dnum):
                         
                     self.regions[dd] = setup_regions(x1,x2,ak1mom,ck1mom,x1,x2,ak1mom,ck1mom,
-                                      self.xi1,self.xi2,self.kmin,self.cond_1,self.self_col[dd,:,:])
+                                      self.xi1,self.xi2,self.kmin,self.cond_1,self.self_col[:,dd,:,:])
             
                     self.dMi_loss[dd,:,:,:], self.dMj_loss[dd,:,:,:], self.dM_gain[dd,:,:,:,:], _, _ =  calculate_regions(x1,x2,ak1mom,ck1mom, 
                                x1,x2,ak1mom,ck1mom,self.PK[:,d1,d2,:,:],self.xi1,self.xi2,self.regions[dd])
@@ -1721,9 +1721,9 @@ class Interaction():
         dd = 0
         for d1 in range(self.dnum):
             for d2 in range(d1,self.dnum):
-                #if d1==d2:
+                # if d1==d2:
                 #    self_col = True 
-                #else:
+                # else:
                 #    self_col = False
                            
 
@@ -1752,21 +1752,21 @@ class Interaction():
                     #Mcheck = ((M1==0.)[:,None]) | ((M2==0.)[None,:])
                     #ikeep = np.nonzero(~(self.cond_1&Mcheck))
                     
-                    Mcheck = ((M1==0.)[:,:,None]) | ((M2==0.)[:,None,:])
+                    #Mcheck = ((M1==0.)[:,:,None]) | ((M2==0.)[:,None,:])
                     
-                    cond_1 = self.cond_1 | Mcheck # New cond_1. Basically exclude bin-pairs that are off grid and ones involving empty bins.
+                    #cond_1 = self.cond_1 | Mcheck # New cond_1. Basically exclude bin-pairs that are off grid and ones involving empty bins.
                     
                     
                     gain_loss_temp = Parallel(n_jobs=self.n_jobs,verbose=0)(delayed(calculate_2mom)(x11[batch,:],x21[batch,:],ak1[batch,:],ck1[batch,:],M1[batch,:],
                                             x12[batch,:],x22[batch,:],ak2[batch,:],ck2[batch,:],M2[batch,:],
-                                            self.PK[:,d1,d2,:,:],self.xi1,self.xi2,self.kmin,self.kmid,cond_1[batch,:,:], 
+                                            self.PK[:,d1,d2,:,:],self.xi1,self.xi2,self.kmin,self.kmid,self.cond_1[batch,:,:], 
                                             self.dMb_gain_frac,self.dNb_gain_frac, 
-                                            self_col=self.self_col[:,dd,:,:],breakup=self.breakup) for batch in self.batches)
+                                            self.self_col[batch,dd,:,:],breakup=self.breakup) for batch in self.batches)
                     
                     
                     # gain_loss_temp = Parallel(n_jobs=self.n_jobs,verbose=0)(delayed(calculate_integrals)(x11[batch,:],x21[batch,:],ak1[batch,:],ck1[batch,:],M1[batch,:],
                     #                         x12[batch,:],x22[batch,:],ak2[batch,:],ck2[batch,:],M2[batch,:],
-                    #                         self.PK[:,d1,d2,:,:],self.xi1,self.xi2,self.kmin,self.kmid,cond_1, 
+                    #                         self.PK[:,d1,d2,:,:],self.xi1,self.xi2,self.kmin,self.kmid,cond_1[batch,:,:], 
                     #                         self.dMb_gain_frac,self.dNb_gain_frac, 
                     #                         self_col=self_col,breakup=self.breakup) for batch in self.batches)
         
@@ -1808,12 +1808,18 @@ class Interaction():
                     
                     
                     
-        
                     M1_loss_temp, M2_loss_temp, M_gain_temp, Mb_gain_temp,\
-                    N1_loss_temp, N2_loss_temp, N_gain_temp, Nb_gain_temp = calculate_integrals(x11,x21,ak1,ck1,M1, 
+                    N1_loss_temp, N2_loss_temp, N_gain_temp, Nb_gain_temp = calculate_2mom(x11,x21,ak1,ck1,M1, 
                                     x12,x22,ak2,ck2,M2,self.PK[:,d1,d2,:,:],self.xi1,self.xi2,self.kmin,self.kmid,self.cond_1, 
                                     self.dMb_gain_frac,self.dNb_gain_frac, 
-                                    self_col=self.self_col[:,dd,:,:],breakup=self.breakup)
+                                    self.self_col[:,dd,:,:],breakup=self.breakup)
+                    
+        
+                   # M1_loss_temp, M2_loss_temp, M_gain_temp, Mb_gain_temp,\
+                   # N1_loss_temp, N2_loss_temp, N_gain_temp, Nb_gain_temp = calculate_integrals(x11,x21,ak1,ck1,M1, 
+                   #                 x12,x22,ak2,ck2,M2,self.PK[:,d1,d2,:,:],self.xi1,self.xi2,self.kmin,self.kmid,self.cond_1, 
+                   #                 self.dMb_gain_frac,self.dNb_gain_frac, 
+                   #                 self_col=self.self_col[:,dd,:,:],breakup=self.breakup)
         
         
                 #if self.cnz:
@@ -2003,6 +2009,23 @@ class Interaction():
 
 
 # OLD FUNCTIONS #
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#----------------------
 
 
  # def calculate(self,ind1,ind2,PK,self_col=False):

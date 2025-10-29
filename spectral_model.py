@@ -38,6 +38,8 @@ from datetime import datetime
 
 import sys
 
+import os 
+
 if 'ipykernel_launcher.py' in sys.argv[0]:
     from tqdm.auto import tqdm
 else:
@@ -52,7 +54,7 @@ class spectral_1d:
                  mu0=3.,gam_norm=False,Ecol=0.001,Es=1.0,Eb=0.,moments=2,dist_var='mass',
                  kernel='Golovin',frag_dist='exp',habit_list=['rain'],
                  ptype='rain',Tc=10.,boundary=None,dist_num=1,cc_dest=1,br_dest=1, 
-                 radar=False,rk_order=1,parallel=False,n_jobs=12):
+                 radar=False,rk_order=1,parallel=False,n_jobs=-1):
         '''
         Initialize model and PSD        
         '''       
@@ -66,7 +68,7 @@ class spectral_1d:
         
     def setup_case(self,sbin=4,bins=160,D1=0.001,x0=0.01,Nt0=1.,Dm0=2.0,mu0=3,gam_norm=False,dist_var='mass',kernel='Golovin',Ecol=1.53,Es=0.001,Eb=0.,
                         moments=2,ztop=3000.0,zbot=0.,tmax=800.,output_freq=60.,dt=10.,dz=10.,frag_dist='exp',habit_list=['rain'],ptype='rain',Tc=10.,
-                        radar=False,boundary=None,dist_num=1,cc_dest=1,br_dest=1,rk_order=1,parallel=False,n_jobs=12):
+                        radar=False,boundary=None,dist_num=1,cc_dest=1,br_dest=1,rk_order=1,parallel=False,n_jobs=-1):
         self.Tc = Tc
         self.radar = radar
         self.sbin = sbin 
@@ -100,7 +102,12 @@ class spectral_1d:
         self.rk_order = rk_order
         self.boundary = boundary
         self.parallel = parallel
-        self.n_jobs = n_jobs
+        
+        
+        if n_jobs == -1:
+            self.n_jobs = os.cpu_count()
+        else:
+            self.n_jobs = n_jobs
         
         self.indc = cc_dest 
         self.indb = br_dest
@@ -188,6 +195,25 @@ class spectral_1d:
         self.lamf = frag_dict['lamf']
 
         self.dists = dists # 3D array of distribution objects (dist_num x height x time)
+
+    def clean_up(self):
+        
+        if self.parallel:
+            
+            del self.Ikernel.dMb_gain_frac
+            del self.Ikernel.dNb_gain_frac
+            del self.Ikernel.PK    
+            del self.Ikernel.kmin
+            del self.Ikernel.kmid
+            del self.Ikernel.cond_1
+            del self.Ikernel.self_col
+            
+            if self.moments==1:
+                
+                del self.Ikernel.dMi_loss
+                del self.Ikernel.dMj_loss
+                del self.Ikernel.dM_gain
+        
 
     def check_init_dist(self):
               
@@ -792,7 +818,7 @@ class spectral_1d:
         return fig, ax
      
 
-    def plot_dists_height(self):
+    def plot_dists_height(self,tind=-1,plot_habits=False):
         
         #plt.rcParams['text.usetex'] = True
         
@@ -809,7 +835,12 @@ class spectral_1d:
         
         mbins = self.dist0.xbins.copy() 
         
-        primary_init  = self.full[0,0]
+        if self.int_type==0:
+            primary_init  = self.full[0,0,tind]
+        else:
+            primary_init = self.full[0,0]
+        
+       # primary_init  = self.full[0,0]
         
         xp1 = primary_init.x1
         xp2 = primary_init.x2
@@ -829,7 +860,7 @@ class spectral_1d:
         ax[0].set_ylim(bottom=0.001)
         
         ax[0].set_title('Height = {} km'.format(z_lvls[0]),fontsize=16)
-        ax[0].set_ylabel(r'Number Density (1/cm$^{3}$ 1/mm)',fontsize=10)
+        ax[0].set_ylabel(r'Number Density (1/cm$^{3}$ 1/mm)',fontsize=16)
         
         ax[0].axes.tick_params(labelsize=16)
         ax[0].set_xlim((0.,5.))
@@ -843,34 +874,47 @@ class spectral_1d:
             
             
             for d1 in range(self.dnum):
-            
-                xp1_final = self.full[d1,zind].x1
-                xp2_final = self.full[d1,zind].x2
-                ap_final  = self.full[d1,zind].aki
-                cp_final  = self.full[d1,zind].cki
+
                 
-                prefN =self.full[d1,zind].am**(1./self.full[d1,zind].bm)*self.full[d1,zind].bm*mbins**(1.-1./self.full[d1,zind].bm)
+                if self.int_type==0:
+                    xp1_final = self.full[d1,zind,tind].x1
+                    xp2_final = self.full[d1,zind,tind].x2
+                    ap_final  = self.full[d1,zind,tind].aki
+                    cp_final  = self.full[d1,zind,tind].cki
+                    prefN =self.full[d1,zind,tind].am**(1./self.full[d1,zind,tind].bm)*self.full[d1,zind,tind].bm*mbins**(1.-1./self.full[d1,zind,tind].bm)
+                    
+                else:
+                    xp1_final = self.full[d1,zind].x1
+                    xp2_final = self.full[d1,zind].x2
+                    ap_final  = self.full[d1,zind].aki
+                    cp_final  = self.full[d1,zind].cki
+                    prefN =self.full[d1,zind].am**(1./self.full[d1,zind].bm)*self.full[d1,zind].bm*mbins**(1.-1./self.full[d1,zind].bm)
                 
                 nN_final[d1,:] = prefN*np.heaviside(mbins-xp1_final,1)*np.heaviside(xp2_final-mbins,1)*(ap_final*mbins+cp_final)
 
-                ax[hh].plot(xbins,nN_final[d1,:],label='dist {}'.format(d1+1))
+                if plot_habits:
+                    ax[hh].plot(xbins,nN_final[d1,:],label='dist {}'.format(d1+1))
 
-            ax[hh].plot(xbins,np.nansum(nN_final,axis=0),color='k',label='total')
+            if plot_habits:
+                ax[hh].plot(xbins,np.nansum(nN_final,axis=0),color='k')
+            else:
+                ax[hh].plot(xbins,np.nansum(nN_final,axis=0),color='k',label='total')
                 
             ax[hh].set_yscale('log')
             ax[hh].set_xscale('linear')
             ax[hh].set_ylim(bottom=0.001)
             
             ax[hh].set_title('Height = {} km'.format(z_lvls[hh]),fontsize=16)
-            ax[hh].set_ylabel(r'Number Density (1/cm$^{3}$ 1/mm)',fontsize=10)
+            ax[hh].set_ylabel(r'Number Density (1/cm$^{3}$ 1/mm)',fontsize=16)
             
             ax[hh].axes.tick_params(labelsize=16)
             ax[hh].set_xlim((0.,5.))
 
         
-        ax[0].set_ylim((1e-5,1e3))
+        ax[0].set_ylim((1e-5,1e5))
         ax[-1].set_xlabel('Equivolume Diameter (mm)',fontsize=16)
-        ax[-1].legend()
+        if plot_habits:
+            ax[-1].legend()
         
         plt.tight_layout()
         
@@ -912,7 +956,9 @@ class spectral_1d:
         Mbins = np.zeros_like(M_old)
         Nbins = np.zeros_like(N_old)
             
-        M_net, N_net = self.Ikernel.interact(dt)
+        #M_net, N_net = self.Ikernel.interact(dt)
+        
+        M_net, N_net = self.Ikernel.interact_2mom(dt)
        
         M_sed = np.zeros((self.dnum,self.Hlen,self.bins)) 
         N_sed = np.zeros((self.dnum,self.Hlen,self.bins)) 
@@ -1014,10 +1060,8 @@ class spectral_1d:
             for d1 in range(self.dnum):
                 self.full[d1,hh,tf] = deepcopy(self.dists[d1,hh])
         
-        # ELD NOTE: 
-            # Make sure to cap min M and N and 0 to prevent numerical errors.
         pbar = tqdm(position=0, leave=True, mininterval=0,miniters=1,desc="Running 1D spectral bin model\n")
-        for tt in range(1,self.Tlen):
+        for tt in tqdm(range(1,self.Tlen)):
 
             #print('Running 1D spectral bin model: step = {} out of {}'.format(tt,self.Tlen-1))
             #print('Total Mass = {:.2f} g/m^3 | Total Mass Flux = {:.2f} g/(m^2*s)'.format(1000.*np.nansum(self.Ikernel.Mbins),
@@ -1058,12 +1102,28 @@ class spectral_1d:
 
             if np.isin(self.t[tt],self.tout):
                 tf += 1
-                print('Saving output')
+                #print('Saving output')
                 for hh in range(self.Hlen):
                    for d1 in range(self.dnum):
                        self.full[d1,hh,tf] = deepcopy(self.dists[d1,hh])
 
         
+        # Clean up
+        
+        if self.parallel:
+            
+            del self.Ikernel.dMb_gain_frac
+            del self.Ikernel.dNb_gain_frac
+            del self.Ikernel.PK   
+            del self.Ikernel.kmin
+            del self.Ikernel.kmid
+            del self.Ikernel.cond_1
+            del self.Ikernel.self_col
+                 
+            del self.Ikernel.dMi_loss
+            del self.Ikernel.dMj_loss
+            del self.Ikernel.dM_gain
+
         delattr(self,'Ikernel')
 
 
@@ -1160,8 +1220,7 @@ class spectral_1d:
             
             pbar.set_description('Total Mass = {:.2f} g/m^3 | Total Mass Flux = {:.2f} g/(m^2*s)'.format(1000.*np.nansum(self.Ikernel.Mbins),
                                                                                                          1000.*np.nansum(self.Ikernel.Mfbins)))
-                    
-            
+
             dM = np.zeros((self.dnum,self.Hlen,self.bins,rklen))
             dN = np.zeros((self.dnum,self.Hlen,self.bins,rklen))
             
@@ -1190,12 +1249,22 @@ class spectral_1d:
 
             if np.isin(self.t[tt],self.tout):
                 tf += 1
-                print('Saving output')
+                #print('Saving output')
                 for hh in range(self.Hlen):
                    for d1 in range(self.dnum):
                        self.full[d1,hh,tf] = deepcopy(self.dists[d1,hh])
 
         
+        if self.parallel:
+            
+            del self.Ikernel.dMb_gain_frac
+            del self.Ikernel.dNb_gain_frac
+            del self.Ikernel.PK    
+            del self.Ikernel.kmin
+            del self.Ikernel.kmid
+            del self.Ikernel.cond_1
+            del self.Ikernel.self_col
+
         delattr(self,'Ikernel')
         
 
