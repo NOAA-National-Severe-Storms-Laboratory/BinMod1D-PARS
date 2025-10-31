@@ -416,7 +416,7 @@ def calculate_regions(x11,x21,ak1,ck1,x12,x22,ak2,ck2,PK,xi1,xi2,regions):
     return dMi_loss, dMj_loss, dM_gain, dNi_loss, dN_gain
 
 
-def calculate_1mom(i1,j1,k1,n1,n2,dMi_loss,dMj_loss,dM_gain,kmin,kmid,dMb_gain_frac,breakup):
+def calculate_1mom(i1,j1,n1,n2,dMi_loss,dMj_loss,dM_gain,kmin,kmid,dMb_gain_frac,breakup):
     
     '''
      This function calculate mass and number transfer rates
@@ -459,6 +459,10 @@ def calculate_1mom(i1,j1,k1,n1,n2,dMi_loss,dMj_loss,dM_gain,kmin,kmid,dMb_gain_f
         #np.add.at(Mb_gain,  np.arange(Hlen)[None,None,:], np.transpose((dMb_gain_frac[:,kmin[i1,j1]][None,:,:])*Mij_loss[:,None,:]))
         
         Mb_gain = np.nansum((dMb_gain_frac[:,kmin[i1,j1]][None,:,:])*Mij_loss[:,None,:],axis=2)
+        
+    else:
+        
+        Mb_gain  = np.zeros((Hlen,bins))
         
         # print('k1=',np.unique(k1))
         # print('Mb_gain=',Mb_gain.shape)
@@ -735,10 +739,15 @@ class Interaction():
                 dMi_loss_file = os.path.join(self.temp_dir,'dMi_loss.pkl')
                 dMj_loss_file = os.path.join(self.temp_dir,'dMj_loss.pkl')  
                 dM_gain_file  = os.path.join(self.temp_dir,'dM_gain.pkl')
+               # i1_region_file = os.path.join(self.temp_dir,'i1_region.pkl')
+               # j1_region_file = os.path.join(self.temp_dir,'j1_region.pkl')
                 
                 dump(self.dMi_loss,dMi_loss_file)
                 dump(self.dMj_loss,dMj_loss_file)
                 dump(self.dM_gain,dM_gain_file)
+                
+                #dump(self.regions[dd]['1']['i'],i1_region_file)
+                #dump(self.regions[dd]['1']['j'],j1_region_file)
                 
                 self.dMi_loss = load(dMi_loss_file,mmap_mode='r')
                 self.dMj_loss = load(dMj_loss_file,mmap_mode='r')
@@ -1116,7 +1125,6 @@ class Interaction():
                     gain_loss_temp = Parallel(n_jobs=self.n_jobs,verbose=0)(delayed(calculate_1mom)(
                                         self.regions[dd]['1']['i'],
                                         self.regions[dd]['1']['j'],
-                                        self.regions[dd]['1']['k'],
                                         ck1[batch,:],ck2[batch,:],
                                         self.dMi_loss[dd,0,:,:],
                                         self.dMj_loss[dd,0,:,:],
@@ -1152,21 +1160,12 @@ class Interaction():
                     M_gain_temp,Mb_gain_temp =\
                     calculate_1mom(self.regions[dd]['1']['i'],
                                     self.regions[dd]['1']['j'],
-                                    self.regions[dd]['1']['k'],
                                     ck1,ck2,
                                     self.dMi_loss[dd,0,:,:],
                                     self.dMj_loss[dd,0,:,:],
                                     self.dM_gain[dd,0,:,:,:],
                                     self.kmin,self.kmid,self.dMb_gain_frac,self.breakup)
-                    
-                 
-                #print('Mb_gain_temp=',Mb_gain_temp.sum())
-                #raise Exception()
-        
-                #print('M_loss_temp=',(M1_loss_temp+M2_loss_temp).sum())
-               # print('M_gain_temp=',M_gain_temp.sum())
-               # raise Exception()
-        
+                        
                 M_loss[d1,:,:]    += M1_loss_temp 
                 M_loss[d2,:,:]    += M2_loss_temp
                 
@@ -1178,12 +1177,7 @@ class Interaction():
         M_loss *= self.Ecb
         
         M_net = dt*(M_gain-M_loss) 
-        
-        
-        #print('dMi_loss=',self.dMi_loss.shape)
-        #print('M_loss=',M_loss.sum())
-        #raise Exception()
-        
+                
         return M_net
     
     
@@ -1209,11 +1203,6 @@ class Interaction():
         dd = 0
         for d1 in range(self.dnum):
             for d2 in range(d1,self.dnum):
-                # if d1==d2:
-                #    self_col = True 
-                # else:
-                #    self_col = False
-                           
 
                 if self.parallel:
                     

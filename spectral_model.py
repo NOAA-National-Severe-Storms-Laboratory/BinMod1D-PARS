@@ -1059,32 +1059,16 @@ class spectral_1d:
         
         M_transfer = M_old+M_sed+M_net
         
-        #print('M_transfer=',M_transfer[1,:,:].sum())
-       # raise Exception()
         
         M_new = np.maximum(M_transfer,0.) # Should be positive if not over fragmented.
         Mbins[M_new>=0.] = M_new[M_new>=0.].copy()
         
-        #print('M_new=',M_new[1,:,:].sum())
-        #raise Exception()
-        
-        #print('M_old before=',M_old[1,:,:].sum())
 
         if self.boundary=='fixed': # If fixing top distribution. Can be helpful if trying to determine steady-state time.
             Mbins[:,0,:] = M_old[:,0,:].copy()
             
         dM = (Mbins-M_old)/dt
         
-        
-        #print('M_after=',Mbins[1,0,:])
-        #print('dM=',dM[1,0,:])
-        
-       # if Mbins[1,:,:].sum()>0.:
-        #raise Exception()
-        
-        #if dM[1,:,:].sum() > 0.:
-        #    print('dM=',dM[1,:,:].sum())
-        #    raise Exception()
         
         return dM
     
@@ -1120,10 +1104,6 @@ class spectral_1d:
         if self.boundary=='fixed': # If fixing top distribution. Can be helpful if trying to determine steady-state time.
             Mbins[:,0,:] = M_old[:,0,:].copy()
             Nbins[:,0,:] = N_old[:,0,:].copy()
-            
-       # if Mbins[1,:,:].sum()>0.:
-       #     print('Mbins=',Mbins[1,:,:].sum())
-       #     raise Exception()
             
         dM = (Mbins-M_old)/dt
         dN = (Nbins-N_old)/dt
@@ -1223,18 +1203,9 @@ class spectral_1d:
  
                 dM[:,:,:,ii] = self.advance_1mom(M_stage,self.dt)
                 
-            
-            #Mbins = np.maximum(M_old + self.dt*np.nansum(b[None,None,None,:]*dM,axis=3),0.)
-            
-            #self.Ikernel.Mbins = Mbins.copy()
-            
-            
             self.Ikernel.Mbins = np.maximum(M_old + self.dt*np.nansum(b[None,None,None,:]*dM,axis=3),0.)
             self.Ikernel.Nbins = self.Ikernel.Mbins/self.xbins[None,None,:]
             
-            #print(dM[1,:,:,:].sum())
-            #raise Exception()
-
             self.Ikernel.unpack_1mom() # Unpack the interaction 3D array to each object in the (dist x height) object array
             self.Ikernel.pack(self.Ikernel.dists) # Update moments and parameters of 2D array of distribution objects
 
@@ -1441,7 +1412,6 @@ class spectral_1d:
  
         finally:
             #Clean up temporary memory mapped files and potentially other things too.
-            
             self.clean_up()
     
         time_end = datetime.now() 
