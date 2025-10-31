@@ -53,20 +53,20 @@ def fragments(dist='exp'):
         fragments = {'dist':dist,
                      'lamf':10., 
                      'Dmf':0.25, 
-                     'muf':0.,}
+                     'muf':0.}
         
     elif dist=='gamma':
         
         fragments = {'dist':dist,
                      'lamf':10.,
                      'Dmf':0.25, 
-                     'muf':0.,}
+                     'muf':0.}
         
     elif dist=='LGN':
         
         fragments = {'dist':dist,
                      'lamf':10.,
-                     'Df_med':0.35, 
-                     'Df_mode':0.33,}
+                     'Df_med':0.55, 
+                     'Df_mode':0.5}
         
     return fragments

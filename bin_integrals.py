@@ -530,6 +530,10 @@ def LGN_int(n,muf,sig2f,x1,x2):
     I = 0.5*np.exp(n*muf+0.5*n**2*sig2f)*\
         (scip.erf((np.log(x2)-muf-n*sig2f)/(np.sqrt(2*sig2f)))-\
          scip.erf((np.log(x1)-muf-n*sig2f)/(np.sqrt(2*sig2f))))
+            
+    # I = np.exp(n*muf+0.5*n**2*sig2f)*\
+    #     (scip.erf((np.log(x2)-muf-n*sig2f)/(np.sqrt(sig2f)))-\
+    #      scip.erf((np.log(x1)-muf-n*sig2f)/(np.sqrt(sig2f))))
 
 
     return I 

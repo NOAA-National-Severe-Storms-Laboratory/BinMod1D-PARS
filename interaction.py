@@ -20,11 +20,6 @@ def setup_regions(x11,x21,ak1,ck1,x12,x22,ak2,ck2,xi1,xi2,kmin,cond_1,sc_inds):
 
     Hlen, bins = np.shape(x11)
 
-    #print('Hlen=',Hlen)
-    #print('sc_inds=',sc_inds)
-    #print('cond_1=',~cond_1)
-    #raise Exception()
-    
     # (heights x bins x bins)
     x_bottom_edge = (xi2[kmin][None,:,:]-x12[:,None,:])
     x_top_edge = (xi2[kmin][None,:,:]-x22[:,None,:])
@@ -119,13 +114,7 @@ def setup_regions(x11,x21,ak1,ck1,x12,x22,ak2,ck2,xi1,xi2,kmin,cond_1,sc_inds):
     k9, i9, j9  = np.nonzero(cond_9&sc_inds)
     k10,i10,j10 = np.nonzero(cond_10&sc_inds)
     
-    #print('k1=',k1)
-    #raise Exception()
-    
-    #return x_bottom_edge,x_top_edge,y_left_edge,y_right_edge,\
-    #       i1,j1,k1,i2,j2,k2,i2b,j2b,k2b,i3,j3,k3,i3b,j3b,k3b,i4,j4,k4,\
-    #       i5,j5,k5,i6,j6,k6,i7,j7,k7,i8,j8,k8,i9,j9,k9,i10,j10,k10
-    
+ 
     # Returns dictionary of source integration region type indices
     return    {'x_bottom_edge':x_bottom_edge,
                'x_top_edge':x_top_edge,
@@ -236,12 +225,6 @@ def calculate_regions(x11,x21,ak1,ck1,x12,x22,ak2,ck2,PK,xi1,xi2,regions):
     # Calculate transfer rates (rectangular integration, source space)
     # Collection (eqs. 23-25 in Wang et al. 2007)
     # ii collecting jj 
-    
-    #print('x11=',x11.shape)
-    #print('ak1=',ak1.shape)
-    #print('Hlen=',Hlen)
-    #print('k1=',k1)
-    #raise Exception()
 
     dMi_loss[k1,i1,j1] = integrate_fast_kernel(1,0,0,PK[:,i1,j1],ak1[k1,i1],ck1[k1,i1],ak2[k1,j1],ck2[k1,j1],'rectangle',x1=x11[k1,i1],x2=x21[k1,i1],y1=x12[k1,j1],y2=x22[k1,j1])
     dMj_loss[k1,i1,j1] = integrate_fast_kernel(0,1,0,PK[:,i1,j1],ak1[k1,i1],ck1[k1,i1],ak2[k1,j1],ck2[k1,j1],'rectangle',x1=x11[k1,i1],x2=x21[k1,i1],y1=x12[k1,j1],y2=x22[k1,j1])
@@ -433,423 +416,6 @@ def calculate_regions(x11,x21,ak1,ck1,x12,x22,ak2,ck2,PK,xi1,xi2,regions):
     return dMi_loss, dMj_loss, dM_gain, dNi_loss, dN_gain
 
 
-def calculate_integrals(x11,x21,ak1,ck1,M1, 
-                        x12,x22,ak2,ck2,M2,
-                        PK,xi1,xi2,kmin,kmid,cond_1_orig, 
-                        dMb_gain_frac,dNb_gain_frac, 
-                        self_col=False,breakup=False):
-    
-    '''
-     This function calculate mass and number transfer rates
-     for collision-coalescence and collisional breakup between
-     each distribution.
-    '''
-    
-    '''
-    Check edges and find integration regions in source space
-    ''' 
-    
-    #Mcheck = ((M1==0.)[None,:,None]) | ((M2==0.)[None,None,:])
-    
-    #Mcheck = ((M1==0.)[None,:,None]) | ((M2==0.)[None,None,:])
-    
-    
-    
-    # WORKING vvv
-    
-    Mcheck = ((M1==0.)[:,:,None]) | ((M2==0.)[:,None,:])
-    
-    
-    cond_1 = cond_1_orig | Mcheck # New cond_1. Basically exclude bin-pairs that are off grid and ones involving empty bins.
-    
-
-    # Working ^^^
-    
-    
-    # dMi_loss, dMj_loss, dM_gain, dNi_loss, dN_gain = calculate_rates(x11,x21,ak1,ck1,M1,x12,x22,ak2,ck2,M2,
-    #                    PK,xi1,xi2,kmin,kmid,cond_1,sc_inds)
-    
-    Hlen, bins = np.shape(x11)
-    
-    # (heights x bins x bins)
-    x_bottom_edge = (xi2[kmin][None,:,:]-x12[:,None,:])
-    x_top_edge = (xi2[kmin][None,:,:]-x22[:,None,:])
-    y_left_edge = (xi2[kmin][None,:,:]-x11[:,:,None])
-    y_right_edge = (xi2[kmin][None,:,:]-x21[:,:,None])
-    
-    check_bottom = (x11[:,:,None]<x_bottom_edge) &\
-                   (x21[:,:,None]>x_bottom_edge)
-     
-    check_top = (x11[:,:,None]<x_top_edge) &\
-                (x21[:,:,None]>x_top_edge)
-                
-    check_left = (x12[:,None,:]<y_left_edge) &\
-                 (x22[:,None,:]>y_left_edge)
-                
-    check_right = (x12[:,None,:]<y_right_edge) &\
-                  (x22[:,None,:]>y_right_edge)            
-           
-    check_middle = ((0.5*(x11[:,:,None]+x21[:,:,None]))+(0.5*(x12[:,None,:]+x22[:,None,:])))<(xi2[kmin][None,:,:])
-               
-    # If opposite sides check true, then integral region is rectangle + triangle
-    # If adjacent sides check true, then integral region is triangle       
-           
-    # Check which opposite side is higher for cases where we have rectangle + triangle
-    # NOTE: It SHOULD be the case that y_left_edge>y_right_edge and x_bottom_edge>x_top_edge
-    # This just has to do with the geometry of the x+y mapping, i.e., the x+y lines have negative slope.
-    
-    '''
-    Vectorized Integration Regions:
-    cond_1 :  Ignore CC process for these source bins; they don't map to the largest avail bin.
-    cond_2 :  k bin: Lower triangle region. Just clips BR corner.
-                       Triangle = ((xi1,xj1),(xi1,y_left_edge),(xi2,xj1))
-    cond_3 :  k bin: Lower triangle region. Just clips UL corner.
-                       Triangle = ((xi1,xj1),(xi1,xj2),(x_bottom_edge,xj1))                 
-    cond_2b : k+1 bins: Upper triangle region. Just clips BR corner.
-                       Triangle = ((xi1,xj1),(x_top_edge,xj2),(xi2,xj2))
-    cond_3b : k+1 bin: Upper triangle region. Just clips UL corner.
-                             Triangle = ((xi1,xj2),(xi2,xj2),(xi2,y_right_edge)                    
-    cond_4 :  Full Rectangular source region based on self collection: ii == jj --> ii+sbin or jj+sbin
-    cond_5 :  k bin: Top/Bottom clip: Rectangle on left, triangle on right
-                              Rectangle = ((xi1,xj1),(xi1,xj2),(x_top_edge,xj2),(x_top_edge,xj1))
-                              Triangle  = ((x_top_edge,xj1),(x_top_edge,xj2),(x_bottom_edge,xj1))
-    cond_6 :  k bin: Left/Right clip: Rectangle on bottom, triangle on top
-                              Rectangle = ((xi1,xj1),(xi1,y_right_edge),(xi2,y_right_edge),(xi2,xj1))
-                              Triangle  = ((xi1,y_right_edge),(xi1,y_left_edge),(xi2,y_right_edge))
-    cond_7 :  k+1 bin: Triangle in top right corner
-                                Triangle = ((x_top_edge,xj2),(xi2,xj2),(xi2,y_right_edge))
-    cond_8 :  k bin: Triangle in lower left corner
-                                Triangle = ((xi1,xj1),(xi1,y_left_edge),(x_bottom_edge,xj1))
-    cond_9:   k bin: Rectangle collection within k bin. All Mass/Number goes into kbin
-    cond_10:  k+1 bin: Rectangle collection within k+1 bin. All Mass/Number goes into kbin
-    '''
-    
-    
-    
-    
-    # Initialize gain term arrays
-    dMi_loss = np.zeros((Hlen,bins,bins))
-    dMj_loss = np.zeros((Hlen,bins,bins))
-    dNi_loss = np.zeros((Hlen,bins,bins))
-    dM_gain  = np.zeros((Hlen,bins,bins,2))
-    dN_gain  = np.zeros((Hlen,bins,bins,2))
-    Mb_gain  = np.zeros((Hlen,bins))
-    Nb_gain  = np.zeros((Hlen,bins))
-    
-    #cond = np.zeros((Hlen,bins,bins),dtype=int)
-    
-    if self_col:
-        sc_inds = np.tile(np.triu(np.ones((bins,bins),dtype=int),k=0),(Hlen,1,1))
-        
-    else:
-        sc_inds = np.ones((Hlen,bins,bins),dtype=int)
-        
-    cond_touch = (check_bottom|check_top|check_left|check_right)
-    
-    # OLD
-    #cond_2_corner = (x21==xi2[None,:])[:,None,:]&(x12==xi1[None,:])[:,:,None]&(check_left)
-    #cond_3_corner = (x11==xi1[None,:])[:,None,:]&(x12==xi1[None,:])[:,:,None]&(check_bottom)
-    
-    # NEW
-    cond_BR_corner = ((x21==xi2)[:,:,None])&((x12==xi1)[:,None,:]) # Bottom right corner
-    cond_UL_corner = ((x11==xi1)[:,:,None])&((x22==xi2)[:,None,:]) # Upper left corner
-    
-    cond_2_corner = (cond_BR_corner)&(check_left)
-    cond_3_corner = (cond_UL_corner)&(check_bottom)
-    
-    cond_2b_corner = (cond_BR_corner)&(check_top)
-    cond_3b_corner = (cond_UL_corner)&(check_right)
-    
-    cond_2 = np.eye(bins,k=1,dtype=bool)[None,:,:] & (cond_2_corner) & (~cond_1) & (cond_touch)
-    cond_3 = np.eye(bins,k=-1,dtype=bool)[None,:,:] & (cond_3_corner) & (~cond_1) & (cond_touch)
-    
-    cond_2b = cond_2b_corner & (~cond_1)
-    cond_3b = cond_3b_corner & (~cond_1)
-    
-    cond_4 = np.eye(bins,dtype=bool)[None,:,:] & (~cond_1)
-    cond_nt = (~(cond_1|cond_2|cond_3|cond_4))
-    cond_5 = (check_top&check_bottom)  & cond_nt
-    cond_6 = (check_left&check_right)  & cond_nt
-    cond_7 =  (check_right&check_top)  & cond_nt
-    cond_8 = (check_left&check_bottom) & cond_nt
-    cond_rect = (~cond_touch)&(~cond_1)&(~cond_4)&(~cond_5)&(~cond_6)&(~cond_7)&(~cond_8)
-    cond_9 = (cond_rect&check_middle)
-    cond_10 = (cond_rect&(~check_middle))
-    
-    k1, i1, j1  = np.nonzero((~cond_1)&sc_inds) # Only do loss/gain terms for 0>bins-sbin bins
-    k2, i2, j2  = np.nonzero(cond_2&sc_inds)
-    k3, i3, j3  = np.nonzero(cond_3&sc_inds)
-    k2b, i2b, j2b  = np.nonzero(cond_2b&sc_inds)
-    k3b, i3b, j3b  = np.nonzero(cond_3b&sc_inds)
-    k4, i4, j4  = np.nonzero(cond_4&sc_inds)
-    k5, i5, j5  = np.nonzero(cond_5&sc_inds)
-    k6, i6, j6  = np.nonzero(cond_6&sc_inds)
-    k7, i7, j7  = np.nonzero(cond_7&sc_inds)
-    k8, i8, j8  = np.nonzero(cond_8&sc_inds)
-    k9, i9, j9  = np.nonzero(cond_9&sc_inds)
-    k10,i10,j10 = np.nonzero(cond_10&sc_inds)
-    
-    # cond[k1,i1,j1]    = 1
-    # cond[k2,i2,j2]    = 2
-    # cond[k3,i3,j3]    = 3
-    # cond[k4,i4,j4]    = 4
-    # cond[k5,i5,j5]    = 5
-    # cond[k6,i6,j6]    = 6
-    # cond[k7,i7,j7]    = 7
-    # cond[k8,i8,j8]    = 8
-    # cond[k9,i9,j9]    = 9 
-    # cond[k10,i10,j10] = 10
-    
-    cond_loss = np.zeros((Hlen,bins,bins),dtype=int) 
-    cond_gain = np.zeros((Hlen,bins,bins),dtype=int)
-    
-    cond_loss[k1,i1,j1]    = 1
-    cond_gain[k2,i2,j2]    = 2
-    cond_gain[k3,i3,j3]    = 3
-    cond_gain[k2b,i2b,j2b] = 11
-    cond_gain[k3b,i3b,j3b] = 12
-    cond_gain[k4,i4,j4]    = 4
-    cond_gain[k5,i5,j5]    = 5
-    cond_gain[k6,i6,j6]    = 6
-    cond_gain[k7,i7,j7]    = 7
-    cond_gain[k8,i8,j8]    = 8
-    cond_gain[k9,i9,j9]    = 9 
-    cond_gain[k10,i10,j10] = 10
-        
-       # print('cond_loss_tot = {} | cond_gain_tot = {}'.format(np.count_nonzero(cond_loss),np.count_nonzero(cond_gain)))
-       # print('cond_loss={}'.format(cond_loss))
-       # print('cond_gain={}'.format(cond_gain))
-        
-    if np.count_nonzero(cond_loss) != np.count_nonzero(cond_gain):
-        print('Number of loss pairs = {}'.format(np.count_nonzero(cond_loss)))
-        print('Number of gain pairs = {}'.format(np.count_nonzero(cond_gain)))
-        print('gain ~= loss. Something went wrong here.')
-        #np.set_printoptions(threshold=np.inf)
-        #print('cond_gain=',cond_gain[0,:,:])
-        raise Exception()
-
-    # Calculate transfer rates (rectangular integration, source space)
-    # Collection (eqs. 23-25 in Wang et al. 2007)
-    # ii collecting jj 
-
-    dMi_loss[k1,i1,j1] = integrate_fast_kernel(1,0,0,PK[:,i1,j1],ak1[k1,i1],ck1[k1,i1],ak2[k1,j1],ck2[k1,j1],'rectangle',x1=x11[k1,i1],x2=x21[k1,i1],y1=x12[k1,j1],y2=x22[k1,j1])
-    dMj_loss[k1,i1,j1] = integrate_fast_kernel(0,1,0,PK[:,i1,j1],ak1[k1,i1],ck1[k1,i1],ak2[k1,j1],ck2[k1,j1],'rectangle',x1=x11[k1,i1],x2=x21[k1,i1],y1=x12[k1,j1],y2=x22[k1,j1])
-    dNi_loss[k1,i1,j1] = integrate_fast_kernel(0,0,0,PK[:,i1,j1],ak1[k1,i1],ck1[k1,i1],ak2[k1,j1],ck2[k1,j1],'rectangle',x1=x11[k1,i1],x2=x21[k1,i1],y1=x12[k1,j1],y2=x22[k1,j1])
-    #dNj_loss = dNi_loss.copy() # Nj loss should be same as Ni loss
-    
-    
-    # Condition 4: Self collection. All Mass/Number goes into ii+sbin = jj+sbin kbin
-    xi1 = x11[k4,i4].copy()
-    xi2 = x21[k4,i4].copy() 
-    xj1 = x12[k4,j4].copy()
-    xj2 = x22[k4,j4].copy()
-    
-    dM_gain[k4,i4,j4,0]  = integrate_fast_kernel(0,0,1,PK[:,i4,j4],ak1[k4,i4],ck1[k4,i4],ak2[k4,j4],ck2[k4,j4],'rectangle',x1=xi1,x2=xi2,y1=xj1,y2=xj2) 
-    dN_gain[k4,i4,j4,0]  = integrate_fast_kernel(0,0,0,PK[:,i4,j4],ak1[k4,i4],ck1[k4,i4],ak2[k4,j4],ck2[k4,j4],'rectangle',x1=xi1,x2=xi2,y1=xj1,y2=xj2) 
-
-
-    # Condition 2:
-    # k bin: Lower triangle region. Just clips BR corner.
-    #                       Triangle = ((xi1,xj1),(xi1,y_left_edge),(xi2,xj1))
-    xt1 = x11[k2,i2].copy()
-    yt1 = x12[k2,j2].copy()
-    xt2 = x11[k2,i2].copy()
-    yt2 = y_left_edge[k2,i2,j2].copy()
-    xt3 = x21[k2,i2].copy()
-    yt3 = x12[k2,j2].copy()
-    
-    dM_gain[k2,i2,j2,0] = integrate_fast_kernel(0,0,1,PK[:,i2,j2],ak1[k2,i2],ck1[k2,i2],ak2[k2,j2],ck2[k2,j2],'triangle',xt1=xt1,yt1=yt1,xt2=xt2,yt2=yt2,xt3=xt3,yt3=yt3)
-    dM_gain[k2,i2,j2,1] = (dMi_loss[k2,i2,j2]+dMj_loss[k2,i2,j2])-dM_gain[k2,i2,j2,0]
-    
-    dN_gain[k2,i2,j2,0] = integrate_fast_kernel(0,0,0,PK[:,i2,j2],ak1[k2,i2],ck1[k2,i2],ak2[k2,j2],ck2[k2,j2],'triangle',xt1=xt1,yt1=yt1,xt2=xt2,yt2=yt2,xt3=xt3,yt3=yt3)
-    dN_gain[k2,i2,j2,1] = (dNi_loss[k2,i2,j2])-dN_gain[k2,i2,j2,0]
-        
-    # Condition 3:
-    #    k bin: Lower triangle region. Just clips UL corner.
-    #                      Triangle = ((xi1,xj1),(xi1,xj2),(x_bottom_edge,xj1))  
-    xt1 = x11[k3,i3].copy()
-    yt1 = x12[k3,j3].copy()
-    xt2 = x11[k3,i3].copy()
-    yt2 = x22[k3,j3].copy()
-    xt3 = x_bottom_edge[k3,i3,j3].copy()
-    yt3 = x12[k3,j3].copy()
-    
-    dM_gain[k3,i3,j3,0] = integrate_fast_kernel(0,0,1,PK[:,i3,j3],ak1[k3,i3],ck1[k3,i3],ak2[k3,j3],ck2[k3,j3],'triangle',xt1=xt1,yt1=yt1,xt2=xt2,yt2=yt2,xt3=xt3,yt3=yt3)
-    dM_gain[k3,i3,j3,1] = (dMi_loss[k3,i3,j3]+dMj_loss[k3,i3,j3])-dM_gain[k3,i3,j3,0]
-        
-    dN_gain[k3,i3,j3,0] = integrate_fast_kernel(0,0,0,PK[:,i3,j3],ak1[k3,i3],ck1[k3,i3],ak2[k3,j3],ck2[k3,j3],'triangle',xt1=xt1,yt1=yt1,xt2=xt2,yt2=yt2,xt3=xt3,yt3=yt3)
-    dN_gain[k3,i3,j3,1] = (dNi_loss[k3,i3,j3])-dN_gain[k3,i3,j3,0]
-        
-    # Condition 5: 
-        
-    #    k bin: Top/Bottom clip: Rectangle on left, triangle on right
-    #                              Rectangle = ((xi1,xj1),(xi1,xj2),(x_top_edge,xj2),(x_top_edge,xj1))
-    #                              Triangle  = ((x_top_edge,xj1),(x_top_edge,xj2),(x_bottom_edge,xj1))
-   
-    xr1 = x11[k5,i5].copy()
-    yr1 = x12[k5,j5].copy()
-    xr2 = x_top_edge[k5,i5,j5].copy()
-    yr2 = x22[k5,j5].copy()
-   
-    xt1 = x_top_edge[k5,i5,j5].copy()
-    yt1 = x12[k5,j5].copy()
-    xt2 = x_top_edge[k5,i5,j5].copy()
-    yt2 = x22[k5,j5].copy()
-    xt3 = x_bottom_edge[k5,i5,j5].copy()
-    yt3 = x12[k5,j5].copy()
-    
-    
-    dM_gain[k5,i5,j5,0] = integrate_fast_kernel(0,0,1,PK[:,i5,j5],ak1[k5,i5],ck1[k5,i5],ak2[k5,j5],ck2[k5,j5],'rectangle',x1=xr1,x2=xr2,y1=yr1,y2=yr2)+\
-                          integrate_fast_kernel(0,0,1,PK[:,i5,j5],ak1[k5,i5],ck1[k5,i5],ak2[k5,j5],ck2[k5,j5],'triangle',xt1=xt1,yt1=yt1,xt2=xt2,yt2=yt2,xt3=xt3,yt3=yt3)
-    
-    dM_gain[k5,i5,j5,1] = (dMi_loss[k5,i5,j5]+dMj_loss[k5,i5,j5])-dM_gain[k5,i5,j5,0]
-        
-    dN_gain[k5,i5,j5,0] = integrate_fast_kernel(0,0,0,PK[:,i5,j5],ak1[k5,i5],ck1[k5,i5],ak2[k5,j5],ck2[k5,j5],'rectangle',x1=xr1,x2=xr2,y1=yr1,y2=yr2)+\
-                          integrate_fast_kernel(0,0,0,PK[:,i5,j5],ak1[k5,i5],ck1[k5,i5],ak2[k5,j5],ck2[k5,j5],'triangle',xt1=xt1,yt1=yt1,xt2=xt2,yt2=yt2,xt3=xt3,yt3=yt3)
-                       
-    dN_gain[k5,i5,j5,1] = (dNi_loss[k5,i5,j5])-dN_gain[k5,i5,j5,0]
-    
-    
-    # Condition 6:
-    # k bin: Left/Right clip: Rectangle on bottom, triangle on top
-    #                          Rectangle = ((xi1,xj1),(xi1,y_right_edge),(xi2,y_right_edge),(xi2,xj1))
-    #                          Triangle  = ((xi1,y_right_edge),(xi1,y_left_edge),(xi2,y_right_edge))
-        
-    xr1 = x11[k6,i6].copy()
-    yr1 = x12[k6,j6].copy()
-    xr2 = x21[k6,i6].copy()
-    yr2 = y_right_edge[k6,i6,j6].copy()
-    
-    xt1 = x11[k6,i6].copy()
-    yt1 = y_right_edge[k6,i6,j6].copy()
-    xt2 = x11[k6,i6].copy()
-    yt2 = y_left_edge[k6,i6,j6].copy()
-    xt3 = x21[k6,i6].copy()
-    yt3 = y_right_edge[k6,i6,j6].copy()
-    
-    
-    dM_gain[k6,i6,j6,0] = integrate_fast_kernel(0,0,1,PK[:,i6,j6],ak1[k6,i6],ck1[k6,i6],ak2[k6,j6],ck2[k6,j6],'rectangle',x1=xr1,x2=xr2,y1=yr1,y2=yr2)+\
-                          integrate_fast_kernel(0,0,1,PK[:,i6,j6],ak1[k6,i6],ck1[k6,i6],ak2[k6,j6],ck2[k6,j6],'triangle',xt1=xt1,yt1=yt1,xt2=xt2,yt2=yt2,xt3=xt3,yt3=yt3)
-    
-    dM_gain[k6,i6,j6,1] = (dMi_loss[k6,i6,j6]+dMj_loss[k6,i6,j6])-dM_gain[k6,i6,j6,0]
-        
-    dN_gain[k6,i6,j6,0] = integrate_fast_kernel(0,0,0,PK[:,i6,j6],ak1[k6,i6],ck1[k6,i6],ak2[k6,j6],ck2[k6,j6],'rectangle',x1=xr1,x2=xr2,y1=yr1,y2=yr2)+\
-                          integrate_fast_kernel(0,0,0,PK[:,i6,j6],ak1[k6,i6],ck1[k6,i6],ak2[k6,j6],ck2[k6,j6],'triangle',xt1=xt1,yt1=yt1,xt2=xt2,yt2=yt2,xt3=xt3,yt3=yt3)
-                       
-    dN_gain[k6,i6,j6,1] = (dNi_loss[k6,i6,j6])-dN_gain[k6,i6,j6,0]
-        
-    # Condition 7:
-    # k+1 bin: Triangle in top right corner
-    #                            Triangle = ((x_top_edge,xj2),(xi2,xj2),(xi2,y_right_edge))
-        
-    xt1 = x_top_edge[k7,i7,j7].copy()
-    yt1 = x22[k7,j7].copy()
-    xt2 = x21[k7,i7].copy()
-    yt2 = x22[k7,j7].copy()
-    xt3 = x21[k7,i7].copy()
-    yt3 = y_right_edge[k7,i7,j7].copy()
-    
-    dM_gain[k7,i7,j7,1] = integrate_fast_kernel(0,0,1,PK[:,i7,j7],ak1[k7,i7],ck1[k7,i7],ak2[k7,j7],ck2[k7,j7],'triangle',xt1=xt1,yt1=yt1,xt2=xt2,yt2=yt2,xt3=xt3,yt3=yt3)
-    dM_gain[k7,i7,j7,0] = (dMi_loss[k7,i7,j7]+dMj_loss[k7,i7,j7])-dM_gain[k7,i7,j7,1]
-    
-    dN_gain[k7,i7,j7,1] = integrate_fast_kernel(0,0,0,PK[:,i7,j7],ak1[k7,i7],ck1[k7,i7],ak2[k7,j7],ck2[k7,j7],'triangle',xt1=xt1,yt1=yt1,xt2=xt2,yt2=yt2,xt3=xt3,yt3=yt3)
-    dN_gain[k7,i7,j7,0] = (dNi_loss[k7,i7,j7])-dN_gain[k7,i7,j7,1]
-    
-        
-    # Condition 8:
-    #  k bin: Triangle in lower left corner
-    #                                Triangle = ((xi1,xj1),(xi1,y_left_edge),(x_bottom_edge,xj1))
-    xt1 = x11[k8,i8].copy()
-    yt1 = x12[k8,j8].copy()
-    xt2 = x11[k8,i8].copy()
-    yt2 = y_left_edge[k8,i8,j8].copy()
-    xt3 = x_bottom_edge[k8,i8,j8].copy()
-    yt3 = x12[k8,j8].copy()
-    
-    dM_gain[k8,i8,j8,0] = integrate_fast_kernel(0,0,1,PK[:,i8,j8],ak1[k8,i8],ck1[k8,i8],ak2[k8,j8],ck2[k8,j8],'triangle',xt1=xt1,yt1=yt1,xt2=xt2,yt2=yt2,xt3=xt3,yt3=yt3)
-    dM_gain[k8,i8,j8,1] = (dMi_loss[k8,i8,j8]+dMj_loss[k8,i8,j8])-dM_gain[k8,i8,j8,0]
-    
-    dN_gain[k8,i8,j8,0] = integrate_fast_kernel(0,0,0,PK[:,i8,j8],ak1[k8,i8],ck1[k8,i8],ak2[k8,j8],ck2[k8,j8],'triangle',xt1=xt1,yt1=yt1,xt2=xt2,yt2=yt2,xt3=xt3,yt3=yt3)
-    dN_gain[k8,i8,j8,1] = (dNi_loss[k8,i8,j8])-dN_gain[k8,i8,j8,0]
-        
-    # Condition 9: Rectangle collection within k bin. All Mass/Number goes into kbin
-    xi1 = x11[k9,i9].copy()
-    xi2 = x21[k9,i9].copy() 
-    xj1 = x12[k9,j9].copy()
-    xj2 = x22[k9,j9].copy()
-
-    dM_gain[k9,i9,j9,0]  = integrate_fast_kernel(0,0,1,PK[:,i9,j9],ak1[k9,i9],ck1[k9,i9],ak2[k9,j9],ck2[k9,j9],'rectangle',x1=xi1,x2=xi2,y1=xj1,y2=xj2) 
-    dN_gain[k9,i9,j9,0]  = integrate_fast_kernel(0,0,0,PK[:,i9,j9],ak1[k9,i9],ck1[k9,i9],ak2[k9,j9],ck2[k9,j9],'rectangle',x1=xi1,x2=xi2,y1=xj1,y2=xj2) 
-
-    # Condition 10: Rectangle collection within k+1 bin. All Mass/Number goes into kbin
-    xi1 = x11[k10,i10].copy()
-    xi2 = x21[k10,i10].copy() 
-    xj1 = x12[k10,j10].copy()
-    xj2 = x22[k10,j10].copy()
-    
-    dM_gain[k10,i10,j10,1]  = integrate_fast_kernel(0,0,1,PK[:,i10,j10],ak1[k10,i10],ck1[k10,i10],ak2[k10,j10],ck2[k10,j10],'rectangle',x1=xi1,x2=xi2,y1=xj1,y2=xj2) 
-    dN_gain[k10,i10,j10,1]  = integrate_fast_kernel(0,0,0,PK[:,i10,j10],ak1[k10,i10],ck1[k10,i10],ak2[k10,j10],ck2[k10,j10],'rectangle',x1=xi1,x2=xi2,y1=xj1,y2=xj2) 
-   
-    
-    # Condition 11 (2b): Triangle collection within k+1 bin. Occurs when xk+1 clips BR corner and intersects top edge.
-    # Triangle = ((xi2,xj1),(x_top_edge,xj2),(xi2,xj2))
-    xt1 = x_top_edge[k2b,i2b,j2b].copy()
-    yt1 = x22[k2b,j2b].copy()
-    xt2 = x21[k2b,i2b].copy()
-    yt2 = x22[k2b,j2b].copy()
-    xt3 = x21[k2b,i2b].copy()
-    yt3 = x12[k2b,j2b].copy()
-    
-    dM_gain[k2b,i2b,j2b,1] = integrate_fast_kernel(0,0,1,PK[:,i2b,j2b],ak1[k2b,i2b],ck1[k2b,i2b],ak2[k2b,j2b],ck2[k2b,j2b],'triangle',xt1=xt1,yt1=yt1,xt2=xt2,yt2=yt2,xt3=xt3,yt3=yt3)
-    dM_gain[k2b,i2b,j2b,0] = (dMi_loss[k2b,i2b,j2b]+dMj_loss[k2b,i2b,j2b])-dM_gain[k2b,i2b,j2b,1]
-    
-    dN_gain[k2b,i2b,j2b,1] = integrate_fast_kernel(0,0,0,PK[:,i2b,j2b],ak1[k2b,i2b],ck1[k2b,i2b],ak2[k2b,j2b],ck2[k2b,j2b],'triangle',xt1=xt1,yt1=yt1,xt2=xt2,yt2=yt2,xt3=xt3,yt3=yt3)
-    dN_gain[k2b,i2b,j2b,0] = (dNi_loss[k2b,i2b,j2b])-dN_gain[k2b,i2b,j2b,1]
-    
-    # Condition 12 (3b): Triangle collection within k+1 bin. Occurs when xk+1 clips UL corner and intersects with right edge.
-    # Triangle = ((xi1,xj2),(xi2,xj2),(xi2,y_right_edge)
-    xt1 = x11[k3b,i3b].copy()
-    yt1 = x22[k3b,j3b].copy()
-    xt2 = x21[k3b,i3b].copy()
-    yt2 = x22[k3b,j3b].copy()
-    xt3 = x21[k3b,i3b].copy()
-    yt3 = y_right_edge[k3b,i3b,j3b].copy()
-    
-    dM_gain[k3b,i3b,j3b,1] = integrate_fast_kernel(0,0,1,PK[:,i3b,j3b],ak1[k3b,i3b],ck1[k3b,i3b],ak2[k3b,j3b],ck2[k3b,j3b],'triangle',xt1=xt1,yt1=yt1,xt2=xt2,yt2=yt2,xt3=xt3,yt3=yt3)
-    dM_gain[k3b,i3b,j3b,0] = (dMi_loss[k3b,i3b,j3b]+dMj_loss[k3b,i3b,j3b])-dM_gain[k3b,i3b,j3b,1]
-    
-    dN_gain[k3b,i3b,j3b,1] = integrate_fast_kernel(0,0,0,PK[:,i3b,j3b],ak1[k3b,i3b],ck1[k3b,i3b],ak2[k3b,j3b],ck2[k3b,j3b],'triangle',xt1=xt1,yt1=yt1,xt2=xt2,yt2=yt2,xt3=xt3,yt3=yt3)
-    dN_gain[k3b,i3b,j3b,0] = (dNi_loss[k3b,i3b,j3b])-dN_gain[k3b,i3b,j3b,1]
-    
-   
-    M1_loss = np.nansum(dMi_loss,axis=2) 
-    N1_loss = np.nansum(dNi_loss,axis=2) 
-    
-    M2_loss = np.nansum(dMj_loss,axis=1) 
-    N2_loss = np.nansum(dNi_loss,axis=1)
-       
-    # ChatGPT is the GOAT for telling me about np.add.at!
-    M_gain = np.zeros((Hlen,bins))
-    np.add.at(M_gain, (np.arange(Hlen)[:,None,None],kmin), dM_gain[:,:,:,0])
-    np.add.at(M_gain,  (np.arange(Hlen)[:,None,None],kmid), dM_gain[:,:,:,1])
-    
-    N_gain = np.zeros((Hlen,bins))
-    np.add.at(N_gain,  (np.arange(Hlen)[:,None,None],kmin), dN_gain[:,:,:,0])
-    np.add.at(N_gain,  (np.arange(Hlen)[:,None,None],kmid), dN_gain[:,:,:,1])
-      
-    # ELD NOTE: Breakup here can take losses from each pair and calculate gains
-    # for breakup. Breakup gain arrays will be 3D.
-    if breakup:
-        
-        Mij_loss = dMi_loss[k1,i1,j1]+dMj_loss[k1,i1,j1]
-  
-        np.add.at(Mb_gain,  k1, np.transpose(dMb_gain_frac[:,kmin[i1,j1]]*Mij_loss))
-        np.add.at(Nb_gain,  k1, np.transpose(dNb_gain_frac[:,kmin[i1,j1]]*Mij_loss))
-        
-   
-    return M1_loss, M2_loss, M_gain, Mb_gain, N1_loss, N2_loss, N_gain, Nb_gain
-
-
 def calculate_1mom(i1,j1,k1,n1,n2,dMi_loss,dMj_loss,dM_gain,kmin,kmid,dMb_gain_frac,breakup):
     
     '''
@@ -862,6 +428,9 @@ def calculate_1mom(i1,j1,k1,n1,n2,dMi_loss,dMj_loss,dM_gain,kmin,kmid,dMb_gain_f
     
     n12 = n1[:,:,None]*n2[:,None,:]
     
+    #print('n12=',n12.shape)
+    #raise Exception()
+    
     M1_loss = np.nansum(n12*(dMi_loss[None,:,:]),axis=2) 
     M2_loss = np.nansum(n12*(dMj_loss[None,:,:]),axis=1) 
        
@@ -871,19 +440,33 @@ def calculate_1mom(i1,j1,k1,n1,n2,dMi_loss,dMj_loss,dM_gain,kmin,kmid,dMb_gain_f
     np.add.at(M_gain,  (np.arange(Hlen)[:,None,None],kmid), n12*(dM_gain[:,:,1][None,:,:]))
     
     # Initialize gain term arrays
-    Mb_gain  = np.zeros((Hlen,bins))
+    #Mb_gain  = np.zeros((Hlen,bins))
     
     # ELD NOTE: Breakup here can take losses from each pair and calculate gains
     # for breakup. Breakup gain arrays will be 3D.
     if breakup:
         
-        Mij_loss = n12[k1,i1,j1]*(dMi_loss[i1,j1]+dMj_loss[i1,j1])
+        Mij_loss = n12[:,i1,j1]*(dMi_loss[i1,j1]+dMj_loss[i1,j1])[None,:]
         
+       # print('dMb_gain_frac[:,kmin[i1,j1]]=',dMb_gain_frac[:,kmin[i1,j1]].shape)
+       # print('Madd=',np.shape(dMb_gain_frac[:,kmin[i1,j1]][None,:,:]*Mij_loss[:,None,:]))
+       # raise Exception()
         #print('Mij_loss=',Mij_loss.shape)
-        #print('Madd=',np.shape(dMb_gain_frac[:,kmin[i1,j1]][None,:,:]*Mij_loss[:,None,:]))
         #raise Exception()
   
-        np.add.at(Mb_gain,  k1, np.transpose(dMb_gain_frac[:,kmin[i1,j1]]*Mij_loss))
+        #np.add.at(Mb_gain,  k1, np.transpose(dMb_gain_frac[:,kmin[i1,j1]]*Mij_loss))
+        
+        #np.add.at(Mb_gain,  np.arange(Hlen)[None,None,:], np.transpose((dMb_gain_frac[:,kmin[i1,j1]][None,:,:])*Mij_loss[:,None,:]))
+        
+        Mb_gain = np.nansum((dMb_gain_frac[:,kmin[i1,j1]][None,:,:])*Mij_loss[:,None,:],axis=2)
+        
+        # print('k1=',np.unique(k1))
+        # print('Mb_gain=',Mb_gain.shape)
+        # print('dMb_gain_frac=',dMb_gain_frac[:,kmin[i1,j1]].shape)
+        # print('Mij_loss=',Mij_loss.shape)
+        # print('in=',((dMb_gain_frac[:,kmin[i1,j1]][None,:,:])*Mij_loss[:,None,:]).shape)
+        # #print('Hlen=',np.arange(Hlen).shape)
+        # raise Exception()
         
         #np.add.at(Mb_gain,  k1, dMb_gain_frac[:,kmin[i1,j1]][None,:,:]*Mij_loss[:,None,:])
         
@@ -1112,8 +695,6 @@ class Interaction():
         if self.mom_num==1:  
             
             '''
-            !!! Note:
-                
                 Using memory mapping here to save arrays temporarily if processing
                 in parallel.
             
@@ -1366,188 +947,92 @@ class Interaction():
             self.dNb_gain_frac[np.isnan(self.dMb_gain_frac)|np.isnan(self.dNb_gain_frac)] = 0.
 
 
-    def plot_source_target_vec(self,dist1,dist2,ii,jj,invert=False,full=False):
+    def plot_source_target_vec(self,dist1,dist2,kk,ii,jj,invert=False,full=False):
+        
+        '''
+        Method for plotting the integration region of the (kk,ii,jj) interaction.
+        Useful for debugging.
+        '''
         
         from matplotlib.patches import Polygon
         
         import matplotlib.pyplot as plt
         
-        # Rectangular source space vertices
-        if full:
-            xi1 = dist1.xi1[ii]
-            xi2 = dist1.xi2[ii]
-            xj1 = dist2.xi1[jj]
-            xj2 = dist2.xi2[jj]
-          
-        else:
-            xi1 = dist1.x1[ii]
-            xi2 = dist1.x2[ii]
-            xj1 = dist2.x1[jj]
-            xj2 = dist2.x2[jj]
+        regions = setup_regions(dist1.x1,dist1.x2,
+                                dist1.aki,dist1.cki,
+                                dist2.x1,dist2.x2,
+                                dist2.aki,dist2.ck,
+                                self.xi1,self.xi2,self.kmin,self.cond_1,self.self_col)
         
+
+        xi1 = dist1.x1[ii]
+        xi2 = dist1.x2[ii]
+        xj1 = dist2.x1[jj]
+        xj2 = dist2.x2[jj]
+    
         # NOTE: Need to avoid doing anything with the last bin
         kbin_min = dist1.xi1[:,None]+dist2.xi1[None,:]
         kbin_max = dist1.xi2[:,None]+dist2.xi2[None,:]
         
-        idx_min = np.searchsorted(dist1.xedges, kbin_min, side='right')-1
+        xk_min = dist2.xi2[self.kmin][ii,jj]
         
-        # Clamp values to valid bin range [0, B-1]
-        kmin = np.clip(idx_min, 0, dist1.bins-1) 
+        # Find region with requested (ii,jj) indices.
+        x_bottom_edge = regions['x_bottom_edge']
+        x_top_edge = regions['x_top_edge']
+        y_left_edge = regions['y_left_edge']
+        y_right_edge = regions['y_right_edge']
+        i1 = regions['1']['i']
+        j1 = regions['1']['j']
+        k1 = regions['1']['k']
+        i2 = regions['2']['i']
+        j2 = regions['2']['j']
+        k2 = regions['2']['k']
+        i2b = regions['2b']['i']
+        j2b = regions['2b']['j']
+        k2b = regions['2b']['k']
+        i3 = regions['3']['i']
+        j3 = regions['3']['j']
+        k3 = regions['3']['k']
+        i3b = regions['3b']['i']
+        j3b = regions['3b']['j']
+        k3b = regions['3b']['k']
+        i4 = regions['4']['i']
+        j4 = regions['4']['j']
+        k4 = regions['4']['k']
+        i5 = regions['5']['i']
+        j5 = regions['5']['j']
+        k5 = regions['5']['k']
+        i6 = regions['6']['i']
+        j6 = regions['6']['j']
+        k6 = regions['6']['k']
+        i7 = regions['7']['i']
+        j7 = regions['7']['j']
+        k7 = regions['7']['k']
+        i8 = regions['8']['i']
+        j8 = regions['8']['j']
+        k8 = regions['8']['k']
+        i9 = regions['9']['i']
+        j9 = regions['9']['j']
+        k9 = regions['9']['k']
+        i10 = regions['10']['i']
+        j10 = regions['10']['j']
+        k10 = regions['10']['k']
         
-        #kmin = min(np.argmin(kbin_min>=dist1.xedges[:,None],axis=0),dist1.bins-1)-1
-        kmid = np.minimum(kmin+1,dist1.bins-1)
-
-        # For self-collection on mass-doubling grid, gain bounds cover exactly one bin
-        kdiag = np.diag_indices(kmin.shape[0])
-        kmin[kdiag] = kdiag[0]+dist1.sbin
-        kmid[kdiag] = kdiag[0]+dist1.sbin
-          
-        kmin = np.clip(kmin,0,dist1.bins-1)
-        kmid = np.clip(kmid,0,dist1.bins-1)
-             
-        xk_min = dist2.xi2[kmin][ii,jj]
+        cond = np.zeros((self.Hlen,self.bins,self.bins),dtype=int)
         
-        ind_i, ind_j = np.meshgrid(np.arange(0,dist1.bins,1),np.arange(0,dist1.bins,1),indexing='ij')      
-        
-        if full:
-            x_bottom_edge = (dist1.xi2[kmin]-dist2.xi1[None,:])
-            x_top_edge = (dist1.xi2[kmin]-dist2.xi2[None,:])
-            y_left_edge = (dist1.xi2[kmin]-dist1.xi1[:,None])
-            y_right_edge = (dist1.xi2[kmin]-dist1.xi2[:,None])
+        cond[k1,i1,j1]    = 1
+        cond[k2,i2,j2]    = 2
+        cond[k3,i3,j3]    = 3
+        cond[k4,i4,j4]    = 4
+        cond[k5,i5,j5]    = 5
+        cond[k6,i6,j6]    = 6
+        cond[k7,i7,j7]    = 7
+        cond[k8,i8,j8]    = 8
+        cond[k9,i9,j9]    = 9 
+        cond[k10,i10,j10] = 10
+        cond[k2b,i2b,j2b] = 11 
+        cond[k3b,i3b,j3b] = 12
             
-            check_bottom = (dist1.xi1[:,None]<x_bottom_edge) &\
-                           (dist1.xi2[:,None]>x_bottom_edge)
-             
-            check_top = (dist1.xi1[:,None]<x_top_edge) &\
-                        (dist1.xi2[:,None]>x_top_edge)
-                        
-            check_left = (dist2.xi1[None,:]<y_left_edge) &\
-                        (dist2.xi2[None,:]>y_left_edge)
-                        
-            check_right = (dist2.xi1[None,:]<y_right_edge) &\
-                          (dist2.xi2[None,:]>y_right_edge)    
-                          
-            check_middle = ((0.5*(dist1.xi1[:,None]+dist1.xi2[:,None]))+(0.5*(dist2.xi1[None,:]+dist2.xi2[None,:])))<dist2.xi2[kmin]
-            
-        else:
-            x_bottom_edge = (dist1.xi2[kmin]-dist2.x1[None,:])
-            x_top_edge = (dist1.xi2[kmin]-dist2.x2[None,:])
-            y_left_edge = (dist1.xi2[kmin]-dist1.x1[:,None])
-            y_right_edge = (dist1.xi2[kmin]-dist1.x2[:,None])
-            
-            check_bottom = (dist1.x1[:,None]<x_bottom_edge) &\
-                           (dist1.x2[:,None]>x_bottom_edge)
-             
-            check_top = (dist1.x1[:,None]<x_top_edge) &\
-                        (dist1.x2[:,None]>x_top_edge)
-                        
-            check_left = (dist2.x1[None,:]<y_left_edge) &\
-                        (dist2.x2[None,:]>y_left_edge)
-                        
-            check_right = (dist2.x1[None,:]<y_right_edge) &\
-                          (dist2.x2[None,:]>y_right_edge)    
-                                     
-            check_middle = ((0.5*(dist1.x1[:,None]+dist1.x2[:,None]))+(0.5*(dist2.x1[None,:]+dist2.x2[None,:])))<dist2.xi2[kmin]
-               
-        # If opposite sides check true, then integral region is rectangle + triangle
-        # If adjacent sides check true, then integral region is triangle       
-               
-        # Check which opposite side is higher for cases where we have rectangle + triangle
-        # NOTE: It SHOULD be the case that y_left_edge>y_right_edge and x_bottom_edge>x_top_edge
-        # This just has to do with the geometry of the x+y mapping, i.e., the x+y lines have negative slope.
-        
-        cond = np.zeros((dist1.bins,dist2.bins),dtype=int)
-        cond_touch = (check_bottom|check_top|check_left|check_right)
-        
-        #cond_2_corner = (dist1.x2==dist1.xi2)&(dist2.x1==dist2.xi1)&(check_left)
-       # cond_3_corner = (dist1.x1==dist1.xi1)&(dist2.x1==dist2.xi1)&(check_bottom)
-        
-        #cond_2_corner = ((dist1.x2==dist1.xi2)[:,None])&((dist2.x1==dist2.xi1)[None,:])&(check_left)
-        #cond_3_corner = (dist1.x1==dist1.xi1)[:,None]&(dist2.x2==dist2.xi2)[None,:]&(check_bottom)
-        
-        # NEW
-        cond_2_corner = ((dist1.x2==self.xi2))&((dist2.x1==self.xi1))&(check_left)
-        cond_3_corner = ((dist1.x1==self.xi1))&((dist2.x2==self.xi2))&(check_bottom)
-        
-        cond_2b_corner = ((dist1.x2==self.xi2))&((dist2.x1==self.xi1))&(check_top)
-        cond_3b_corner = ((dist1.x1==self.xi1))&((dist2.x2==self.xi2))&(check_right)
-        
-        #cond_2_corner = (dist1.x2==dist1.xi2[None,:])[:,None,:]&(dist2.x1==dist2.xi1[None,:])[:,:,None]&(check_left)
-        #cond_3_corner = (dist1.x1==self.xi1[None,:])[:,None,:]&(dist2.x1==self.xi1[None,:])[:,:,None]&(check_bottom)
-        
-        cond_1 = (self.ind_i>=(dist1.bins-dist1.sbin)) | (self.ind_j>=(dist2.bins-dist2.sbin))
-        cond_2 = np.eye(cond.shape[0],k=1,dtype=bool) & (cond_2_corner) & (~cond_1) & (cond_touch)
-        cond_3 = np.eye(cond.shape[0],k=-1,dtype=bool) & (cond_3_corner) & (~cond_1) & (cond_touch)
-        cond_2b = (check_top) & (cond_2b_corner) & (~cond_1) & (cond_touch)
-        cond_3b = (check_right) & (cond_3b_corner) & (~cond_1) & (cond_touch)
-        
-        cond_4 = np.eye(cond.shape[0],dtype=bool) & (~cond_1)
-        cond_nt = (~(cond_1|cond_2|cond_3|cond_4))
-       # cond_5 = (check_top&check_bottom) & (x_bottom_edge>x_top_edge) & cond_nt
-       # cond_6 = (check_left&check_right) & (y_left_edge>y_right_edge) & cond_nt
-        cond_5 = (check_top&check_bottom)  & cond_nt
-        cond_6 = (check_left&check_right)  & cond_nt
-        cond_7 =  (check_right&check_top)  & cond_nt
-        cond_8 = (check_left&check_bottom) & cond_nt
-        cond_rect = (~cond_touch)&(~cond_1)&(~cond_4)&(~cond_5)&(~cond_6)&(~cond_7)&(~cond_8)
-        # This occurs if source region is fully within k or k+1 bins.
-        cond_9 = (cond_rect&check_middle)
-        cond_10 = (cond_rect&(~check_middle))
-        
-        cond_stack = np.stack((cond_1,cond_2,cond_3,cond_4,cond_5,cond_6,cond_7,cond_8,cond_9,cond_10),axis=0)
-        
-        cond_full = np.sum(cond_stack,axis=0) 
-
-        cond[cond_1]  = 1 # Ignore CC process for these source bins; they don't map to the largest avail bin or we don't use them for some other reason.
-        cond[cond_2]  = 2 # k bin: Lower triangle region. Just clips LR corner.
-                          # Triangle = ((xi1,xj1),(xi1,y_left_edge),(xi2,xj1))
-        cond[cond_3]  = 3 # k bin: Lower triangle region. Just clips UL corner.
-                          # Triangle = ((xi1,xj1),(xi1,xj2),(x_bottom_edge,xj1))  
-        cond[cond_2b]  = 11 # k+1 bins: Upper triangle region. Just clips BR corner.
-                            # Triangle = ((xi1,xj1),(x_top_edge,xj2),(xi2,xj2))
-        cond[cond_3b]  = 12 # k+1 bin: Upper triangle region. Just clips UL corner.
-                            # Triangle = ((xi1,xj2),(xi2,xj2),(xi2,y_right_edge))  
-        cond[cond_4]  = 4 # Full Rectangular source region based on self collection: ii == jj --> ii+sbin or jj+sbin
-        cond[cond_5]  = 5 # k bin: Top/Bottom clip: Rectangle on left, triangle on right
-                          #        Rectangle = ((xi1,xj1),(xi1,xj2),(x_top_edge,xj2),(x_top_edge,xj1))
-                          #        Triangle  = ((x_top_edge,xj1),(x_top_edge,xj2),(x_bottom_edge,xj1))
-        cond[cond_6]  = 6 # k bin: Left/Right clip: Rectangle on bottom, triangle on top
-                          #        Rectangle = ((xi1,xj1),(xi1,y_right_edge),(xi2,y_right_edge),(xi2,xj1))
-                          #        Triangle  = ((xi1,y_right_edge),(xi1,y_left_edge),(xi2,y_right_edge))
-        cond[cond_7]  = 7 # k+1 bin: Triangle in top right corner
-                          #          Triangle = ((x_top_edge,xj2),(xi2,xj2),(xi2,y_right_edge))
-        cond[cond_8]  = 8 # k bin: Triangle in lower left corner
-                          #          Triangle = ((xi1,xj1),(xi1,y_left_edge),(x_bottom_edge,xj1))
-     
-        cond[cond_9]  = 9 # Full Rectangular source region in k bin
-        cond[cond_10] = 10# Full Rectangular source region in k+1 bin
-      
-        #cond[ii,jj] = 4  
-      
-        # THESE SHOULDN'T EVER HAPPEN!
-        # cond[cond_9]  = 9 # Triangle in UL corner; PROBABLY shouldn't ever happen
-       # cond[cond_12] = 12 # Triangle in BR corner; PROBABLY shouldn't ever happen
-
-        print('cond=',cond[ii,jj])
-        print('check_bottom=',check_bottom[ii,jj])
-        print('check_top=',check_top[ii,jj])
-        print('check_left=',check_left[ii,jj])
-        print('check_right=',check_right[ii,jj])
-        print('check_rectangle=',cond_rect[ii,jj])
-        print('cond_2_corner=',cond_2_corner[ii,jj])
-        print('cond_3_corner=',cond_3_corner[ii,jj])
-        print('check1=',(dist1.x2==dist1.xi2))
-        print('check2=',(dist2.x1==dist2.xi1))
-        print('dist1.x2==dist1.xi2 | {}=={}'.format(dist1.x2[ii],dist1.xi2[ii]))
-        print('dist2.x1==dist2.xi1 | {}=={}'.format(dist2.x1[jj],dist2.xi1[jj]))
-        print('xi1=',xi1)
-        print('xj1=',xj1)
-        print('xi2=',xi2)
-        print('xj2=',xj2)
-       # raise Exception()
-       
-
-        
         fig, ax = plt.subplots();   
         
         if invert:
@@ -1567,29 +1052,29 @@ class Interaction():
             
         else:
             
-            if cond[ii,jj]==2:
+            if cond[kk,ii,jj]==2:
                 # Triangle = ((xi1,xj1),(xi1,x_left_edge),(xi2,xj1))
-                kgain_t = Polygon(((xi1,xj1),(xi1,y_left_edge[ii,jj]),(xi2,xj1)),closed=True,facecolor='purple')
-            elif cond[ii,jj]==3:
-                kgain_t = Polygon((((xi1,xj1),(xi1,xj2),(x_bottom_edge[ii,jj],xj1))),closed=True,facecolor='purple')
-            elif cond[ii,jj]==11:
-                kgain_t = Polygon((((xi1,xj1),(x_top_edge[ii,jj],xj2),(xi2,xj2))),closed=True,facecolor='purple')
-            elif cond[ii,jj]==12:
-                kgain_t = Polygon(((xi1,xj2),(xi2,xj2),(xi2,y_right_edge[ii,jj])),closed=True,facecolor='purple')
-            elif cond[ii,jj]==7:
-                kgain_t = Polygon(((x_top_edge[ii,jj],xj2),(xi2,xj2),(xi2,y_right_edge[ii,jj])),closed=True,facecolor='purple')
-            elif cond[ii,jj]==8:
-                kgain_t = Polygon(((xi1,xj1),(xi1,y_left_edge[ii,jj]),(x_bottom_edge[ii,jj],xj1)),closed=True,facecolor='purple')
-            elif np.isin(cond[ii,jj],[4,9,10]):
+                kgain_t = Polygon(((xi1,xj1),(xi1,y_left_edge[kk,ii,jj]),(xi2,xj1)),closed=True,facecolor='purple')
+            elif cond[kk,ii,jj]==3:
+                kgain_t = Polygon((((xi1,xj1),(xi1,xj2),(x_bottom_edge[kk,ii,jj],xj1))),closed=True,facecolor='purple')
+            elif cond[kk,ii,jj]==11:
+                kgain_t = Polygon((((xi1,xj1),(x_top_edge[kk,ii,jj],xj2),(xi2,xj2))),closed=True,facecolor='purple')
+            elif cond[kk,ii,jj]==12:
+                kgain_t = Polygon(((xi1,xj2),(xi2,xj2),(xi2,y_right_edge[kk,ii,jj])),closed=True,facecolor='purple')
+            elif cond[kk,ii,jj]==7:
+                kgain_t = Polygon(((x_top_edge[kk,ii,jj],xj2),(xi2,xj2),(xi2,y_right_edge[kk,ii,jj])),closed=True,facecolor='purple')
+            elif cond[kk,ii,jj]==8:
+                kgain_t = Polygon(((xi1,xj1),(xi1,y_left_edge[kk,ii,jj]),(x_bottom_edge[kk,ii,jj],xj1)),closed=True,facecolor='purple')
+            elif np.isin(cond[kk,ii,jj],[4,9,10]):
                 kgain_r = Polygon(((xi1,xj1),(xi1,xj2),(xi2,xj2),(xi2,xj1)),closed=True,facecolor='purple')
-            elif cond[ii,jj]==5:
-                kgain_t = Polygon(((x_top_edge[ii,jj],xj1),(x_top_edge[ii,jj],xj2),(x_bottom_edge[ii,jj],xj1)),closed=True,facecolor='purple')
-                kgain_r =Polygon(((xi1,xj1),(xi1,xj2),(x_top_edge[ii,jj],xj2),(x_top_edge[ii,jj],xj1)),closed=True,facecolor='orange')
-            elif cond[ii,jj]==6:
-                kgain_t = Polygon(((xi1,y_right_edge[ii,jj]),(xi1,y_left_edge[ii,jj]),(xi2,y_right_edge[ii,jj])),closed=True,facecolor='purple')
-                kgain_r =Polygon(((xi1,xj1),(xi1,y_right_edge[ii,jj]),(xi2,y_right_edge[ii,jj]),(xi2,xj1)),closed=True,facecolor='orange')
+            elif cond[kk,ii,jj]==5:
+                kgain_t = Polygon(((x_top_edge[kk,ii,jj],xj1),(x_top_edge[kk,ii,jj],xj2),(x_bottom_edge[kk,ii,jj],xj1)),closed=True,facecolor='purple')
+                kgain_r =Polygon(((xi1,xj1),(xi1,xj2),(x_top_edge[kk,ii,jj],xj2),(x_top_edge[kk,ii,jj],xj1)),closed=True,facecolor='orange')
+            elif cond[kk,ii,jj]==6:
+                kgain_t = Polygon(((xi1,y_right_edge[kk,ii,jj]),(xi1,y_left_edge[kk,ii,jj]),(xi2,y_right_edge[kk,ii,jj])),closed=True,facecolor='purple')
+                kgain_r =Polygon(((xi1,xj1),(xi1,y_right_edge[kk,ii,jj]),(xi2,y_right_edge[kk,ii,jj]),(xi2,xj1)),closed=True,facecolor='orange')
             
-            if  (np.isin(cond[ii,jj],[2,3,5,6,7,8,11,12])):
+            if  (np.isin(cond[kk,ii,jj],[2,3,5,6,7,8,11,12])):
                 ax.add_patch(kgain_t)
             
             if (np.isin(cond[ii,jj],[4,5,6,9])):
@@ -1599,7 +1084,7 @@ class Interaction():
             ax.plot([dist1.xi1[ii],dist1.xi2[ii]],[xk_min-dist1.xi1[ii],xk_min-dist1.xi2[ii]],'k')
             ax.plot([dist1.xi1[ii],dist1.xi2[ii]],[kbin_max[ii,jj]-dist1.xi1[ii],kbin_max[ii,jj]-dist1.xi2[ii]],'r')
     
-        return fig, ax, cond, cond_full
+        return fig, ax, cond
 
         
     # Advance PSD Mbins and Nbins by one time/height step
@@ -1614,14 +1099,12 @@ class Interaction():
         
         indc = self.indc
         indb = self.indb
-        
 
         dd = 0
         
         for d1 in range(self.dnum):
             for d2 in range(d1,self.dnum):
-                
-                
+                 
                 if self.parallel:
                     
                     
@@ -1630,13 +1113,15 @@ class Interaction():
                     ck2  = self.cki[d2,:,:] 
                     
                                         
-                    gain_loss_temp = Parallel(n_jobs=self.n_jobs,verbose=0)(delayed(calculate_1mom)(self.regions[dd]['1']['i'],
+                    gain_loss_temp = Parallel(n_jobs=self.n_jobs,verbose=0)(delayed(calculate_1mom)(
+                                        self.regions[dd]['1']['i'],
                                         self.regions[dd]['1']['j'],
                                         self.regions[dd]['1']['k'],
                                         ck1[batch,:],ck2[batch,:],
                                         self.dMi_loss[dd,0,:,:],
                                         self.dMj_loss[dd,0,:,:],
-                                        self.dM_gain[dd,0,:,:,:],self.kmin,self.kmid,self.dMb_gain_frac,self.breakup) for batch in self.batches)  
+                                        self.dM_gain[dd,0,:,:,:],
+                                        self.kmin,self.kmid,self.dMb_gain_frac,self.breakup) for batch in self.batches)  
 
 
                     M1_loss_temp = np.vstack([gl[0] for gl in gain_loss_temp])
@@ -1674,7 +1159,9 @@ class Interaction():
                                     self.dM_gain[dd,0,:,:,:],
                                     self.kmin,self.kmid,self.dMb_gain_frac,self.breakup)
                     
-                    
+                 
+                #print('Mb_gain_temp=',Mb_gain_temp.sum())
+                #raise Exception()
         
                 #print('M_loss_temp=',(M1_loss_temp+M2_loss_temp).sum())
                # print('M_gain_temp=',M_gain_temp.sum())
@@ -1692,7 +1179,8 @@ class Interaction():
         
         M_net = dt*(M_gain-M_loss) 
         
-        #print('M_gain=',M_gain.sum())
+        
+        #print('dMi_loss=',self.dMi_loss.shape)
         #print('M_loss=',M_loss.sum())
         #raise Exception()
         
@@ -1847,161 +1335,14 @@ class Interaction():
         M_net = dt*(M_gain-M_loss) 
         N_net = dt*(N_gain-N_loss)
         
+        
+       # print('M_gain=',M_gain[1,:,:].sum())
+        #raise Exception()
+        
         return M_net, N_net    
     
    
         
-    # Advance PSD Mbins and Nbins by one time/height step
-    def interact(self,dt):
-
-        # Ndists x height x bins
-        Mbins_old = self.Mbins.copy() 
-        Nbins_old = self.Nbins.copy()
-        
-        Mbins = np.zeros_like(Mbins_old)
-        Nbins = np.zeros_like(Nbins_old)
-
-        M_loss = np.zeros_like(Mbins)
-        N_loss = np.zeros_like(Nbins) 
-        
-        M_gain = np.zeros_like(Mbins)
-        N_gain = np.zeros_like(Nbins)
-        
-        indc = self.indc
-        indb = self.indb
-        
-
-        for d1 in range(self.dnum):
-            for d2 in range(d1,self.dnum):
-                if d1==d2:
-                    self_col = True 
-                else:
-                    self_col = False
-                    
-
-                if self.parallel:
-                    
-                    # Set up batches for each bin-bin pair? Would need to unravel
-                    # arrays appropriately afterward. Also would need to figure out 
-                    # how to do self and cross collection appropriately.
-                    
-                    # Find all bin pairs
-                    
-                    # (dnum x height x bins)
-                    x11  = self.x1[d1,:,:]
-                    x21  = self.x2[d1,:,:]
-                    ak1  = self.aki[d1,:,:]
-                    ck1  = self.cki[d1,:,:] 
-                    M1   = self.Mbins[d1,:,:]
-                    
-                    x12  = self.x1[d2,:,:]
-                    x22  = self.x2[d2,:,:]
-                    ak2  = self.aki[d2,:,:] 
-                    ck2  = self.cki[d2,:,:] 
-                    M2   = self.Mbins[d2,:,:]
-                    
-                    #
-                    #Mcheck = ((M1==0.)[:,None]) | ((M2==0.)[None,:])
-                    #ikeep = np.nonzero(~(self.cond_1&Mcheck))
-                    
-                    #Mcheck = ((M1==0.)[:,:,None]) | ((M2==0.)[:,None,:])
-                    
-                    
-                    #cond_1 = self.cond_1 | Mcheck # New cond_1. Basically exclude bin-pairs that are off grid and ones involving empty bins.
-                    
-                    
-
-                    # ORIGINAL
-                    gain_loss_temp = Parallel(n_jobs=self.n_jobs,verbose=0)(delayed(calculate_integrals)(x11[batch,:],x21[batch,:],ak1[batch,:],ck1[batch,:],M1[batch,:],
-                                           x12[batch,:],x22[batch,:],ak2[batch,:],ck2[batch,:],M2[batch,:],
-                                           self.PK[:,d1,d2,:,:],self.xi1,self.xi2,self.kmin,self.kmid,self.cond_1[batch,:,:], 
-                                           self.dMb_gain_frac,self.dNb_gain_frac, 
-                                           self_col=self_col,breakup=self.breakup) for batch in self.batches)
-                  
-                    # gain_loss_temp = Parallel(n_jobs=self.n_jobs,verbose=0)(delayed(calculate_integrals)(x11[batch,:],x21[batch,:],ak1[batch,:],ck1[batch,:],M1[batch,:],
-                    #                         x12[batch,:],x22[batch,:],ak2[batch,:],ck2[batch,:],M2[batch,:],
-                    #                         self.PK[:,d1,d2,:,:],self.xi1,self.xi2,self.kmin,self.kmid,cond_1[batch,:,:], 
-                    #                         self.dMb_gain_frac,self.dNb_gain_frac, 
-                    #                         self_col=self_col,breakup=self.breakup) for batch in self.batches)
-                    
-                    
-                    # gain_loss_temp = Parallel(n_jobs=self.n_jobs,verbose=0)(delayed(calculate_integrals)(x11[batch,:],x21[batch,:],ak1[batch,:],ck1[batch,:],M1[batch,:],
-                    #                         x12[batch,:],x22[batch,:],ak2[batch,:],ck2[batch,:],M2[batch,:],
-                    #                         self.PK[:,d1,d2,:,:],self.xi1,self.xi2,self.kmin,self.kmid,self.cond_1, 
-                    #                         self.dMb_gain_frac,self.dNb_gain_frac, 
-                    #                         self_col=self_col,breakup=self.breakup) for batch in self.batches)
-                    
-        
-                    # IF x11.shape = (Hlen,bins) then 
-        
-                    M1_loss_temp = np.vstack([gl[0] for gl in gain_loss_temp])
-                    M2_loss_temp = np.vstack([gl[1] for gl in gain_loss_temp])
-                    M_gain_temp =  np.vstack([gl[2] for gl in gain_loss_temp])
-                    Mb_gain_temp = np.vstack([gl[3] for gl in gain_loss_temp])
-                    N1_loss_temp = np.vstack([gl[4] for gl in gain_loss_temp])
-                    N2_loss_temp = np.vstack([gl[5] for gl in gain_loss_temp])
-                    N_gain_temp  = np.vstack([gl[6] for gl in gain_loss_temp])
-                    Nb_gain_temp = np.vstack([gl[7] for gl in gain_loss_temp])
-            
-                else:
-                    # Collision-Coalescence / Breakup
-                    #M1_loss_temp, M2_loss_temp, M_gain_temp, Mb_gain_temp,\
-                    #N1_loss_temp, N2_loss_temp, N_gain_temp, Nb_gain_temp = self.calculate(d1,d2,np.squeeze(self.PK[:,d1,d2,:,:]),self_col)
-        
-                    
-        
-                    x11  = self.x1[d1,:]
-                    x21  = self.x2[d1,:]
-                    ak1  = self.aki[d1,:]
-                    ck1  = self.cki[d1,:] 
-                    M1   = self.Mbins[d1,:]
-                    
-                    x12  = self.x1[d2,:]
-                    x22  = self.x2[d2,:]
-                    ak2  = self.aki[d2,:] 
-                    ck2  = self.cki[d2,:] 
-                    M2   = self.Mbins[d2,:]
-                    
-                    # Calculate bin-source pairs
-                    
-                   # Mcheck = ((M1==0.)[:,:,None]) | ((M2==0.)[:,None,:])
-                    
-                    #cond_1 = self.cond_1 | Mcheck # New cond_1. Basically exclude bin-pairs that are off grid and ones involving empty bins.
-                    
-                    
-                    
-        
-                    M1_loss_temp, M2_loss_temp, M_gain_temp, Mb_gain_temp,\
-                    N1_loss_temp, N2_loss_temp, N_gain_temp, Nb_gain_temp = calculate_integrals(x11,x21,ak1,ck1,M1, 
-                                    x12,x22,ak2,ck2,M2,self.PK[:,d1,d2,:,:],self.xi1,self.xi2,self.kmin,self.kmid,self.cond_1, 
-                                    self.dMb_gain_frac,self.dNb_gain_frac, 
-                                    self_col=self_col,breakup=self.breakup)
-        
-        
-                if self.cnz:
-                   self.plot_source_target_vec(self.dists[0][0],self.dists[0][0],28,27,full=False)
-                   raise Exception()
-                    
-        
-                M_loss[d1,:,:]    += M1_loss_temp 
-                M_loss[d2,:,:]    += M2_loss_temp
-                
-                M_gain[indc,:,:]  += self.Eagg*M_gain_temp
-                M_gain[indb,:,:]  += self.Ebr*Mb_gain_temp
-                
-                N_loss[d1,:,:]    += N1_loss_temp
-                N_loss[d2,:,:]    += N2_loss_temp
-                 
-                N_gain[indc,:,:]  += self.Eagg*N_gain_temp
-                N_gain[indb,:,:]  += self.Ebr*Nb_gain_temp
-                
-        M_loss *= self.Ecb
-        N_loss *= self.Ecb 
-        
-        M_net = dt*(M_gain-M_loss) 
-        N_net = dt*(N_gain-N_loss)
-        
-        return M_net, N_net
 
 
  
@@ -2026,6 +1367,592 @@ class Interaction():
 
 
 #----------------------
+
+
+# def calculate_integrals(x11,x21,ak1,ck1,M1, 
+#                         x12,x22,ak2,ck2,M2,
+#                         PK,xi1,xi2,kmin,kmid,cond_1_orig, 
+#                         dMb_gain_frac,dNb_gain_frac, 
+#                         self_col=False,breakup=False):
+    
+#     '''
+#      This function calculate mass and number transfer rates
+#      for collision-coalescence and collisional breakup between
+#      each distribution.
+#     '''
+    
+#     '''
+#     Check edges and find integration regions in source space
+#     ''' 
+    
+#     #Mcheck = ((M1==0.)[None,:,None]) | ((M2==0.)[None,None,:])
+    
+#     #Mcheck = ((M1==0.)[None,:,None]) | ((M2==0.)[None,None,:])
+    
+    
+    
+#     # WORKING vvv
+    
+#     Mcheck = ((M1==0.)[:,:,None]) | ((M2==0.)[:,None,:])
+    
+    
+#     cond_1 = cond_1_orig | Mcheck # New cond_1. Basically exclude bin-pairs that are off grid and ones involving empty bins.
+    
+
+#     # Working ^^^
+    
+    
+#     # dMi_loss, dMj_loss, dM_gain, dNi_loss, dN_gain = calculate_rates(x11,x21,ak1,ck1,M1,x12,x22,ak2,ck2,M2,
+#     #                    PK,xi1,xi2,kmin,kmid,cond_1,sc_inds)
+    
+#     Hlen, bins = np.shape(x11)
+    
+#     # (heights x bins x bins)
+#     x_bottom_edge = (xi2[kmin][None,:,:]-x12[:,None,:])
+#     x_top_edge = (xi2[kmin][None,:,:]-x22[:,None,:])
+#     y_left_edge = (xi2[kmin][None,:,:]-x11[:,:,None])
+#     y_right_edge = (xi2[kmin][None,:,:]-x21[:,:,None])
+    
+#     check_bottom = (x11[:,:,None]<x_bottom_edge) &\
+#                    (x21[:,:,None]>x_bottom_edge)
+     
+#     check_top = (x11[:,:,None]<x_top_edge) &\
+#                 (x21[:,:,None]>x_top_edge)
+                
+#     check_left = (x12[:,None,:]<y_left_edge) &\
+#                  (x22[:,None,:]>y_left_edge)
+                
+#     check_right = (x12[:,None,:]<y_right_edge) &\
+#                   (x22[:,None,:]>y_right_edge)            
+           
+#     check_middle = ((0.5*(x11[:,:,None]+x21[:,:,None]))+(0.5*(x12[:,None,:]+x22[:,None,:])))<(xi2[kmin][None,:,:])
+               
+#     # If opposite sides check true, then integral region is rectangle + triangle
+#     # If adjacent sides check true, then integral region is triangle       
+           
+#     # Check which opposite side is higher for cases where we have rectangle + triangle
+#     # NOTE: It SHOULD be the case that y_left_edge>y_right_edge and x_bottom_edge>x_top_edge
+#     # This just has to do with the geometry of the x+y mapping, i.e., the x+y lines have negative slope.
+    
+#     '''
+#     Vectorized Integration Regions:
+#     cond_1 :  Ignore CC process for these source bins; they don't map to the largest avail bin.
+#     cond_2 :  k bin: Lower triangle region. Just clips BR corner.
+#                        Triangle = ((xi1,xj1),(xi1,y_left_edge),(xi2,xj1))
+#     cond_3 :  k bin: Lower triangle region. Just clips UL corner.
+#                        Triangle = ((xi1,xj1),(xi1,xj2),(x_bottom_edge,xj1))                 
+#     cond_2b : k+1 bins: Upper triangle region. Just clips BR corner.
+#                        Triangle = ((xi1,xj1),(x_top_edge,xj2),(xi2,xj2))
+#     cond_3b : k+1 bin: Upper triangle region. Just clips UL corner.
+#                              Triangle = ((xi1,xj2),(xi2,xj2),(xi2,y_right_edge)                    
+#     cond_4 :  Full Rectangular source region based on self collection: ii == jj --> ii+sbin or jj+sbin
+#     cond_5 :  k bin: Top/Bottom clip: Rectangle on left, triangle on right
+#                               Rectangle = ((xi1,xj1),(xi1,xj2),(x_top_edge,xj2),(x_top_edge,xj1))
+#                               Triangle  = ((x_top_edge,xj1),(x_top_edge,xj2),(x_bottom_edge,xj1))
+#     cond_6 :  k bin: Left/Right clip: Rectangle on bottom, triangle on top
+#                               Rectangle = ((xi1,xj1),(xi1,y_right_edge),(xi2,y_right_edge),(xi2,xj1))
+#                               Triangle  = ((xi1,y_right_edge),(xi1,y_left_edge),(xi2,y_right_edge))
+#     cond_7 :  k+1 bin: Triangle in top right corner
+#                                 Triangle = ((x_top_edge,xj2),(xi2,xj2),(xi2,y_right_edge))
+#     cond_8 :  k bin: Triangle in lower left corner
+#                                 Triangle = ((xi1,xj1),(xi1,y_left_edge),(x_bottom_edge,xj1))
+#     cond_9:   k bin: Rectangle collection within k bin. All Mass/Number goes into kbin
+#     cond_10:  k+1 bin: Rectangle collection within k+1 bin. All Mass/Number goes into kbin
+#     '''
+    
+    
+    
+    
+#     # Initialize gain term arrays
+#     dMi_loss = np.zeros((Hlen,bins,bins))
+#     dMj_loss = np.zeros((Hlen,bins,bins))
+#     dNi_loss = np.zeros((Hlen,bins,bins))
+#     dM_gain  = np.zeros((Hlen,bins,bins,2))
+#     dN_gain  = np.zeros((Hlen,bins,bins,2))
+#     Mb_gain  = np.zeros((Hlen,bins))
+#     Nb_gain  = np.zeros((Hlen,bins))
+    
+#     #cond = np.zeros((Hlen,bins,bins),dtype=int)
+    
+#     if self_col:
+#         sc_inds = np.tile(np.triu(np.ones((bins,bins),dtype=int),k=0),(Hlen,1,1))
+        
+#     else:
+#         sc_inds = np.ones((Hlen,bins,bins),dtype=int)
+        
+#     cond_touch = (check_bottom|check_top|check_left|check_right)
+    
+#     # OLD
+#     #cond_2_corner = (x21==xi2[None,:])[:,None,:]&(x12==xi1[None,:])[:,:,None]&(check_left)
+#     #cond_3_corner = (x11==xi1[None,:])[:,None,:]&(x12==xi1[None,:])[:,:,None]&(check_bottom)
+    
+#     # NEW
+#     cond_BR_corner = ((x21==xi2)[:,:,None])&((x12==xi1)[:,None,:]) # Bottom right corner
+#     cond_UL_corner = ((x11==xi1)[:,:,None])&((x22==xi2)[:,None,:]) # Upper left corner
+    
+#     cond_2_corner = (cond_BR_corner)&(check_left)
+#     cond_3_corner = (cond_UL_corner)&(check_bottom)
+    
+#     cond_2b_corner = (cond_BR_corner)&(check_top)
+#     cond_3b_corner = (cond_UL_corner)&(check_right)
+    
+#     cond_2 = np.eye(bins,k=1,dtype=bool)[None,:,:] & (cond_2_corner) & (~cond_1) & (cond_touch)
+#     cond_3 = np.eye(bins,k=-1,dtype=bool)[None,:,:] & (cond_3_corner) & (~cond_1) & (cond_touch)
+    
+#     cond_2b = cond_2b_corner & (~cond_1)
+#     cond_3b = cond_3b_corner & (~cond_1)
+    
+#     cond_4 = np.eye(bins,dtype=bool)[None,:,:] & (~cond_1)
+#     cond_nt = (~(cond_1|cond_2|cond_3|cond_4))
+#     cond_5 = (check_top&check_bottom)  & cond_nt
+#     cond_6 = (check_left&check_right)  & cond_nt
+#     cond_7 =  (check_right&check_top)  & cond_nt
+#     cond_8 = (check_left&check_bottom) & cond_nt
+#     cond_rect = (~cond_touch)&(~cond_1)&(~cond_4)&(~cond_5)&(~cond_6)&(~cond_7)&(~cond_8)
+#     cond_9 = (cond_rect&check_middle)
+#     cond_10 = (cond_rect&(~check_middle))
+    
+#     k1, i1, j1  = np.nonzero((~cond_1)&sc_inds) # Only do loss/gain terms for 0>bins-sbin bins
+#     k2, i2, j2  = np.nonzero(cond_2&sc_inds)
+#     k3, i3, j3  = np.nonzero(cond_3&sc_inds)
+#     k2b, i2b, j2b  = np.nonzero(cond_2b&sc_inds)
+#     k3b, i3b, j3b  = np.nonzero(cond_3b&sc_inds)
+#     k4, i4, j4  = np.nonzero(cond_4&sc_inds)
+#     k5, i5, j5  = np.nonzero(cond_5&sc_inds)
+#     k6, i6, j6  = np.nonzero(cond_6&sc_inds)
+#     k7, i7, j7  = np.nonzero(cond_7&sc_inds)
+#     k8, i8, j8  = np.nonzero(cond_8&sc_inds)
+#     k9, i9, j9  = np.nonzero(cond_9&sc_inds)
+#     k10,i10,j10 = np.nonzero(cond_10&sc_inds)
+    
+#     # cond[k1,i1,j1]    = 1
+#     # cond[k2,i2,j2]    = 2
+#     # cond[k3,i3,j3]    = 3
+#     # cond[k4,i4,j4]    = 4
+#     # cond[k5,i5,j5]    = 5
+#     # cond[k6,i6,j6]    = 6
+#     # cond[k7,i7,j7]    = 7
+#     # cond[k8,i8,j8]    = 8
+#     # cond[k9,i9,j9]    = 9 
+#     # cond[k10,i10,j10] = 10
+    
+#     cond_loss = np.zeros((Hlen,bins,bins),dtype=int) 
+#     cond_gain = np.zeros((Hlen,bins,bins),dtype=int)
+    
+#     cond_loss[k1,i1,j1]    = 1
+#     cond_gain[k2,i2,j2]    = 2
+#     cond_gain[k3,i3,j3]    = 3
+#     cond_gain[k2b,i2b,j2b] = 11
+#     cond_gain[k3b,i3b,j3b] = 12
+#     cond_gain[k4,i4,j4]    = 4
+#     cond_gain[k5,i5,j5]    = 5
+#     cond_gain[k6,i6,j6]    = 6
+#     cond_gain[k7,i7,j7]    = 7
+#     cond_gain[k8,i8,j8]    = 8
+#     cond_gain[k9,i9,j9]    = 9 
+#     cond_gain[k10,i10,j10] = 10
+        
+#        # print('cond_loss_tot = {} | cond_gain_tot = {}'.format(np.count_nonzero(cond_loss),np.count_nonzero(cond_gain)))
+#        # print('cond_loss={}'.format(cond_loss))
+#        # print('cond_gain={}'.format(cond_gain))
+        
+#     if np.count_nonzero(cond_loss) != np.count_nonzero(cond_gain):
+#         print('Number of loss pairs = {}'.format(np.count_nonzero(cond_loss)))
+#         print('Number of gain pairs = {}'.format(np.count_nonzero(cond_gain)))
+#         print('gain ~= loss. Something went wrong here.')
+#         #np.set_printoptions(threshold=np.inf)
+#         #print('cond_gain=',cond_gain[0,:,:])
+#         raise Exception()
+
+#     # Calculate transfer rates (rectangular integration, source space)
+#     # Collection (eqs. 23-25 in Wang et al. 2007)
+#     # ii collecting jj 
+
+#     dMi_loss[k1,i1,j1] = integrate_fast_kernel(1,0,0,PK[:,i1,j1],ak1[k1,i1],ck1[k1,i1],ak2[k1,j1],ck2[k1,j1],'rectangle',x1=x11[k1,i1],x2=x21[k1,i1],y1=x12[k1,j1],y2=x22[k1,j1])
+#     dMj_loss[k1,i1,j1] = integrate_fast_kernel(0,1,0,PK[:,i1,j1],ak1[k1,i1],ck1[k1,i1],ak2[k1,j1],ck2[k1,j1],'rectangle',x1=x11[k1,i1],x2=x21[k1,i1],y1=x12[k1,j1],y2=x22[k1,j1])
+#     dNi_loss[k1,i1,j1] = integrate_fast_kernel(0,0,0,PK[:,i1,j1],ak1[k1,i1],ck1[k1,i1],ak2[k1,j1],ck2[k1,j1],'rectangle',x1=x11[k1,i1],x2=x21[k1,i1],y1=x12[k1,j1],y2=x22[k1,j1])
+#     #dNj_loss = dNi_loss.copy() # Nj loss should be same as Ni loss
+    
+    
+#     # Condition 4: Self collection. All Mass/Number goes into ii+sbin = jj+sbin kbin
+#     xi1 = x11[k4,i4].copy()
+#     xi2 = x21[k4,i4].copy() 
+#     xj1 = x12[k4,j4].copy()
+#     xj2 = x22[k4,j4].copy()
+    
+#     dM_gain[k4,i4,j4,0]  = integrate_fast_kernel(0,0,1,PK[:,i4,j4],ak1[k4,i4],ck1[k4,i4],ak2[k4,j4],ck2[k4,j4],'rectangle',x1=xi1,x2=xi2,y1=xj1,y2=xj2) 
+#     dN_gain[k4,i4,j4,0]  = integrate_fast_kernel(0,0,0,PK[:,i4,j4],ak1[k4,i4],ck1[k4,i4],ak2[k4,j4],ck2[k4,j4],'rectangle',x1=xi1,x2=xi2,y1=xj1,y2=xj2) 
+
+
+#     # Condition 2:
+#     # k bin: Lower triangle region. Just clips BR corner.
+#     #                       Triangle = ((xi1,xj1),(xi1,y_left_edge),(xi2,xj1))
+#     xt1 = x11[k2,i2].copy()
+#     yt1 = x12[k2,j2].copy()
+#     xt2 = x11[k2,i2].copy()
+#     yt2 = y_left_edge[k2,i2,j2].copy()
+#     xt3 = x21[k2,i2].copy()
+#     yt3 = x12[k2,j2].copy()
+    
+#     dM_gain[k2,i2,j2,0] = integrate_fast_kernel(0,0,1,PK[:,i2,j2],ak1[k2,i2],ck1[k2,i2],ak2[k2,j2],ck2[k2,j2],'triangle',xt1=xt1,yt1=yt1,xt2=xt2,yt2=yt2,xt3=xt3,yt3=yt3)
+#     dM_gain[k2,i2,j2,1] = (dMi_loss[k2,i2,j2]+dMj_loss[k2,i2,j2])-dM_gain[k2,i2,j2,0]
+    
+#     dN_gain[k2,i2,j2,0] = integrate_fast_kernel(0,0,0,PK[:,i2,j2],ak1[k2,i2],ck1[k2,i2],ak2[k2,j2],ck2[k2,j2],'triangle',xt1=xt1,yt1=yt1,xt2=xt2,yt2=yt2,xt3=xt3,yt3=yt3)
+#     dN_gain[k2,i2,j2,1] = (dNi_loss[k2,i2,j2])-dN_gain[k2,i2,j2,0]
+        
+#     # Condition 3:
+#     #    k bin: Lower triangle region. Just clips UL corner.
+#     #                      Triangle = ((xi1,xj1),(xi1,xj2),(x_bottom_edge,xj1))  
+#     xt1 = x11[k3,i3].copy()
+#     yt1 = x12[k3,j3].copy()
+#     xt2 = x11[k3,i3].copy()
+#     yt2 = x22[k3,j3].copy()
+#     xt3 = x_bottom_edge[k3,i3,j3].copy()
+#     yt3 = x12[k3,j3].copy()
+    
+#     dM_gain[k3,i3,j3,0] = integrate_fast_kernel(0,0,1,PK[:,i3,j3],ak1[k3,i3],ck1[k3,i3],ak2[k3,j3],ck2[k3,j3],'triangle',xt1=xt1,yt1=yt1,xt2=xt2,yt2=yt2,xt3=xt3,yt3=yt3)
+#     dM_gain[k3,i3,j3,1] = (dMi_loss[k3,i3,j3]+dMj_loss[k3,i3,j3])-dM_gain[k3,i3,j3,0]
+        
+#     dN_gain[k3,i3,j3,0] = integrate_fast_kernel(0,0,0,PK[:,i3,j3],ak1[k3,i3],ck1[k3,i3],ak2[k3,j3],ck2[k3,j3],'triangle',xt1=xt1,yt1=yt1,xt2=xt2,yt2=yt2,xt3=xt3,yt3=yt3)
+#     dN_gain[k3,i3,j3,1] = (dNi_loss[k3,i3,j3])-dN_gain[k3,i3,j3,0]
+        
+#     # Condition 5: 
+        
+#     #    k bin: Top/Bottom clip: Rectangle on left, triangle on right
+#     #                              Rectangle = ((xi1,xj1),(xi1,xj2),(x_top_edge,xj2),(x_top_edge,xj1))
+#     #                              Triangle  = ((x_top_edge,xj1),(x_top_edge,xj2),(x_bottom_edge,xj1))
+   
+#     xr1 = x11[k5,i5].copy()
+#     yr1 = x12[k5,j5].copy()
+#     xr2 = x_top_edge[k5,i5,j5].copy()
+#     yr2 = x22[k5,j5].copy()
+   
+#     xt1 = x_top_edge[k5,i5,j5].copy()
+#     yt1 = x12[k5,j5].copy()
+#     xt2 = x_top_edge[k5,i5,j5].copy()
+#     yt2 = x22[k5,j5].copy()
+#     xt3 = x_bottom_edge[k5,i5,j5].copy()
+#     yt3 = x12[k5,j5].copy()
+    
+    
+#     dM_gain[k5,i5,j5,0] = integrate_fast_kernel(0,0,1,PK[:,i5,j5],ak1[k5,i5],ck1[k5,i5],ak2[k5,j5],ck2[k5,j5],'rectangle',x1=xr1,x2=xr2,y1=yr1,y2=yr2)+\
+#                           integrate_fast_kernel(0,0,1,PK[:,i5,j5],ak1[k5,i5],ck1[k5,i5],ak2[k5,j5],ck2[k5,j5],'triangle',xt1=xt1,yt1=yt1,xt2=xt2,yt2=yt2,xt3=xt3,yt3=yt3)
+    
+#     dM_gain[k5,i5,j5,1] = (dMi_loss[k5,i5,j5]+dMj_loss[k5,i5,j5])-dM_gain[k5,i5,j5,0]
+        
+#     dN_gain[k5,i5,j5,0] = integrate_fast_kernel(0,0,0,PK[:,i5,j5],ak1[k5,i5],ck1[k5,i5],ak2[k5,j5],ck2[k5,j5],'rectangle',x1=xr1,x2=xr2,y1=yr1,y2=yr2)+\
+#                           integrate_fast_kernel(0,0,0,PK[:,i5,j5],ak1[k5,i5],ck1[k5,i5],ak2[k5,j5],ck2[k5,j5],'triangle',xt1=xt1,yt1=yt1,xt2=xt2,yt2=yt2,xt3=xt3,yt3=yt3)
+                       
+#     dN_gain[k5,i5,j5,1] = (dNi_loss[k5,i5,j5])-dN_gain[k5,i5,j5,0]
+    
+    
+#     # Condition 6:
+#     # k bin: Left/Right clip: Rectangle on bottom, triangle on top
+#     #                          Rectangle = ((xi1,xj1),(xi1,y_right_edge),(xi2,y_right_edge),(xi2,xj1))
+#     #                          Triangle  = ((xi1,y_right_edge),(xi1,y_left_edge),(xi2,y_right_edge))
+        
+#     xr1 = x11[k6,i6].copy()
+#     yr1 = x12[k6,j6].copy()
+#     xr2 = x21[k6,i6].copy()
+#     yr2 = y_right_edge[k6,i6,j6].copy()
+    
+#     xt1 = x11[k6,i6].copy()
+#     yt1 = y_right_edge[k6,i6,j6].copy()
+#     xt2 = x11[k6,i6].copy()
+#     yt2 = y_left_edge[k6,i6,j6].copy()
+#     xt3 = x21[k6,i6].copy()
+#     yt3 = y_right_edge[k6,i6,j6].copy()
+    
+    
+#     dM_gain[k6,i6,j6,0] = integrate_fast_kernel(0,0,1,PK[:,i6,j6],ak1[k6,i6],ck1[k6,i6],ak2[k6,j6],ck2[k6,j6],'rectangle',x1=xr1,x2=xr2,y1=yr1,y2=yr2)+\
+#                           integrate_fast_kernel(0,0,1,PK[:,i6,j6],ak1[k6,i6],ck1[k6,i6],ak2[k6,j6],ck2[k6,j6],'triangle',xt1=xt1,yt1=yt1,xt2=xt2,yt2=yt2,xt3=xt3,yt3=yt3)
+    
+#     dM_gain[k6,i6,j6,1] = (dMi_loss[k6,i6,j6]+dMj_loss[k6,i6,j6])-dM_gain[k6,i6,j6,0]
+        
+#     dN_gain[k6,i6,j6,0] = integrate_fast_kernel(0,0,0,PK[:,i6,j6],ak1[k6,i6],ck1[k6,i6],ak2[k6,j6],ck2[k6,j6],'rectangle',x1=xr1,x2=xr2,y1=yr1,y2=yr2)+\
+#                           integrate_fast_kernel(0,0,0,PK[:,i6,j6],ak1[k6,i6],ck1[k6,i6],ak2[k6,j6],ck2[k6,j6],'triangle',xt1=xt1,yt1=yt1,xt2=xt2,yt2=yt2,xt3=xt3,yt3=yt3)
+                       
+#     dN_gain[k6,i6,j6,1] = (dNi_loss[k6,i6,j6])-dN_gain[k6,i6,j6,0]
+        
+#     # Condition 7:
+#     # k+1 bin: Triangle in top right corner
+#     #                            Triangle = ((x_top_edge,xj2),(xi2,xj2),(xi2,y_right_edge))
+        
+#     xt1 = x_top_edge[k7,i7,j7].copy()
+#     yt1 = x22[k7,j7].copy()
+#     xt2 = x21[k7,i7].copy()
+#     yt2 = x22[k7,j7].copy()
+#     xt3 = x21[k7,i7].copy()
+#     yt3 = y_right_edge[k7,i7,j7].copy()
+    
+#     dM_gain[k7,i7,j7,1] = integrate_fast_kernel(0,0,1,PK[:,i7,j7],ak1[k7,i7],ck1[k7,i7],ak2[k7,j7],ck2[k7,j7],'triangle',xt1=xt1,yt1=yt1,xt2=xt2,yt2=yt2,xt3=xt3,yt3=yt3)
+#     dM_gain[k7,i7,j7,0] = (dMi_loss[k7,i7,j7]+dMj_loss[k7,i7,j7])-dM_gain[k7,i7,j7,1]
+    
+#     dN_gain[k7,i7,j7,1] = integrate_fast_kernel(0,0,0,PK[:,i7,j7],ak1[k7,i7],ck1[k7,i7],ak2[k7,j7],ck2[k7,j7],'triangle',xt1=xt1,yt1=yt1,xt2=xt2,yt2=yt2,xt3=xt3,yt3=yt3)
+#     dN_gain[k7,i7,j7,0] = (dNi_loss[k7,i7,j7])-dN_gain[k7,i7,j7,1]
+    
+        
+#     # Condition 8:
+#     #  k bin: Triangle in lower left corner
+#     #                                Triangle = ((xi1,xj1),(xi1,y_left_edge),(x_bottom_edge,xj1))
+#     xt1 = x11[k8,i8].copy()
+#     yt1 = x12[k8,j8].copy()
+#     xt2 = x11[k8,i8].copy()
+#     yt2 = y_left_edge[k8,i8,j8].copy()
+#     xt3 = x_bottom_edge[k8,i8,j8].copy()
+#     yt3 = x12[k8,j8].copy()
+    
+#     dM_gain[k8,i8,j8,0] = integrate_fast_kernel(0,0,1,PK[:,i8,j8],ak1[k8,i8],ck1[k8,i8],ak2[k8,j8],ck2[k8,j8],'triangle',xt1=xt1,yt1=yt1,xt2=xt2,yt2=yt2,xt3=xt3,yt3=yt3)
+#     dM_gain[k8,i8,j8,1] = (dMi_loss[k8,i8,j8]+dMj_loss[k8,i8,j8])-dM_gain[k8,i8,j8,0]
+    
+#     dN_gain[k8,i8,j8,0] = integrate_fast_kernel(0,0,0,PK[:,i8,j8],ak1[k8,i8],ck1[k8,i8],ak2[k8,j8],ck2[k8,j8],'triangle',xt1=xt1,yt1=yt1,xt2=xt2,yt2=yt2,xt3=xt3,yt3=yt3)
+#     dN_gain[k8,i8,j8,1] = (dNi_loss[k8,i8,j8])-dN_gain[k8,i8,j8,0]
+        
+#     # Condition 9: Rectangle collection within k bin. All Mass/Number goes into kbin
+#     xi1 = x11[k9,i9].copy()
+#     xi2 = x21[k9,i9].copy() 
+#     xj1 = x12[k9,j9].copy()
+#     xj2 = x22[k9,j9].copy()
+
+#     dM_gain[k9,i9,j9,0]  = integrate_fast_kernel(0,0,1,PK[:,i9,j9],ak1[k9,i9],ck1[k9,i9],ak2[k9,j9],ck2[k9,j9],'rectangle',x1=xi1,x2=xi2,y1=xj1,y2=xj2) 
+#     dN_gain[k9,i9,j9,0]  = integrate_fast_kernel(0,0,0,PK[:,i9,j9],ak1[k9,i9],ck1[k9,i9],ak2[k9,j9],ck2[k9,j9],'rectangle',x1=xi1,x2=xi2,y1=xj1,y2=xj2) 
+
+#     # Condition 10: Rectangle collection within k+1 bin. All Mass/Number goes into kbin
+#     xi1 = x11[k10,i10].copy()
+#     xi2 = x21[k10,i10].copy() 
+#     xj1 = x12[k10,j10].copy()
+#     xj2 = x22[k10,j10].copy()
+    
+#     dM_gain[k10,i10,j10,1]  = integrate_fast_kernel(0,0,1,PK[:,i10,j10],ak1[k10,i10],ck1[k10,i10],ak2[k10,j10],ck2[k10,j10],'rectangle',x1=xi1,x2=xi2,y1=xj1,y2=xj2) 
+#     dN_gain[k10,i10,j10,1]  = integrate_fast_kernel(0,0,0,PK[:,i10,j10],ak1[k10,i10],ck1[k10,i10],ak2[k10,j10],ck2[k10,j10],'rectangle',x1=xi1,x2=xi2,y1=xj1,y2=xj2) 
+   
+    
+#     # Condition 11 (2b): Triangle collection within k+1 bin. Occurs when xk+1 clips BR corner and intersects top edge.
+#     # Triangle = ((xi2,xj1),(x_top_edge,xj2),(xi2,xj2))
+#     xt1 = x_top_edge[k2b,i2b,j2b].copy()
+#     yt1 = x22[k2b,j2b].copy()
+#     xt2 = x21[k2b,i2b].copy()
+#     yt2 = x22[k2b,j2b].copy()
+#     xt3 = x21[k2b,i2b].copy()
+#     yt3 = x12[k2b,j2b].copy()
+    
+#     dM_gain[k2b,i2b,j2b,1] = integrate_fast_kernel(0,0,1,PK[:,i2b,j2b],ak1[k2b,i2b],ck1[k2b,i2b],ak2[k2b,j2b],ck2[k2b,j2b],'triangle',xt1=xt1,yt1=yt1,xt2=xt2,yt2=yt2,xt3=xt3,yt3=yt3)
+#     dM_gain[k2b,i2b,j2b,0] = (dMi_loss[k2b,i2b,j2b]+dMj_loss[k2b,i2b,j2b])-dM_gain[k2b,i2b,j2b,1]
+    
+#     dN_gain[k2b,i2b,j2b,1] = integrate_fast_kernel(0,0,0,PK[:,i2b,j2b],ak1[k2b,i2b],ck1[k2b,i2b],ak2[k2b,j2b],ck2[k2b,j2b],'triangle',xt1=xt1,yt1=yt1,xt2=xt2,yt2=yt2,xt3=xt3,yt3=yt3)
+#     dN_gain[k2b,i2b,j2b,0] = (dNi_loss[k2b,i2b,j2b])-dN_gain[k2b,i2b,j2b,1]
+    
+#     # Condition 12 (3b): Triangle collection within k+1 bin. Occurs when xk+1 clips UL corner and intersects with right edge.
+#     # Triangle = ((xi1,xj2),(xi2,xj2),(xi2,y_right_edge)
+#     xt1 = x11[k3b,i3b].copy()
+#     yt1 = x22[k3b,j3b].copy()
+#     xt2 = x21[k3b,i3b].copy()
+#     yt2 = x22[k3b,j3b].copy()
+#     xt3 = x21[k3b,i3b].copy()
+#     yt3 = y_right_edge[k3b,i3b,j3b].copy()
+    
+#     dM_gain[k3b,i3b,j3b,1] = integrate_fast_kernel(0,0,1,PK[:,i3b,j3b],ak1[k3b,i3b],ck1[k3b,i3b],ak2[k3b,j3b],ck2[k3b,j3b],'triangle',xt1=xt1,yt1=yt1,xt2=xt2,yt2=yt2,xt3=xt3,yt3=yt3)
+#     dM_gain[k3b,i3b,j3b,0] = (dMi_loss[k3b,i3b,j3b]+dMj_loss[k3b,i3b,j3b])-dM_gain[k3b,i3b,j3b,1]
+    
+#     dN_gain[k3b,i3b,j3b,1] = integrate_fast_kernel(0,0,0,PK[:,i3b,j3b],ak1[k3b,i3b],ck1[k3b,i3b],ak2[k3b,j3b],ck2[k3b,j3b],'triangle',xt1=xt1,yt1=yt1,xt2=xt2,yt2=yt2,xt3=xt3,yt3=yt3)
+#     dN_gain[k3b,i3b,j3b,0] = (dNi_loss[k3b,i3b,j3b])-dN_gain[k3b,i3b,j3b,1]
+    
+   
+#     M1_loss = np.nansum(dMi_loss,axis=2) 
+#     N1_loss = np.nansum(dNi_loss,axis=2) 
+    
+#     M2_loss = np.nansum(dMj_loss,axis=1) 
+#     N2_loss = np.nansum(dNi_loss,axis=1)
+       
+#     # ChatGPT is the GOAT for telling me about np.add.at!
+#     M_gain = np.zeros((Hlen,bins))
+#     np.add.at(M_gain, (np.arange(Hlen)[:,None,None],kmin), dM_gain[:,:,:,0])
+#     np.add.at(M_gain,  (np.arange(Hlen)[:,None,None],kmid), dM_gain[:,:,:,1])
+    
+#     N_gain = np.zeros((Hlen,bins))
+#     np.add.at(N_gain,  (np.arange(Hlen)[:,None,None],kmin), dN_gain[:,:,:,0])
+#     np.add.at(N_gain,  (np.arange(Hlen)[:,None,None],kmid), dN_gain[:,:,:,1])
+      
+#     # ELD NOTE: Breakup here can take losses from each pair and calculate gains
+#     # for breakup. Breakup gain arrays will be 3D.
+#     if breakup:
+        
+#         Mij_loss = dMi_loss[k1,i1,j1]+dMj_loss[k1,i1,j1]
+  
+#         np.add.at(Mb_gain,  k1, np.transpose(dMb_gain_frac[:,kmin[i1,j1]]*Mij_loss))
+#         np.add.at(Nb_gain,  k1, np.transpose(dNb_gain_frac[:,kmin[i1,j1]]*Mij_loss))
+        
+   
+#     return M1_loss, M2_loss, M_gain, Mb_gain, N1_loss, N2_loss, N_gain, Nb_gain
+
+
+
+
+
+#----------------------
+
+
+    # # Advance PSD Mbins and Nbins by one time/height step
+    # def interact(self,dt):
+
+    #     # Ndists x height x bins
+    #     Mbins_old = self.Mbins.copy() 
+    #     Nbins_old = self.Nbins.copy()
+        
+    #     Mbins = np.zeros_like(Mbins_old)
+    #     Nbins = np.zeros_like(Nbins_old)
+
+    #     M_loss = np.zeros_like(Mbins)
+    #     N_loss = np.zeros_like(Nbins) 
+        
+    #     M_gain = np.zeros_like(Mbins)
+    #     N_gain = np.zeros_like(Nbins)
+        
+    #     indc = self.indc
+    #     indb = self.indb
+        
+
+    #     for d1 in range(self.dnum):
+    #         for d2 in range(d1,self.dnum):
+    #             if d1==d2:
+    #                 self_col = True 
+    #             else:
+    #                 self_col = False
+                    
+
+    #             if self.parallel:
+                    
+    #                 # Set up batches for each bin-bin pair? Would need to unravel
+    #                 # arrays appropriately afterward. Also would need to figure out 
+    #                 # how to do self and cross collection appropriately.
+                    
+    #                 # Find all bin pairs
+                    
+    #                 # (dnum x height x bins)
+    #                 x11  = self.x1[d1,:,:]
+    #                 x21  = self.x2[d1,:,:]
+    #                 ak1  = self.aki[d1,:,:]
+    #                 ck1  = self.cki[d1,:,:] 
+    #                 M1   = self.Mbins[d1,:,:]
+                    
+    #                 x12  = self.x1[d2,:,:]
+    #                 x22  = self.x2[d2,:,:]
+    #                 ak2  = self.aki[d2,:,:] 
+    #                 ck2  = self.cki[d2,:,:] 
+    #                 M2   = self.Mbins[d2,:,:]
+                    
+    #                 #
+    #                 #Mcheck = ((M1==0.)[:,None]) | ((M2==0.)[None,:])
+    #                 #ikeep = np.nonzero(~(self.cond_1&Mcheck))
+                    
+    #                 #Mcheck = ((M1==0.)[:,:,None]) | ((M2==0.)[:,None,:])
+                    
+                    
+    #                 #cond_1 = self.cond_1 | Mcheck # New cond_1. Basically exclude bin-pairs that are off grid and ones involving empty bins.
+                    
+                    
+
+    #                 # ORIGINAL
+    #                 gain_loss_temp = Parallel(n_jobs=self.n_jobs,verbose=0)(delayed(calculate_integrals)(x11[batch,:],x21[batch,:],ak1[batch,:],ck1[batch,:],M1[batch,:],
+    #                                        x12[batch,:],x22[batch,:],ak2[batch,:],ck2[batch,:],M2[batch,:],
+    #                                        self.PK[:,d1,d2,:,:],self.xi1,self.xi2,self.kmin,self.kmid,self.cond_1[batch,:,:], 
+    #                                        self.dMb_gain_frac,self.dNb_gain_frac, 
+    #                                        self_col=self_col,breakup=self.breakup) for batch in self.batches)
+                  
+    #                 # gain_loss_temp = Parallel(n_jobs=self.n_jobs,verbose=0)(delayed(calculate_integrals)(x11[batch,:],x21[batch,:],ak1[batch,:],ck1[batch,:],M1[batch,:],
+    #                 #                         x12[batch,:],x22[batch,:],ak2[batch,:],ck2[batch,:],M2[batch,:],
+    #                 #                         self.PK[:,d1,d2,:,:],self.xi1,self.xi2,self.kmin,self.kmid,cond_1[batch,:,:], 
+    #                 #                         self.dMb_gain_frac,self.dNb_gain_frac, 
+    #                 #                         self_col=self_col,breakup=self.breakup) for batch in self.batches)
+                    
+                    
+    #                 # gain_loss_temp = Parallel(n_jobs=self.n_jobs,verbose=0)(delayed(calculate_integrals)(x11[batch,:],x21[batch,:],ak1[batch,:],ck1[batch,:],M1[batch,:],
+    #                 #                         x12[batch,:],x22[batch,:],ak2[batch,:],ck2[batch,:],M2[batch,:],
+    #                 #                         self.PK[:,d1,d2,:,:],self.xi1,self.xi2,self.kmin,self.kmid,self.cond_1, 
+    #                 #                         self.dMb_gain_frac,self.dNb_gain_frac, 
+    #                 #                         self_col=self_col,breakup=self.breakup) for batch in self.batches)
+                    
+        
+    #                 # IF x11.shape = (Hlen,bins) then 
+        
+    #                 M1_loss_temp = np.vstack([gl[0] for gl in gain_loss_temp])
+    #                 M2_loss_temp = np.vstack([gl[1] for gl in gain_loss_temp])
+    #                 M_gain_temp =  np.vstack([gl[2] for gl in gain_loss_temp])
+    #                 Mb_gain_temp = np.vstack([gl[3] for gl in gain_loss_temp])
+    #                 N1_loss_temp = np.vstack([gl[4] for gl in gain_loss_temp])
+    #                 N2_loss_temp = np.vstack([gl[5] for gl in gain_loss_temp])
+    #                 N_gain_temp  = np.vstack([gl[6] for gl in gain_loss_temp])
+    #                 Nb_gain_temp = np.vstack([gl[7] for gl in gain_loss_temp])
+            
+    #             else:
+    #                 # Collision-Coalescence / Breakup
+    #                 #M1_loss_temp, M2_loss_temp, M_gain_temp, Mb_gain_temp,\
+    #                 #N1_loss_temp, N2_loss_temp, N_gain_temp, Nb_gain_temp = self.calculate(d1,d2,np.squeeze(self.PK[:,d1,d2,:,:]),self_col)
+        
+                    
+        
+    #                 x11  = self.x1[d1,:]
+    #                 x21  = self.x2[d1,:]
+    #                 ak1  = self.aki[d1,:]
+    #                 ck1  = self.cki[d1,:] 
+    #                 M1   = self.Mbins[d1,:]
+                    
+    #                 x12  = self.x1[d2,:]
+    #                 x22  = self.x2[d2,:]
+    #                 ak2  = self.aki[d2,:] 
+    #                 ck2  = self.cki[d2,:] 
+    #                 M2   = self.Mbins[d2,:]
+                    
+    #                 # Calculate bin-source pairs
+                    
+    #                # Mcheck = ((M1==0.)[:,:,None]) | ((M2==0.)[:,None,:])
+                    
+    #                 #cond_1 = self.cond_1 | Mcheck # New cond_1. Basically exclude bin-pairs that are off grid and ones involving empty bins.
+                    
+                    
+                    
+        
+    #                 M1_loss_temp, M2_loss_temp, M_gain_temp, Mb_gain_temp,\
+    #                 N1_loss_temp, N2_loss_temp, N_gain_temp, Nb_gain_temp = calculate_integrals(x11,x21,ak1,ck1,M1, 
+    #                                 x12,x22,ak2,ck2,M2,self.PK[:,d1,d2,:,:],self.xi1,self.xi2,self.kmin,self.kmid,self.cond_1, 
+    #                                 self.dMb_gain_frac,self.dNb_gain_frac, 
+    #                                 self_col=self_col,breakup=self.breakup)
+        
+        
+    #             if self.cnz:
+    #                self.plot_source_target_vec(self.dists[0][0],self.dists[0][0],28,27,full=False)
+    #                raise Exception()
+                    
+        
+    #             M_loss[d1,:,:]    += M1_loss_temp 
+    #             M_loss[d2,:,:]    += M2_loss_temp
+                
+    #             M_gain[indc,:,:]  += self.Eagg*M_gain_temp
+    #             M_gain[indb,:,:]  += self.Ebr*Mb_gain_temp
+                
+    #             N_loss[d1,:,:]    += N1_loss_temp
+    #             N_loss[d2,:,:]    += N2_loss_temp
+                 
+    #             N_gain[indc,:,:]  += self.Eagg*N_gain_temp
+    #             N_gain[indb,:,:]  += self.Ebr*Nb_gain_temp
+                
+    #     M_loss *= self.Ecb
+    #     N_loss *= self.Ecb 
+        
+    #     M_net = dt*(M_gain-M_loss) 
+    #     N_net = dt*(N_gain-N_loss)
+        
+    #     return M_net, N_net
+
+
+
+
+
+
+
+
+
+#-------------------------
 
 
  # def calculate(self,ind1,ind2,PK,self_col=False):
@@ -2482,5 +2409,242 @@ class Interaction():
  #         #raise Exception()
 
  #     return M1_loss, M2_loss, M_gain, Mb_gain, N1_loss, N2_loss, N_gain, Nb_gain
+
+
+    # def plot_source_target_vec(self,dist1,dist2,ii,jj,invert=False,full=False):
+        
+    #     from matplotlib.patches import Polygon
+        
+    #     import matplotlib.pyplot as plt
+        
+    #     # Rectangular source space vertices
+    #     if full:
+    #         xi1 = dist1.xi1[ii]
+    #         xi2 = dist1.xi2[ii]
+    #         xj1 = dist2.xi1[jj]
+    #         xj2 = dist2.xi2[jj]
+          
+    #     else:
+    #         xi1 = dist1.x1[ii]
+    #         xi2 = dist1.x2[ii]
+    #         xj1 = dist2.x1[jj]
+    #         xj2 = dist2.x2[jj]
+        
+    #     # NOTE: Need to avoid doing anything with the last bin
+    #     kbin_min = dist1.xi1[:,None]+dist2.xi1[None,:]
+    #     kbin_max = dist1.xi2[:,None]+dist2.xi2[None,:]
+        
+    #     idx_min = np.searchsorted(dist1.xedges, kbin_min, side='right')-1
+        
+    #     # Clamp values to valid bin range [0, B-1]
+    #     kmin = np.clip(idx_min, 0, dist1.bins-1) 
+        
+    #     #kmin = min(np.argmin(kbin_min>=dist1.xedges[:,None],axis=0),dist1.bins-1)-1
+    #     kmid = np.minimum(kmin+1,dist1.bins-1)
+
+    #     # For self-collection on mass-doubling grid, gain bounds cover exactly one bin
+    #     kdiag = np.diag_indices(kmin.shape[0])
+    #     kmin[kdiag] = kdiag[0]+dist1.sbin
+    #     kmid[kdiag] = kdiag[0]+dist1.sbin
+          
+    #     kmin = np.clip(kmin,0,dist1.bins-1)
+    #     kmid = np.clip(kmid,0,dist1.bins-1)
+             
+    #     xk_min = dist2.xi2[kmin][ii,jj]
+        
+    #     ind_i, ind_j = np.meshgrid(np.arange(0,dist1.bins,1),np.arange(0,dist1.bins,1),indexing='ij')      
+        
+    #     if full:
+    #         x_bottom_edge = (dist1.xi2[kmin]-dist2.xi1[None,:])
+    #         x_top_edge = (dist1.xi2[kmin]-dist2.xi2[None,:])
+    #         y_left_edge = (dist1.xi2[kmin]-dist1.xi1[:,None])
+    #         y_right_edge = (dist1.xi2[kmin]-dist1.xi2[:,None])
+            
+    #         check_bottom = (dist1.xi1[:,None]<x_bottom_edge) &\
+    #                        (dist1.xi2[:,None]>x_bottom_edge)
+             
+    #         check_top = (dist1.xi1[:,None]<x_top_edge) &\
+    #                     (dist1.xi2[:,None]>x_top_edge)
+                        
+    #         check_left = (dist2.xi1[None,:]<y_left_edge) &\
+    #                     (dist2.xi2[None,:]>y_left_edge)
+                        
+    #         check_right = (dist2.xi1[None,:]<y_right_edge) &\
+    #                       (dist2.xi2[None,:]>y_right_edge)    
+                          
+    #         check_middle = ((0.5*(dist1.xi1[:,None]+dist1.xi2[:,None]))+(0.5*(dist2.xi1[None,:]+dist2.xi2[None,:])))<dist2.xi2[kmin]
+            
+    #     else:
+    #         x_bottom_edge = (dist1.xi2[kmin]-dist2.x1[None,:])
+    #         x_top_edge = (dist1.xi2[kmin]-dist2.x2[None,:])
+    #         y_left_edge = (dist1.xi2[kmin]-dist1.x1[:,None])
+    #         y_right_edge = (dist1.xi2[kmin]-dist1.x2[:,None])
+            
+    #         check_bottom = (dist1.x1[:,None]<x_bottom_edge) &\
+    #                        (dist1.x2[:,None]>x_bottom_edge)
+             
+    #         check_top = (dist1.x1[:,None]<x_top_edge) &\
+    #                     (dist1.x2[:,None]>x_top_edge)
+                        
+    #         check_left = (dist2.x1[None,:]<y_left_edge) &\
+    #                     (dist2.x2[None,:]>y_left_edge)
+                        
+    #         check_right = (dist2.x1[None,:]<y_right_edge) &\
+    #                       (dist2.x2[None,:]>y_right_edge)    
+                                     
+    #         check_middle = ((0.5*(dist1.x1[:,None]+dist1.x2[:,None]))+(0.5*(dist2.x1[None,:]+dist2.x2[None,:])))<dist2.xi2[kmin]
+               
+    #     # If opposite sides check true, then integral region is rectangle + triangle
+    #     # If adjacent sides check true, then integral region is triangle       
+               
+    #     # Check which opposite side is higher for cases where we have rectangle + triangle
+    #     # NOTE: It SHOULD be the case that y_left_edge>y_right_edge and x_bottom_edge>x_top_edge
+    #     # This just has to do with the geometry of the x+y mapping, i.e., the x+y lines have negative slope.
+        
+    #     cond = np.zeros((dist1.bins,dist2.bins),dtype=int)
+    #     cond_touch = (check_bottom|check_top|check_left|check_right)
+        
+    #     #cond_2_corner = (dist1.x2==dist1.xi2)&(dist2.x1==dist2.xi1)&(check_left)
+    #    # cond_3_corner = (dist1.x1==dist1.xi1)&(dist2.x1==dist2.xi1)&(check_bottom)
+        
+    #     #cond_2_corner = ((dist1.x2==dist1.xi2)[:,None])&((dist2.x1==dist2.xi1)[None,:])&(check_left)
+    #     #cond_3_corner = (dist1.x1==dist1.xi1)[:,None]&(dist2.x2==dist2.xi2)[None,:]&(check_bottom)
+        
+    #     # NEW
+    #     cond_2_corner = ((dist1.x2==self.xi2))&((dist2.x1==self.xi1))&(check_left)
+    #     cond_3_corner = ((dist1.x1==self.xi1))&((dist2.x2==self.xi2))&(check_bottom)
+        
+    #     cond_2b_corner = ((dist1.x2==self.xi2))&((dist2.x1==self.xi1))&(check_top)
+    #     cond_3b_corner = ((dist1.x1==self.xi1))&((dist2.x2==self.xi2))&(check_right)
+        
+    #     #cond_2_corner = (dist1.x2==dist1.xi2[None,:])[:,None,:]&(dist2.x1==dist2.xi1[None,:])[:,:,None]&(check_left)
+    #     #cond_3_corner = (dist1.x1==self.xi1[None,:])[:,None,:]&(dist2.x1==self.xi1[None,:])[:,:,None]&(check_bottom)
+        
+    #     cond_1 = (self.ind_i>=(dist1.bins-dist1.sbin)) | (self.ind_j>=(dist2.bins-dist2.sbin))
+    #     cond_2 = np.eye(cond.shape[0],k=1,dtype=bool) & (cond_2_corner) & (~cond_1) & (cond_touch)
+    #     cond_3 = np.eye(cond.shape[0],k=-1,dtype=bool) & (cond_3_corner) & (~cond_1) & (cond_touch)
+    #     cond_2b = (check_top) & (cond_2b_corner) & (~cond_1) & (cond_touch)
+    #     cond_3b = (check_right) & (cond_3b_corner) & (~cond_1) & (cond_touch)
+        
+    #     cond_4 = np.eye(cond.shape[0],dtype=bool) & (~cond_1)
+    #     cond_nt = (~(cond_1|cond_2|cond_3|cond_4))
+    #    # cond_5 = (check_top&check_bottom) & (x_bottom_edge>x_top_edge) & cond_nt
+    #    # cond_6 = (check_left&check_right) & (y_left_edge>y_right_edge) & cond_nt
+    #     cond_5 = (check_top&check_bottom)  & cond_nt
+    #     cond_6 = (check_left&check_right)  & cond_nt
+    #     cond_7 =  (check_right&check_top)  & cond_nt
+    #     cond_8 = (check_left&check_bottom) & cond_nt
+    #     cond_rect = (~cond_touch)&(~cond_1)&(~cond_4)&(~cond_5)&(~cond_6)&(~cond_7)&(~cond_8)
+    #     # This occurs if source region is fully within k or k+1 bins.
+    #     cond_9 = (cond_rect&check_middle)
+    #     cond_10 = (cond_rect&(~check_middle))
+        
+    #     cond_stack = np.stack((cond_1,cond_2,cond_3,cond_4,cond_5,cond_6,cond_7,cond_8,cond_9,cond_10),axis=0)
+        
+    #     cond_full = np.sum(cond_stack,axis=0) 
+
+    #     cond[cond_1]  = 1 # Ignore CC process for these source bins; they don't map to the largest avail bin or we don't use them for some other reason.
+    #     cond[cond_2]  = 2 # k bin: Lower triangle region. Just clips LR corner.
+    #                       # Triangle = ((xi1,xj1),(xi1,y_left_edge),(xi2,xj1))
+    #     cond[cond_3]  = 3 # k bin: Lower triangle region. Just clips UL corner.
+    #                       # Triangle = ((xi1,xj1),(xi1,xj2),(x_bottom_edge,xj1))  
+    #     cond[cond_2b]  = 11 # k+1 bins: Upper triangle region. Just clips BR corner.
+    #                         # Triangle = ((xi1,xj1),(x_top_edge,xj2),(xi2,xj2))
+    #     cond[cond_3b]  = 12 # k+1 bin: Upper triangle region. Just clips UL corner.
+    #                         # Triangle = ((xi1,xj2),(xi2,xj2),(xi2,y_right_edge))  
+    #     cond[cond_4]  = 4 # Full Rectangular source region based on self collection: ii == jj --> ii+sbin or jj+sbin
+    #     cond[cond_5]  = 5 # k bin: Top/Bottom clip: Rectangle on left, triangle on right
+    #                       #        Rectangle = ((xi1,xj1),(xi1,xj2),(x_top_edge,xj2),(x_top_edge,xj1))
+    #                       #        Triangle  = ((x_top_edge,xj1),(x_top_edge,xj2),(x_bottom_edge,xj1))
+    #     cond[cond_6]  = 6 # k bin: Left/Right clip: Rectangle on bottom, triangle on top
+    #                       #        Rectangle = ((xi1,xj1),(xi1,y_right_edge),(xi2,y_right_edge),(xi2,xj1))
+    #                       #        Triangle  = ((xi1,y_right_edge),(xi1,y_left_edge),(xi2,y_right_edge))
+    #     cond[cond_7]  = 7 # k+1 bin: Triangle in top right corner
+    #                       #          Triangle = ((x_top_edge,xj2),(xi2,xj2),(xi2,y_right_edge))
+    #     cond[cond_8]  = 8 # k bin: Triangle in lower left corner
+    #                       #          Triangle = ((xi1,xj1),(xi1,y_left_edge),(x_bottom_edge,xj1))
+     
+    #     cond[cond_9]  = 9 # Full Rectangular source region in k bin
+    #     cond[cond_10] = 10# Full Rectangular source region in k+1 bin
+      
+    #     #cond[ii,jj] = 4  
+      
+    #     # THESE SHOULDN'T EVER HAPPEN!
+    #     # cond[cond_9]  = 9 # Triangle in UL corner; PROBABLY shouldn't ever happen
+    #    # cond[cond_12] = 12 # Triangle in BR corner; PROBABLY shouldn't ever happen
+
+    #     print('cond=',cond[ii,jj])
+    #     print('check_bottom=',check_bottom[ii,jj])
+    #     print('check_top=',check_top[ii,jj])
+    #     print('check_left=',check_left[ii,jj])
+    #     print('check_right=',check_right[ii,jj])
+    #     print('check_rectangle=',cond_rect[ii,jj])
+    #     print('cond_2_corner=',cond_2_corner[ii,jj])
+    #     print('cond_3_corner=',cond_3_corner[ii,jj])
+    #     print('check1=',(dist1.x2==dist1.xi2))
+    #     print('check2=',(dist2.x1==dist2.xi1))
+    #     print('dist1.x2==dist1.xi2 | {}=={}'.format(dist1.x2[ii],dist1.xi2[ii]))
+    #     print('dist2.x1==dist2.xi1 | {}=={}'.format(dist2.x1[jj],dist2.xi1[jj]))
+    #     print('xi1=',xi1)
+    #     print('xj1=',xj1)
+    #     print('xi2=',xi2)
+    #     print('xj2=',xj2)
+    #    # raise Exception()
+       
+
+        
+    #     fig, ax = plt.subplots();   
+        
+    #     if invert:
+    #         source_rec = Polygon(((xj1,xi1),(xj1,xi2),(xj2,xi2),(xj2,xi1)))
+    #     else:           
+    #         source_rec = Polygon(((xi1,xj1),(xi1,xj2),(xi2,xj2),(xi2,xj1)))
+        
+    #     ax.add_patch(source_rec)
+        
+    #     if invert:
+    #         # NOTE: need to reformat with new gain bin regions
+    #         ax.plot([kbin_min[ii,jj]-xi1,kbin_min[ii,jj]-xi2],[xi1,xi2],'b')
+    #         ax.plot([xk_min-xi1,xk_min-xi2],[xi1,xi2],'k')
+    #         ax.plot([kbin_max[ii,jj]-xi1,kbin_max[ii,jj]-xi2],[xi1,xi2],'r')
+
+    #         ax.invert_yaxis()
+            
+    #     else:
+            
+    #         if cond[ii,jj]==2:
+    #             # Triangle = ((xi1,xj1),(xi1,x_left_edge),(xi2,xj1))
+    #             kgain_t = Polygon(((xi1,xj1),(xi1,y_left_edge[ii,jj]),(xi2,xj1)),closed=True,facecolor='purple')
+    #         elif cond[ii,jj]==3:
+    #             kgain_t = Polygon((((xi1,xj1),(xi1,xj2),(x_bottom_edge[ii,jj],xj1))),closed=True,facecolor='purple')
+    #         elif cond[ii,jj]==11:
+    #             kgain_t = Polygon((((xi1,xj1),(x_top_edge[ii,jj],xj2),(xi2,xj2))),closed=True,facecolor='purple')
+    #         elif cond[ii,jj]==12:
+    #             kgain_t = Polygon(((xi1,xj2),(xi2,xj2),(xi2,y_right_edge[ii,jj])),closed=True,facecolor='purple')
+    #         elif cond[ii,jj]==7:
+    #             kgain_t = Polygon(((x_top_edge[ii,jj],xj2),(xi2,xj2),(xi2,y_right_edge[ii,jj])),closed=True,facecolor='purple')
+    #         elif cond[ii,jj]==8:
+    #             kgain_t = Polygon(((xi1,xj1),(xi1,y_left_edge[ii,jj]),(x_bottom_edge[ii,jj],xj1)),closed=True,facecolor='purple')
+    #         elif np.isin(cond[ii,jj],[4,9,10]):
+    #             kgain_r = Polygon(((xi1,xj1),(xi1,xj2),(xi2,xj2),(xi2,xj1)),closed=True,facecolor='purple')
+    #         elif cond[ii,jj]==5:
+    #             kgain_t = Polygon(((x_top_edge[ii,jj],xj1),(x_top_edge[ii,jj],xj2),(x_bottom_edge[ii,jj],xj1)),closed=True,facecolor='purple')
+    #             kgain_r =Polygon(((xi1,xj1),(xi1,xj2),(x_top_edge[ii,jj],xj2),(x_top_edge[ii,jj],xj1)),closed=True,facecolor='orange')
+    #         elif cond[ii,jj]==6:
+    #             kgain_t = Polygon(((xi1,y_right_edge[ii,jj]),(xi1,y_left_edge[ii,jj]),(xi2,y_right_edge[ii,jj])),closed=True,facecolor='purple')
+    #             kgain_r =Polygon(((xi1,xj1),(xi1,y_right_edge[ii,jj]),(xi2,y_right_edge[ii,jj]),(xi2,xj1)),closed=True,facecolor='orange')
+            
+    #         if  (np.isin(cond[ii,jj],[2,3,5,6,7,8,11,12])):
+    #             ax.add_patch(kgain_t)
+            
+    #         if (np.isin(cond[ii,jj],[4,5,6,9])):
+    #             ax.add_patch(kgain_r)
+            
+    #         ax.plot([dist1.xi1[ii],dist1.xi2[ii]],[kbin_min[ii,jj]-dist1.xi1[ii],kbin_min[ii,jj]-dist1.xi2[ii]],'b')
+    #         ax.plot([dist1.xi1[ii],dist1.xi2[ii]],[xk_min-dist1.xi1[ii],xk_min-dist1.xi2[ii]],'k')
+    #         ax.plot([dist1.xi1[ii],dist1.xi2[ii]],[kbin_max[ii,jj]-dist1.xi1[ii],kbin_max[ii,jj]-dist1.xi2[ii]],'r')
+    
+    #     return fig, ax, cond, cond_full
+
 
         
