@@ -60,7 +60,7 @@ def fragments(dist='exp'):
         fragments = {'dist':dist,
                      'lamf':10.,
                      'Dmf':0.25, 
-                     'muf':0.}
+                     'muf':3.}
         
     elif dist=='LGN':
         

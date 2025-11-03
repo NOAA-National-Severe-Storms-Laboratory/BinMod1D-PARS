@@ -419,17 +419,14 @@ def calculate_regions(x11,x21,ak1,ck1,x12,x22,ak2,ck2,PK,xi1,xi2,regions):
 def calculate_1mom(i1,j1,n1,n2,dMi_loss,dMj_loss,dM_gain,kmin,kmid,dMb_gain_frac,breakup):
     
     '''
-     This function calculate mass and number transfer rates
+     This function calculate mass transfer rates
      for collision-coalescence and collisional breakup between
-     each distribution.
+     each distribution for 1 moment calculations.
     '''
     
     Hlen,bins = n1.shape
     
     n12 = n1[:,:,None]*n2[:,None,:]
-    
-    #print('n12=',n12.shape)
-    #raise Exception()
     
     M1_loss = np.nansum(n12*(dMi_loss[None,:,:]),axis=2) 
     M2_loss = np.nansum(n12*(dMj_loss[None,:,:]),axis=1) 
@@ -439,40 +436,16 @@ def calculate_1mom(i1,j1,n1,n2,dMi_loss,dMj_loss,dM_gain,kmin,kmid,dMb_gain_frac
     np.add.at(M_gain, (np.arange(Hlen)[:,None,None],kmin), n12*(dM_gain[:,:,0][None,:,:]))
     np.add.at(M_gain,  (np.arange(Hlen)[:,None,None],kmid), n12*(dM_gain[:,:,1][None,:,:]))
     
-    # Initialize gain term arrays
-    #Mb_gain  = np.zeros((Hlen,bins))
-    
     # ELD NOTE: Breakup here can take losses from each pair and calculate gains
     # for breakup. Breakup gain arrays will be 3D.
     if breakup:
         
         Mij_loss = n12[:,i1,j1]*(dMi_loss[i1,j1]+dMj_loss[i1,j1])[None,:]
-        
-       # print('dMb_gain_frac[:,kmin[i1,j1]]=',dMb_gain_frac[:,kmin[i1,j1]].shape)
-       # print('Madd=',np.shape(dMb_gain_frac[:,kmin[i1,j1]][None,:,:]*Mij_loss[:,None,:]))
-       # raise Exception()
-        #print('Mij_loss=',Mij_loss.shape)
-        #raise Exception()
-  
-        #np.add.at(Mb_gain,  k1, np.transpose(dMb_gain_frac[:,kmin[i1,j1]]*Mij_loss))
-        
-        #np.add.at(Mb_gain,  np.arange(Hlen)[None,None,:], np.transpose((dMb_gain_frac[:,kmin[i1,j1]][None,:,:])*Mij_loss[:,None,:]))
-        
         Mb_gain = np.nansum((dMb_gain_frac[:,kmin[i1,j1]][None,:,:])*Mij_loss[:,None,:],axis=2)
         
     else:
         
         Mb_gain  = np.zeros((Hlen,bins))
-        
-        # print('k1=',np.unique(k1))
-        # print('Mb_gain=',Mb_gain.shape)
-        # print('dMb_gain_frac=',dMb_gain_frac[:,kmin[i1,j1]].shape)
-        # print('Mij_loss=',Mij_loss.shape)
-        # print('in=',((dMb_gain_frac[:,kmin[i1,j1]][None,:,:])*Mij_loss[:,None,:]).shape)
-        # #print('Hlen=',np.arange(Hlen).shape)
-        # raise Exception()
-        
-        #np.add.at(Mb_gain,  k1, dMb_gain_frac[:,kmin[i1,j1]][None,:,:]*Mij_loss[:,None,:])
         
         
     return M1_loss, M2_loss, M_gain, Mb_gain   
@@ -487,7 +460,7 @@ def calculate_2mom(x11,x21,ak1,ck1,M1,
     '''
      This function calculate mass and number transfer rates
      for collision-coalescence and collisional breakup between
-     each distribution.
+     each distribution for 2 moment calculations (mass + number).
     '''
     
     Hlen,bins = x11.shape
@@ -617,7 +590,6 @@ class Interaction():
         # TESTING
         #self.cond_1 = ((self.ind_i>=(self.bins-self.sbin)) | (self.ind_j>=(self.bins-self.sbin)))
         
-
         # WORKING
         if self.mom_num == 2:
             self.cond_1 = np.tile(((self.ind_i>=(self.bins-self.sbin)) | (self.ind_j>=(self.bins-self.sbin))),(self.Hlen,1,1))
@@ -739,19 +711,23 @@ class Interaction():
                 dMi_loss_file = os.path.join(self.temp_dir,'dMi_loss.pkl')
                 dMj_loss_file = os.path.join(self.temp_dir,'dMj_loss.pkl')  
                 dM_gain_file  = os.path.join(self.temp_dir,'dM_gain.pkl')
-               # i1_region_file = os.path.join(self.temp_dir,'i1_region.pkl')
-               # j1_region_file = os.path.join(self.temp_dir,'j1_region.pkl')
                 
                 dump(self.dMi_loss,dMi_loss_file)
                 dump(self.dMj_loss,dMj_loss_file)
                 dump(self.dM_gain,dM_gain_file)
                 
-                #dump(self.regions[dd]['1']['i'],i1_region_file)
-                #dump(self.regions[dd]['1']['j'],j1_region_file)
-                
                 self.dMi_loss = load(dMi_loss_file,mmap_mode='r')
                 self.dMj_loss = load(dMj_loss_file,mmap_mode='r')
                 self.dM_gain  = load(dM_gain_file,mmap_mode='r')
+                
+                for dd in range(self.pnum):
+                    i_region_file = os.path.join(self.temp_dir,'i1_region_{}.pkl'.format(dd))
+                    j_region_file = os.path.join(self.temp_dir,'j1_region_{}.pkl'.format(dd))
+                    dump(self.regions[dd]['1']['i'],i_region_file)
+                    dump(self.regions[dd]['1']['j'],j_region_file)
+                    
+                    self.regions[dd]['1']['i'] = load(i_region_file,mmap_mode='r')
+                    self.regions[dd]['1']['j'] = load(j_region_file,mmap_mode='r')
 
         # Create dist_num x height x bins arrays for N and M 
         self.pack(dists)

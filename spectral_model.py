@@ -21,7 +21,7 @@ Description:
 ## Import stuff
 import numpy as np
 import scipy.special as scip
-from scipy.ndimage import convolve1d
+#from scipy.ndimage import convolve1d
 import matplotlib.pyplot as plt
 from analytical_solutions import Scott_dists, Feingold_dists
 from copy import deepcopy
