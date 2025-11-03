@@ -34,11 +34,11 @@ def habits():
     habits['snow']['bm'] =  3.-habits['snow']['brho']
     
     
-    habits['fragments'] = {'arho':0.4,
-                      'brho':1.0, 
+    habits['fragments'] = {'arho':0.6,
+                      'brho':0.0, 
                       'av':0.8,
                       'bv':0.14, 
-                      'ar':0.4,
+                      'ar':0.8,
                       'br':0., 
                       'sig':20.}
     
@@ -53,20 +53,20 @@ def fragments(dist='exp'):
         fragments = {'dist':dist,
                      'lamf':10., 
                      'Dmf':0.25, 
-                     'muf':0.,}
+                     'muf':0.}
         
     elif dist=='gamma':
         
         fragments = {'dist':dist,
                      'lamf':10.,
                      'Dmf':0.25, 
-                     'muf':0.,}
+                     'muf':3.}
         
     elif dist=='LGN':
         
         fragments = {'dist':dist,
                      'lamf':10.,
-                     'Df_med':0.35, 
-                     'Df_mode':0.3,}
+                     'Df_med':0.55, 
+                     'Df_mode':0.5}
         
     return fragments

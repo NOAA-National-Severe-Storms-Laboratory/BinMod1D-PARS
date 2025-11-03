@@ -233,6 +233,7 @@ class dist():
         self.vtm = self.vt.copy()
         self.vtn = self.vt.copy()
         
+        #!!! TESTING
         #self.Mfbins =self.av*(self.am)**(-self.bv/self.bm)*self.moments((self.bm+self.bv)/self.bm)
         #self.Nfbins =self.av*(self.am)**(-self.bv/self.bm)*self.moments((self.bv)/self.bm)
         
@@ -317,6 +318,7 @@ class dist():
         self.vtm = self.vt.copy()
         self.vtn = self.vt.copy()
         
+        # !!! Testing
         #self.Mfbins =self.av*(self.am)**(-self.bv/self.bm)*self.moments((self.bm+self.bv)/self.bm)
         #self.Nfbins =self.av*(self.am)**(-self.bv/self.bm)*self.moments((self.bv)/self.bm)
         
@@ -433,7 +435,11 @@ class dist():
             self.ZH = 10.*np.log10(zh_sum)
             self.ZDR = 10.*np.log10(zh_sum/zv_sum)
             self.KDP = np.nansum(self.kdp)
-            self.rhohv = zhhvv_sum/np.sqrt(zh_sum*zv_sum)
+            rhohv_denom = np.sqrt(zh_sum*zv_sum)
+            if rhohv_denom>0.: # Apparently for very small zh_sum and zv_sum the denominator can still be zero.
+                self.rhohv = zhhvv_sum/np.sqrt(zh_sum*zv_sum)
+            else:
+                self.rhohv = 1.0
             
         else:
             self.ZH = -35. 

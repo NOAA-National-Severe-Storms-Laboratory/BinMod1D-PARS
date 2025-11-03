@@ -7,6 +7,8 @@ Created on Mon Oct 13 10:50:41 2025
 import numpy as np
 from cmweather import cm as cmp
 
+import matplotlib as mpl
+
 def get_cmap_vars(varname):
     
     if varname == 'Z':
@@ -21,8 +23,10 @@ def get_cmap_vars(varname):
     if varname == 'ZDR':
         
         cmap = cmp.NWSRef
-        levels = [-1.,0.,0.2,0.4,0.6,0.8,1.0,1.5,2.0,2.5,3.0,4.,6.]
-        levels_ticks = [-1.,0.,0.2,0.4,0.6,0.8,1.0,1.5,2.0,2.5,3.0,4.,6.]
+        #levels = [-1.,0.,0.2,0.4,0.6,0.8,1.0,1.5,2.0,2.5,3.0,4.,6.]
+        levels = np.arange(-1.,6.05,0.05)
+        #levels_ticks = [-1.,0.,0.2,0.4,0.6,0.8,1.0,1.5,2.0,2.5,3.0,4.,6.]
+        levels_ticks = np.arange(-1.,7.,1.)
         clabel =r'$\mathrm{Z}_{\mathrm{DR}}$ [dB]'
         slabel =r'$\mathrm{Z}_{\mathrm{DR}}$ [dB]'
         labelpad = 45
@@ -38,16 +42,20 @@ def get_cmap_vars(varname):
         fontsize=32
          
     if varname == 'RHOHV':
-        cmap = cmp.NWSRef
-        levels = [0.8,0.9,0.92,0.94,0.96,0.97,0.975,0.9825,0.985,0.9875,0.99,0.995,1.]
-        levels_ticks = levels.copy()
+        cmap = cmp.NWS_CC
+        #levels = [0.8,0.9,0.92,0.94,0.96,0.97,0.975,0.9825,0.985,0.9875,0.99,0.995,1.]
+        #levels_ticks = levels.copy()
+        
+        levels = np.arange(0.8,1.001,0.001)
+        levels_ticks = [0.8,0.825,0.85,0.875,0.9,0.925,0.95,0.975,1.0]
+        
         clabel = r'Correlation Coefficient'
         slabel = r'$\rho_{\mathrm{hv}}$'
         labelpad = 30
         fontsize=32
         
     if varname == 'R':
-        cmap = cmp.NWSRef
+        cmap = cmp.RRate11
         levels = [0.,0.001,0.01,0.1,1.,5.,10.,15,20.,25.,50,100,150,200.]
         levels_ticks = levels.copy()
         clabel = r'Precip. Rate (mm/hr)'
@@ -56,7 +64,7 @@ def get_cmap_vars(varname):
         fontsize=32
         
     if varname == 'Nt':
-        cmap = cmp.NWSRef
+        cmap = mpl.cm.terrain
         levels = [0.,0.001,0.01,0.1,1.,2.5,5.,7.5,10.,12.5,15,17.50,20.,22.5,25.,50,100,150,200.]
         levels_ticks = levels.copy()
         clabel = r'Number Concentration (1/L)'
@@ -65,7 +73,7 @@ def get_cmap_vars(varname):
         fontsize=22
         
     if varname == 'Dm':
-        cmap = cmp.NWSRef
+        cmap = mpl.cm.terrain
         #levels = [0.1,0.25,0.5,0.75,1.,2., 3., 4.,5.,10.,15,20.]
         
         #levels = 2.**(np.arange(-3,6,1))

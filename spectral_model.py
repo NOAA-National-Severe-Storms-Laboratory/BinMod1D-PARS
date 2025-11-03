@@ -21,6 +21,7 @@ Description:
 ## Import stuff
 import numpy as np
 import scipy.special as scip
+#from scipy.ndimage import convolve1d
 import matplotlib.pyplot as plt
 from analytical_solutions import Scott_dists, Feingold_dists
 from copy import deepcopy
@@ -38,6 +39,8 @@ from datetime import datetime
 
 import sys
 
+import os 
+
 if 'ipykernel_launcher.py' in sys.argv[0]:
     from tqdm.auto import tqdm
 else:
@@ -52,7 +55,7 @@ class spectral_1d:
                  mu0=3.,gam_norm=False,Ecol=0.001,Es=1.0,Eb=0.,moments=2,dist_var='mass',
                  kernel='Golovin',frag_dist='exp',habit_list=['rain'],
                  ptype='rain',Tc=10.,boundary=None,dist_num=1,cc_dest=1,br_dest=1, 
-                 radar=False,rk_order=1,parallel=False,n_jobs=12):
+                 radar=False,rk_order=1,adv_order=1,parallel=False,n_jobs=-1):
         '''
         Initialize model and PSD        
         '''       
@@ -61,12 +64,12 @@ class spectral_1d:
                         output_freq=output_freq,dz=dz,ztop=ztop,zbot=zbot,Nt0=Nt0,Dm0=Dm0,mu0=mu0,gam_norm=gam_norm,Ecol=Ecol,
                         Es=Es,Eb=Eb,moments=moments,dist_var=dist_var,kernel=kernel,frag_dist=frag_dist,
                         habit_list=habit_list,ptype=ptype,Tc=Tc,radar=radar,boundary=boundary,
-                        dist_num=dist_num,cc_dest=cc_dest,br_dest=br_dest,rk_order=rk_order, 
+                        dist_num=dist_num,cc_dest=cc_dest,br_dest=br_dest,rk_order=rk_order,adv_order=adv_order,
                         parallel=parallel,n_jobs=n_jobs)
         
     def setup_case(self,sbin=4,bins=160,D1=0.001,x0=0.01,Nt0=1.,Dm0=2.0,mu0=3,gam_norm=False,dist_var='mass',kernel='Golovin',Ecol=1.53,Es=0.001,Eb=0.,
                         moments=2,ztop=3000.0,zbot=0.,tmax=800.,output_freq=60.,dt=10.,dz=10.,frag_dist='exp',habit_list=['rain'],ptype='rain',Tc=10.,
-                        radar=False,boundary=None,dist_num=1,cc_dest=1,br_dest=1,rk_order=1,parallel=False,n_jobs=12):
+                        radar=False,boundary=None,dist_num=1,cc_dest=1,br_dest=1,rk_order=1,adv_order=1,parallel=False,n_jobs=-1):
         self.Tc = Tc
         self.radar = radar
         self.sbin = sbin 
@@ -98,9 +101,14 @@ class spectral_1d:
         self.dist_var = dist_var
         self.ptype = ptype
         self.rk_order = rk_order
+        self.adv_order = adv_order
         self.boundary = boundary
         self.parallel = parallel
-        self.n_jobs = n_jobs
+        
+        if n_jobs == -1:
+            self.n_jobs = os.cpu_count()
+        else:
+            self.n_jobs = n_jobs
         
         self.indc = cc_dest 
         self.indb = br_dest
@@ -118,11 +126,17 @@ class spectral_1d:
             self.Tlen = len(self.z)
             self.dt = 1
             
+            # NOTE CURRENTLY NO OPTION FOR PARALLEL IN SS MODE
+            self.parallel = False
+            
         elif (self.Tlen>1) & (self.Hlen==1):
             self.int_type = 2
             self.Hlen = 1
             self.Tlen = len(self.t) 
             self.dh = self.t
+            
+            # NOTE CURRENTLY NO OPTION FOR PARALLEL IN BOX MODE
+            self.parallel = False
             
         else:
             self.int_type=0
@@ -186,8 +200,35 @@ class spectral_1d:
                                    mom_num=self.moments)
         
         self.lamf = frag_dict['lamf']
+        
+        # Stencils used for variable upwind advection
+        self.stencils = {1: np.array([-1, 1]) / 1,
+                         2: np.array([1, -4, 3]) / 2,
+                         3: np.array([-2, 9, -18, 11]) / 6,
+                         4: np.array([3, -16, 36, -48, 25]) / 12}
+        
+        self.adv_base = self.stencils[adv_order]
 
         self.dists = dists # 3D array of distribution objects (dist_num x height x time)
+
+    def clean_up(self):
+        
+        if self.parallel:
+            
+            del self.Ikernel.dMb_gain_frac
+            del self.Ikernel.dNb_gain_frac
+            del self.Ikernel.PK    
+            del self.Ikernel.kmin
+            del self.Ikernel.kmid
+            del self.Ikernel.cond_1
+            del self.Ikernel.self_col
+            
+            if self.moments==1:
+                
+                del self.Ikernel.dMi_loss
+                del self.Ikernel.dMj_loss
+                del self.Ikernel.dM_gain
+        
 
     def check_init_dist(self):
               
@@ -229,6 +270,11 @@ class spectral_1d:
             print('Initial Specific Differential Phase = {:.2f} deg/km'.format(self.dist0.KDP))
     
     def plot_time_height(self,var='Z'):
+        
+        plt.rc('text', usetex=True)
+        plt.rc('font', family='serif')
+        plt.rc('xtick', labelsize=16) 
+        plt.rc('ytick', labelsize=16) 
         
         dist_num = len(self.dists) 
 
@@ -345,21 +391,41 @@ class spectral_1d:
         return fig, ax
     
     
-    def plot_moments_radar(self,plot_habits=False):
+    def plot_moments_radar(self,tind=-1,plot_habits=False):
+        
+        plt.rc('text', usetex=True)
+        plt.rc('font', family='serif')
+        plt.rc('xtick', labelsize=16) 
+        plt.rc('ytick', labelsize=16) 
         
         dist_num = len(self.dists) 
         
-        if len(self.z)==1:
+        if self.int_type==2:
             h = self.t
-        elif len(self.t)==1:
+        elif self.int_type==1:
+            h = self.z/1000.
+        elif self.int_type==0:
+            #t = self.t 
             h = self.z/1000.
         
-        N  = np.full_like(self.full,np.nan)
-        M  = np.full_like(self.full,np.nan)
-        Dm = np.full_like(self.full,np.nan)
-        Rm = np.full_like(self.full,np.nan)      
-        M3 = np.full_like(self.full,np.nan)  
-        M4 = np.full_like(self.full,np.nan)  
+        #if len(self.z)==1:
+        #    h = self.t
+        #elif len(self.t)==1:
+        #    h = self.z/1000.
+        
+        # N  = np.full_like(self.full,np.nan)
+        # M  = np.full_like(self.full,np.nan)
+        # Dm = np.full_like(self.full,np.nan)
+        # Rm = np.full_like(self.full,np.nan)      
+        # M3 = np.full_like(self.full,np.nan)  
+        # M4 = np.full_like(self.full,np.nan)  
+        
+        N  = np.full((dist_num,len(h)),np.nan)
+        M  = np.full((dist_num,len(h)),np.nan)
+        Dm = np.full((dist_num,len(h)),np.nan)
+        Rm = np.full((dist_num,len(h)),np.nan)    
+        M3 = np.full((dist_num,len(h)),np.nan) 
+        M4 = np.full((dist_num,len(h)),np.nan) 
         
         ZH = -35.*np.ones((len(h),))
         ZDR = -35.*np.ones((len(h),))
@@ -367,45 +433,105 @@ class spectral_1d:
         RHOHV = np.ones((len(h),))
         Dm_tot = np.full((len(h),),np.nan) 
         
-       # ZH = -35.*np.ones((len(h),))
-      #  ZDR = -35.*np.ones((len(h),))
-       # KDP = np.zeros((len(h),))
-       # RHOHV = np.ones((len(h),))
-        
-       # Dm_tot = np.full((len(h),),np.nan) 
-        
-        for ff in range(len(h)):
+        if self.int_type==0:
             
-            Zh = 0. 
-            Zv = 0. 
-            Zhhvv = 0. 
+            for ff in range(len(h)):
+                
+                Zh = 0. 
+                Zv = 0. 
+                Zhhvv = 0. 
+                
+                for d1 in range(dist_num):
+                    
+                    am = self.full[d1,ff,tind].am
+                    bm = self.full[d1,ff,tind].bm
+                    
+                    M3[d1,ff] = (am**(-3./bm)*self.full[d1,ff,tind].moments(3./bm)).sum()
+                    M4[d1,ff] = (am**(-4./bm)*self.full[d1,ff,tind].moments(4./bm)).sum()
+                      
+                    N[d1,ff]  = np.nansum(self.full[d1,ff,tind].Nbins)
+                    M[d1,ff]  = 1000.*np.nansum(self.full[d1,ff,tind].Mbins)
+                    Rm[d1,ff] = 1000.*3.6*np.nansum(self.full[d1,ff,tind].Mfbins)
+                    
+                    Zh      += np.nansum(self.full[d1,ff,tind].zh)
+                    Zv      += np.nansum(self.full[d1,ff,tind].zv)
+                    Zhhvv   += np.nansum(self.full[d1,ff,tind].zhhvv)
+                    KDP[ff] += np.nansum(self.full[d1,ff,tind].KDP)
             
-            for d1 in range(dist_num):
-                
-                am = self.full[d1,ff].am
-                bm = self.full[d1,ff].bm
-                
-                M3[d1,ff] = (am**(-3./bm)*self.full[d1,ff].moments(3./bm)).sum()
-                M4[d1,ff] = (am**(-4./bm)*self.full[d1,ff].moments(4./bm)).sum()
+    
+                if Zv>0.:
+                    ZDR[ff] = 10.*np.log10(Zh/Zv)
                   
-                N[d1,ff]  = np.nansum(self.full[d1,ff].Nbins)
-                M[d1,ff]  = 1000.*np.nansum(self.full[d1,ff].Mbins)
-                Rm[d1,ff] = 1000.*3.6*np.nansum(self.full[d1,ff].Mfbins)
+                ZH[ff] = 10.*np.log10(Zh)    
+                  
+                RHOHV_denom = np.sqrt(Zh*Zv)
+                if RHOHV_denom>0.:
+                    RHOHV[ff] = np.abs(Zhhvv)/RHOHV_denom
                 
-                Zh      += np.nansum(self.full[d1,ff].zh)
-                Zv      += np.nansum(self.full[d1,ff].zv)
-                Zhhvv   += np.nansum(self.full[d1,ff].zhhvv)
-                KDP[ff] += np.nansum(self.full[d1,ff].KDP)
-        
-
-            if Zv>0.:
-                ZDR[ff] = 10.*np.log10(Zh/Zv)
-              
-            ZH[ff] = 10.*np.log10(Zh)    
-              
-            if (Zh>0.) & (Zv>0.):
-                RHOHV[ff] = np.abs(Zhhvv)/np.sqrt(Zh*Zv)
+            # M3_tot = np.nansum(M3,axis=0)
+            # M4_tot = np.nansum(M4,axis=0)
             
+            # M3_tot[M3_tot==0.] = np.nan
+            
+            # Dm_tot = M4_tot/M3_tot
+            
+            # M3[M3==0.] = np.nan 
+            
+            # Dm = M4/M3
+            
+            # N_tot = np.nansum(N,axis=0)
+            # M_tot = np.nansum(M,axis=0)
+            # Rm_tot = np.nansum(Rm,axis=0)
+        
+        else:
+            for ff in range(len(h)):
+                
+                Zh = 0. 
+                Zv = 0. 
+                Zhhvv = 0. 
+                
+                for d1 in range(dist_num):
+                    
+                    am = self.full[d1,ff].am
+                    bm = self.full[d1,ff].bm
+                    
+                    M3[d1,ff] = (am**(-3./bm)*self.full[d1,ff].moments(3./bm)).sum()
+                    M4[d1,ff] = (am**(-4./bm)*self.full[d1,ff].moments(4./bm)).sum()
+                      
+                    N[d1,ff]  = np.nansum(self.full[d1,ff].Nbins)
+                    M[d1,ff]  = 1000.*np.nansum(self.full[d1,ff].Mbins)
+                    Rm[d1,ff] = 1000.*3.6*np.nansum(self.full[d1,ff].Mfbins)
+                    
+                    Zh      += np.nansum(self.full[d1,ff].zh)
+                    Zv      += np.nansum(self.full[d1,ff].zv)
+                    Zhhvv   += np.nansum(self.full[d1,ff].zhhvv)
+                    KDP[ff] += np.nansum(self.full[d1,ff].KDP)
+            
+                if Zv>0.:
+                    ZDR[ff] = 10.*np.log10(Zh/Zv)
+                  
+                ZH[ff] = 10.*np.log10(Zh)    
+                  
+                RHOHV_denom = np.sqrt(Zh*Zv)
+                if RHOHV_denom>0.:
+                    RHOHV[ff] = np.abs(Zhhvv)/RHOHV_denom
+                
+            # M3_tot = np.nansum(M3,axis=0)
+            # M4_tot = np.nansum(M4,axis=0)
+            
+            # M3_tot[M3_tot==0.] = np.nan
+            
+            # Dm_tot = M4_tot/M3_tot
+            
+            # M3[M3==0.] = np.nan 
+            
+            # Dm = M4/M3
+            
+            # N_tot = np.nansum(N,axis=0)
+            # M_tot = np.nansum(M,axis=0)
+            # Rm_tot = np.nansum(Rm,axis=0)
+
+
         M3_tot = np.nansum(M3,axis=0)
         M4_tot = np.nansum(M4,axis=0)
         
@@ -421,7 +547,7 @@ class spectral_1d:
         M_tot = np.nansum(M,axis=0)
         Rm_tot = np.nansum(Rm,axis=0)
 
-        if self.int_type==2:
+        if self.int_type==2: # Box model
             
             fig, ax = plt.subplots(2,4,figsize=(14,8),sharey=True)
             
@@ -460,12 +586,12 @@ class spectral_1d:
                 
                 for d1 in range(dist_num):
                     
-                    ax[0,0].plot(self.t,N[d1,:],label='Dist {}'.format(d1+1))
+                    ax[0,0].plot(self.t,N[d1,:],label='dist {}'.format(d1+1))
                     ax[0,1].plot(self.t,Dm[d1,:])
                     ax[0,2].plot(self.t,M[d1,:])
                     ax[0,3].plot(self.t,Rm[d1,:])
    
-        elif self.int_type==1:
+        else:
             #fig, ax = plt.subplots(1,3,figsize=(12,6),sharey=True)
             
             fig, ax = plt.subplots(2,4,figsize=(14,8),sharey=True)
@@ -504,7 +630,7 @@ class spectral_1d:
             if plot_habits:
                 
                 for d1 in range(dist_num):
-                    ax[0,0].plot(N[d1,:],self.z/1000.,label='Dist {}'.format(d1+1))
+                    ax[0,0].plot(N[d1,:],self.z/1000.,label='dist {}'.format(d1+1))
                     ax[0,1].plot(Dm[d1,:],self.z/1000.)
                     ax[0,2].plot(M[d1,:],self.z/1000.)
                     ax[0,3].plot(Rm[d1,:],self.z/1000.)
@@ -517,8 +643,13 @@ class spectral_1d:
  
     def plot_init(self,log_switch=True,x_axis='mass'):
 
+        plt.rc('text', usetex=True)
+        plt.rc('font', family='serif')
+        plt.rc('xtick', labelsize=16) 
+        plt.rc('ytick', labelsize=16)         
+
         mbins = self.dist0.xbins
-        medges = self.dist0.xedges.copy() 
+       # medges = self.dist0.xedges.copy() 
         xp1 = self.dist0.x1
         xp2 = self.dist0.x2
         ap = self.dist0.aki
@@ -560,8 +691,8 @@ class spectral_1d:
         ax[1].set_ylabel(ylabel_mass)
         ax[1].set_xlabel(xlabel)
         
-        print('Initial Number = {:.2f} #/L'.format(np.nansum(mbins*n_init*(np.log10(medges[1:])-np.log10(medges[:-1])))))
-        print('Initial Mass = {:.2f} g/cm^3'.format(np.nansum(1000.*mbins**2*n_init*(np.log10(medges[1:])-np.log10(medges[:-1])))))
+        #print('Initial Number = {:.2f} #/L'.format(np.nansum(mbins*n_init*(np.log10(medges[1:])-np.log10(medges[:-1])))))
+        #print('Initial Mass = {:.2f} g/cm^3'.format(np.nansum(1000.*mbins**2*n_init*(np.log10(medges[1:])-np.log10(medges[:-1])))))
         
         #print('number test size=',np.nansum(mbins*n_init*(np.log10(dedges[1:])-np.log10(dedges[:-1]))))
         #print('mass test size=',np.nansum(1000.*mbins**2*n_init*(np.log10(dedges[1:])-np.log10(dedges[:-1]))))
@@ -573,6 +704,11 @@ class spectral_1d:
     def plot_dists(self,tind=-1,hind=-1,x_axis='mass',y_axis='mass',xscale='log',yscale='linear',distscale='log',scott_solution=False,feingold_solution=False,plot_habits=False):
    # def plot_dists(self,*inds,x_axis='mass',y_axis='mass',xscale='log',yscale='linear',distscale='log',scott_solution=False,feingold_solution=False,plot_habits=False):
                 
+        plt.rc('text', usetex=True)
+        plt.rc('font', family='serif')
+        plt.rc('xtick', labelsize=16) 
+        plt.rc('ytick', labelsize=16) 
+        
         # NOTE: probably need to figure out how to deal with x_axis='size' when
         # am and bm parameters are different for each habit.
         
@@ -606,6 +742,7 @@ class spectral_1d:
         am = np.full((self.dnum,),np.nan)
 
         if self.int_type==0:
+            f_label = '{} km | {} min.'.format(self.z[hind]/1000.,self.t[tind]/60.)
             for d1 in range(self.dnum):
                 x1_final[d1,:] = self.full[d1,hind,tind].x1 
                 x2_final[d1,:] = self.full[d1,hind,tind].x2 
@@ -615,6 +752,7 @@ class spectral_1d:
                 am[d1] = self.full[d1,hind,tind].am 
                 
         elif self.int_type==1:
+            f_label = '{} km'.format(self.z[hind]/1000.)
             for d1 in range(self.dnum):
                 x1_final[d1,:] = self.full[d1,hind].x1 
                 x2_final[d1,:] = self.full[d1,hind].x2 
@@ -624,6 +762,7 @@ class spectral_1d:
                 am[d1] = self.full[d1,hind].am 
                 
         elif self.int_type==2:
+            f_label = '{} min.'.format(self.t[tind]/60.)
             for d1 in range(self.dnum):
                 x1_final[d1,:] = self.full[d1,tind].x1 
                 x2_final[d1,:] = self.full[d1,tind].x2 
@@ -652,8 +791,6 @@ class spectral_1d:
             elif x_axis=='size':  # plot dN/dlog(D) and dM/dlog(D)
                 
                 for d1 in range(self.dnum):
-                    #prefN[d1,:] = mbins*self.full[d1,0,0].bm*np.log(10) 
-                    #prefM[d1,:] = mbins**2*self.full[d1,0,0].bm*np.log(10) 
                     
                     prefN[d1,:] = mbins*bm[d1]*np.log(10) 
                     prefM[d1,:] = mbins**2*bm[d1]*np.log(10) 
@@ -661,9 +798,7 @@ class spectral_1d:
                     #xbins[d1,:] = (mbins/self.full[d1,0].am)**(1./self.full[d1,0].bm)
                
                 xbins = (mbins/am[0])**(1./bm[0])
-                
-                
-                
+   
                 ylabel_num = r'dN/dlog(D)'
                 ylabel_mass = r'dM/dlog(D)'
                 
@@ -725,15 +860,15 @@ class spectral_1d:
             elif (x_axis=='mass'):
                 xlabel = r'm (g)'
         
-        ax[0].plot(x,nN_init,':k')
-        ax[0].plot(x,np.nansum(nN_final,axis=0),'k')
+        ax[0].plot(x,nN_init,':k',label='initial')
+        ax[0].plot(x,np.nansum(nN_final,axis=0),'k',label=f_label)
         if plot_habits:
             for d1 in range(self.dnum):
                 ax[0].plot(x,nN_final[d1,:],label='dist {}'.format(d1+1))
             
         # Factor of 1000 comes from converting g to g/m^3
-        ax[1].plot(x,1000.*nM_init,':k')
-        ax[1].plot(x,1000.*np.nansum(nM_final,axis=0),'k')
+        ax[1].plot(x,1000.*nM_init,':k',label='initial')
+        ax[1].plot(x,1000.*np.nansum(nM_final,axis=0),'k',label=f_label)
         if plot_habits:
             for d1 in range(self.dnum):
                 ax[1].plot(x,1000.*nM_final[d1,:],label='dist {}'.format(d1+1))
@@ -759,8 +894,8 @@ class spectral_1d:
             if not (hasattr(self,'n_scott')):
                 self.n_scott = Scott_dists(self.xbins,self.Eagg,self.mu0+1,self.t,kernel_type=kernel_type)
         
-            ax[0].plot(x,prefN[0,:]*self.n_scott[:,tind],':r')
-            ax[1].plot(x,1000.*prefM[0,:]*self.n_scott[:,tind],':r')
+            ax[0].plot(x,prefN[0,:]*self.n_scott[:,tind],':r',label=f_label+ " analytical")
+            ax[1].plot(x,1000.*prefM[0,:]*self.n_scott[:,tind],':r',label=f_label+ "analytical")
         
         if (feingold_solution & (self.int_type==2)):
             
@@ -780,19 +915,20 @@ class spectral_1d:
                     self.n_fein = Feingold_dists(self.xbins,self.t,self.mu0+1,self.Eagg,self.Ebr,self.lamf,kernel_type=kernel_type)
 
                 if kernel_type=='SBE':
-                    ax[0].plot(x,prefN[0,:]*self.n_fein[:,tind],':r')
-                    ax[1].plot(x,1000.*prefM[0,:]*self.n_fein[:,tind],':r')
+                    ax[0].plot(x,prefN[0,:]*self.n_fein[:,tind],':r',label=f_label+ " analytical")
+                    ax[1].plot(x,1000.*prefM[0,:]*self.n_fein[:,tind],':r',label=f_label+ " analytical")
                 elif kernel_type=='SCE/SBE':
-                    ax[0].plot(x,prefN[0,:]*self.n_fein,':r')
-                    ax[1].plot(x,1000.*prefM[0,:]*self.n_fein,':r')
+                    ax[0].plot(x,prefN[0,:]*self.n_fein,':r',label=f_label+ " analytical")
+                    ax[1].plot(x,1000.*prefM[0,:]*self.n_fein,':r',label=f_label+ " analytical")
                     
-         
+        ax[0].legend() 
+            
         plt.tight_layout()
         
         return fig, ax
      
 
-    def plot_dists_height(self):
+    def plot_dists_height(self,tind=-1,plot_habits=False):
         
         #plt.rcParams['text.usetex'] = True
         
@@ -809,7 +945,12 @@ class spectral_1d:
         
         mbins = self.dist0.xbins.copy() 
         
-        primary_init  = self.full[0,0]
+        if self.int_type==0:
+            primary_init  = self.full[0,0,tind]
+        else:
+            primary_init = self.full[0,0]
+        
+       # primary_init  = self.full[0,0]
         
         xp1 = primary_init.x1
         xp2 = primary_init.x2
@@ -829,7 +970,8 @@ class spectral_1d:
         ax[0].set_ylim(bottom=0.001)
         
         ax[0].set_title('Height = {} km'.format(z_lvls[0]),fontsize=16)
-        ax[0].set_ylabel(r'Number Density (1/cm$^{3}$ 1/mm)',fontsize=10)
+        #ax[0].set_ylabel(r'Number Density (1/cm$^{3}$ 1/mm)',fontsize=16)
+        ax[0].set_ylabel(r'n(D) (1/cm$^{3}$ 1/mm)',fontsize=16)
         
         ax[0].axes.tick_params(labelsize=16)
         ax[0].set_xlim((0.,5.))
@@ -843,34 +985,48 @@ class spectral_1d:
             
             
             for d1 in range(self.dnum):
-            
-                xp1_final = self.full[d1,zind].x1
-                xp2_final = self.full[d1,zind].x2
-                ap_final  = self.full[d1,zind].aki
-                cp_final  = self.full[d1,zind].cki
+
                 
-                prefN =self.full[d1,zind].am**(1./self.full[d1,zind].bm)*self.full[d1,zind].bm*mbins**(1.-1./self.full[d1,zind].bm)
+                if self.int_type==0:
+                    xp1_final = self.full[d1,zind,tind].x1
+                    xp2_final = self.full[d1,zind,tind].x2
+                    ap_final  = self.full[d1,zind,tind].aki
+                    cp_final  = self.full[d1,zind,tind].cki
+                    prefN =self.full[d1,zind,tind].am**(1./self.full[d1,zind,tind].bm)*self.full[d1,zind,tind].bm*mbins**(1.-1./self.full[d1,zind,tind].bm)
+                    
+                else:
+                    xp1_final = self.full[d1,zind].x1
+                    xp2_final = self.full[d1,zind].x2
+                    ap_final  = self.full[d1,zind].aki
+                    cp_final  = self.full[d1,zind].cki
+                    prefN =self.full[d1,zind].am**(1./self.full[d1,zind].bm)*self.full[d1,zind].bm*mbins**(1.-1./self.full[d1,zind].bm)
                 
                 nN_final[d1,:] = prefN*np.heaviside(mbins-xp1_final,1)*np.heaviside(xp2_final-mbins,1)*(ap_final*mbins+cp_final)
 
-                ax[hh].plot(xbins,nN_final[d1,:],label='dist {}'.format(d1+1))
+                if plot_habits:
+                    ax[hh].plot(xbins,nN_final[d1,:],label='dist {}'.format(d1+1))
 
-            ax[hh].plot(xbins,np.nansum(nN_final,axis=0),color='k',label='total')
+            if plot_habits:
+                ax[hh].plot(xbins,np.nansum(nN_final,axis=0),color='k')
+            else:
+                ax[hh].plot(xbins,np.nansum(nN_final,axis=0),color='k',label='total')
                 
             ax[hh].set_yscale('log')
             ax[hh].set_xscale('linear')
             ax[hh].set_ylim(bottom=0.001)
             
             ax[hh].set_title('Height = {} km'.format(z_lvls[hh]),fontsize=16)
-            ax[hh].set_ylabel(r'Number Density (1/cm$^{3}$ 1/mm)',fontsize=10)
+            #ax[hh].set_ylabel(r'Number Density (1/cm$^{3}$ 1/mm)',fontsize=16)
+            ax[hh].set_ylabel(r'n(D) (1/cm$^{3}$ 1/mm)',fontsize=16)
             
             ax[hh].axes.tick_params(labelsize=16)
             ax[hh].set_xlim((0.,5.))
 
         
-        ax[0].set_ylim((1e-5,1e3))
+        ax[0].set_ylim((1e-5,1e5))
         ax[-1].set_xlabel('Equivolume Diameter (mm)',fontsize=16)
-        ax[-1].legend()
+        if plot_habits:
+            ax[-1].legend()
         
         plt.tight_layout()
         
@@ -882,6 +1038,9 @@ class spectral_1d:
         Mbins = np.zeros_like(M_old)
         
         M_net = self.Ikernel.interact_1mom(dt)
+        
+       # print('M_net=',M_net[1,:,:].sum())
+        #raise Exception()
     
         M_sed = np.zeros((self.dnum,self.Hlen,self.bins)) 
        
@@ -889,8 +1048,17 @@ class spectral_1d:
             M_sed[:,0,:] = (dt/self.dz)*(-self.Ikernel.Mfbins[:,0,:]) 
         
         M_sed[:,1:,:] = (dt/self.dz)*(self.Ikernel.Mfbins[:,:-1,:]-self.Ikernel.Mfbins[:,1:,:]) 
-                  
+              
+        #M_sed = (dt/self.dz)*convolve1d(self.Ikernel.Mfbins,self.adv_base,axis=1,mode='nearest')
+        
+        #M_sed = (dt/self.dz)*np.apply_along_axis(np.convolve(self.Ikernel.Mfbins,self.adv_base,mode='same'),axis=1)
+        
+        #if self.boundary is None:
+        #    M_sed[:,0,:] = (dt/self.dz)*(-self.Ikernel.Mfbins[:,0,:]) 
+        
+        
         M_transfer = M_old+M_sed+M_net
+        
         
         M_new = np.maximum(M_transfer,0.) # Should be positive if not over fragmented.
         Mbins[M_new>=0.] = M_new[M_new>=0.].copy()
@@ -901,8 +1069,6 @@ class spectral_1d:
             
         dM = (Mbins-M_old)/dt
         
-       # print('dM=',dM.sum())
-       # raise Exception()
         
         return dM
     
@@ -912,7 +1078,9 @@ class spectral_1d:
         Mbins = np.zeros_like(M_old)
         Nbins = np.zeros_like(N_old)
             
-        M_net, N_net = self.Ikernel.interact(dt)
+        #M_net, N_net = self.Ikernel.interact(dt)
+        
+        M_net, N_net = self.Ikernel.interact_2mom(dt)
        
         M_sed = np.zeros((self.dnum,self.Hlen,self.bins)) 
         N_sed = np.zeros((self.dnum,self.Hlen,self.bins)) 
@@ -942,7 +1110,6 @@ class spectral_1d:
         
         return dM, dN
  
-
 
     def run_steady_state_1mom(self):
         
@@ -974,7 +1141,6 @@ class spectral_1d:
     
                     pbar.set_description('Total Mass = {:.2f} g/m^3 | Total Mass Flux = {:.2f} g/(m^2*s)'.format(1000.*M,1000.*Mf))
                     
-    
                     Mbins_old = self.Ikernel.Mbins.copy() 
   
                     M_net = self.Ikernel.interact_1mom(1.0)
@@ -1011,13 +1177,11 @@ class spectral_1d:
         tf = 0
         
         for hh in range(self.Hlen):
-            for d1 in range(self.dnum):
-                self.full[d1,hh,tf] = deepcopy(self.dists[d1,hh])
+           for d1 in range(self.dnum):
+               self.full[d1,hh,tf] = deepcopy(self.dists[d1,hh])
         
-        # ELD NOTE: 
-            # Make sure to cap min M and N and 0 to prevent numerical errors.
         pbar = tqdm(position=0, leave=True, mininterval=0,miniters=1,desc="Running 1D spectral bin model\n")
-        for tt in range(1,self.Tlen):
+        for tt in tqdm(range(1,self.Tlen)):
 
             #print('Running 1D spectral bin model: step = {} out of {}'.format(tt,self.Tlen-1))
             #print('Total Mass = {:.2f} g/m^3 | Total Mass Flux = {:.2f} g/(m^2*s)'.format(1000.*np.nansum(self.Ikernel.Mbins),
@@ -1039,32 +1203,37 @@ class spectral_1d:
  
                 dM[:,:,:,ii] = self.advance_1mom(M_stage,self.dt)
                 
+            self.Ikernel.Mbins = np.maximum(M_old + self.dt*np.nansum(b[None,None,None,:]*dM,axis=3),0.)
+            self.Ikernel.Nbins = self.Ikernel.Mbins/self.xbins[None,None,:]
             
-            Mbins = np.maximum(M_old + self.dt*np.nansum(b[None,None,None,:]*dM,axis=3),0.)
-            
-            self.Ikernel.Mbins = Mbins.copy()
-            
-            
-           # self.Ikernel.Mbins = np.maximum(M_old + self.dt*np.nansum(b[None,None,None,:]*dM,axis=3),0.)
-            
-            #print('Mold=',M_old.sum())
-            #print('Mnew=',self.Ikernel.Mbins.sum())
-            #raise Exception()
-            
-            #self.Ikernel.Nbins = self.Ikernel.Mbins/self.xbins[None,None,:]
-
             self.Ikernel.unpack_1mom() # Unpack the interaction 3D array to each object in the (dist x height) object array
             self.Ikernel.pack(self.Ikernel.dists) # Update moments and parameters of 2D array of distribution objects
 
             if np.isin(self.t[tt],self.tout):
                 tf += 1
-                print('Saving output')
+                #print('Saving output')
                 for hh in range(self.Hlen):
                    for d1 in range(self.dnum):
                        self.full[d1,hh,tf] = deepcopy(self.dists[d1,hh])
 
         
-        delattr(self,'Ikernel')
+        # Clean up
+        
+        # if self.parallel:
+            
+        #     del self.Ikernel.dMb_gain_frac
+        #     del self.Ikernel.dNb_gain_frac
+        #     del self.Ikernel.PK   
+        #     del self.Ikernel.kmin
+        #     del self.Ikernel.kmid
+        #     del self.Ikernel.cond_1
+        #     del self.Ikernel.self_col
+                 
+        #     del self.Ikernel.dMi_loss
+        #     del self.Ikernel.dMj_loss
+        #     del self.Ikernel.dM_gain
+
+        # delattr(self,'Ikernel')
 
 
     def run_steady_state_2mom(self):
@@ -1111,7 +1280,9 @@ class spectral_1d:
                     Mbins_old = self.Ikernel.Mbins.copy() 
                     Nbins_old = self.Ikernel.Nbins.copy()
   
-                    M_net, N_net = self.Ikernel.interact(1.0)
+                    #M_net, N_net = self.Ikernel.interact(1.0)
+                    
+                    M_net, N_net = self.Ikernel.interact_2mom(1.0)
                    
                     self.Ikernel.Mbins = np.maximum(Mbins_old+M_net*dh[:,None,:],0.)
                     self.Ikernel.Nbins = np.maximum(Nbins_old+N_net*dh[:,None,:],0.)
@@ -1160,8 +1331,7 @@ class spectral_1d:
             
             pbar.set_description('Total Mass = {:.2f} g/m^3 | Total Mass Flux = {:.2f} g/(m^2*s)'.format(1000.*np.nansum(self.Ikernel.Mbins),
                                                                                                          1000.*np.nansum(self.Ikernel.Mfbins)))
-                    
-            
+
             dM = np.zeros((self.dnum,self.Hlen,self.bins,rklen))
             dN = np.zeros((self.dnum,self.Hlen,self.bins,rklen))
             
@@ -1190,13 +1360,25 @@ class spectral_1d:
 
             if np.isin(self.t[tt],self.tout):
                 tf += 1
-                print('Saving output')
+                #print('Saving output')
                 for hh in range(self.Hlen):
                    for d1 in range(self.dnum):
                        self.full[d1,hh,tf] = deepcopy(self.dists[d1,hh])
 
         
-        delattr(self,'Ikernel')
+
+
+        # if self.parallel:
+            
+        #     del self.Ikernel.dMb_gain_frac
+        #     del self.Ikernel.dNb_gain_frac
+        #     del self.Ikernel.PK    
+        #     del self.Ikernel.kmin
+        #     del self.Ikernel.kmid
+        #     del self.Ikernel.cond_1
+        #     del self.Ikernel.self_col
+
+        # delattr(self,'Ikernel')
         
 
     def run(self):
@@ -1205,24 +1387,32 @@ class spectral_1d:
         '''
         time_start = datetime.now()
 
+        try:
 
-        if self.moments == 1:
-            
-            if self.int_type==0:
-                self.run_full_1mom()
+            # If running one moment (mass) only
+            if self.moments == 1:
                 
-            else:
-                self.run_steady_state_1mom()
-            
-        
-        if self.moments == 2:
-
-            if self.int_type==0:
-                self.run_full_2mom()
+                if self.int_type==0:
+                    self.run_full_1mom()
+                    
+                else:
+                    self.run_steady_state_1mom()
                 
-            else:
-                self.run_steady_state_2mom()
+            # If running two moments (mass and number)
+            if self.moments == 2:
+    
+                if self.int_type==0:
+                    self.run_full_2mom()
+                    
+                else:
+                    self.run_steady_state_2mom()
+                    
+        except Exception as E:
+           print('\n{}'.format(E))
  
+        finally:
+            #Clean up temporary memory mapped files and potentially other things too.
+            self.clean_up()
     
         time_end = datetime.now() 
         print('\nModel Complete! Time Elapsed = {:.2f} min'.format((time_end-time_start).total_seconds()/60.))
