@@ -7,9 +7,9 @@ Created on Wed Sep 24 08:35:18 2025
 
 import numpy as np
 import scipy.special as scip
-from bin_integrals import Pn
+from .bin_integrals import Pn
 
-from habits import habits
+from .habits import habits
 
 # Number Distribution function class for arbitrary category
 class dist():

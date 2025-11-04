@@ -7,8 +7,8 @@ Created on Thu Oct  2 11:31:38 2025
 ## Import stuff
 import numpy as np
 
-from collection_kernels import Prod_kernel, Constant_kernel, Golovin_kernel, hydro_kernel
-from bin_integrals import In_int, gam_int, LGN_int, integrate_fast_kernel
+from .collection_kernels import Prod_kernel, Constant_kernel, Golovin_kernel, hydro_kernel
+from .bin_integrals import In_int, gam_int, LGN_int, integrate_fast_kernel
 
 from joblib import Parallel, delayed, dump, load
 

@@ -4,10 +4,9 @@ Created on Wed Sep 10 09:40:10 2025
 
 @author: edwin.dunnavan
 """
-
 import numpy as np
 import mpmath
-from scipy.special import gamma, hyp2f1, iv, i0, i1
+from scipy.special import gamma, hyp2f1, i0, i1
 from scipy.optimize import fsolve
 
 def Scott_moments(r,t,nu,E,B,kernel_type='Golovin'):

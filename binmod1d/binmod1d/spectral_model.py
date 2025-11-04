@@ -19,21 +19,21 @@ Description:
 """
 
 ## Import stuff
+
+from .distribution import dist
+from .interaction import Interaction
+from .bin_integrals import init_rk
+from .analytical_solutions import Scott_dists, Feingold_dists
+from .habits import habits, fragments
+from .plotting_functions import get_cmap_vars
+
 import numpy as np
 import scipy.special as scip
 #from scipy.ndimage import convolve1d
 import matplotlib.pyplot as plt
-from analytical_solutions import Scott_dists, Feingold_dists
 from copy import deepcopy
-from distribution import dist
-from interaction import Interaction
-from bin_integrals import init_rk
-
-from habits import habits, fragments
 
 from matplotlib.colors import BoundaryNorm
-
-from plotting_functions import get_cmap_vars
 
 from datetime import datetime
 
