@@ -228,6 +228,10 @@ class spectral_1d:
                 del self.Ikernel.dMi_loss
                 del self.Ikernel.dMj_loss
                 del self.Ikernel.dM_gain
+                
+                for dd in range(self.Ikernel.pnum):
+                    del self.Ikernel.regions[dd]['1']['i']
+                    del self.Ikernel.regions[dd]['1']['j']
         
 
     def check_init_dist(self):
@@ -702,8 +706,7 @@ class spectral_1d:
     
     
     def plot_dists(self,tind=-1,hind=-1,x_axis='mass',y_axis='mass',xscale='log',yscale='linear',distscale='log',scott_solution=False,feingold_solution=False,plot_habits=False):
-   # def plot_dists(self,*inds,x_axis='mass',y_axis='mass',xscale='log',yscale='linear',distscale='log',scott_solution=False,feingold_solution=False,plot_habits=False):
-                
+      
         plt.rc('text', usetex=True)
         plt.rc('font', family='serif')
         plt.rc('xtick', labelsize=16) 
@@ -742,7 +745,7 @@ class spectral_1d:
         am = np.full((self.dnum,),np.nan)
 
         if self.int_type==0:
-            f_label = '{} km | {} min.'.format(self.z[hind]/1000.,self.t[tind]/60.)
+            f_label = '{:.1f} km | {:.2f} min.'.format(self.z[hind]/1000.,self.t[tind]/60.)
             for d1 in range(self.dnum):
                 x1_final[d1,:] = self.full[d1,hind,tind].x1 
                 x2_final[d1,:] = self.full[d1,hind,tind].x2 
@@ -752,7 +755,7 @@ class spectral_1d:
                 am[d1] = self.full[d1,hind,tind].am 
                 
         elif self.int_type==1:
-            f_label = '{} km'.format(self.z[hind]/1000.)
+            f_label = '{:.1f} km'.format(self.z[hind]/1000.)
             for d1 in range(self.dnum):
                 x1_final[d1,:] = self.full[d1,hind].x1 
                 x2_final[d1,:] = self.full[d1,hind].x2 
@@ -762,7 +765,7 @@ class spectral_1d:
                 am[d1] = self.full[d1,hind].am 
                 
         elif self.int_type==2:
-            f_label = '{} min.'.format(self.t[tind]/60.)
+            f_label = '{:.2f} min.'.format(self.t[tind]/60.)
             for d1 in range(self.dnum):
                 x1_final[d1,:] = self.full[d1,tind].x1 
                 x2_final[d1,:] = self.full[d1,tind].x2 

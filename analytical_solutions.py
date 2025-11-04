@@ -233,12 +233,6 @@ def Feingold_dists(xbins,t,nu,E,B,gam,kernel_type='SBE'):
         npbins = (1-E_new)*gam**2*(i0(eta*xbins)-i1(eta*xbins))*np.exp(-(gam-eta)*xbins)
     
     
-        #print('kernel test')
-    
-    # Check total mass
-   # Mt = Feingold_moments(1,t,nu,B,gam,kernel_type=kernel_type)
-    
-    #print('Total Mass = ',Mt)
     
     
     return npbins
