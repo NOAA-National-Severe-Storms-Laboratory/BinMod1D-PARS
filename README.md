@@ -1,4 +1,4 @@
-![BinMod1D Banner](assets/PyPi_Banner.png)
+![BinMod1D Banner](https://github.com/NOAA-National-Severe-Storms-Laboratory/BinMod1D-PARS/blob/0583d64da2ae535d34499767106cd501fa964eee/assets/PyPi_Banner.png)
 This repository contains the BinMod1D python code. This is a python-based 1D bin (spectral) microphysical model designed to explicitly simulate collision-coalescence and collisional breakup. In order to use the code:
 
 1.) Initialize the spectral model using the spectral_1d class: 
