@@ -3,7 +3,7 @@ This repository contains the BinMod1D python code. This is a python-based 1D bin
 1.) Initialize the spectral model using the spectral_1d class: 
 
 ```python
-from spectral_model import spectral_1d
+from binmod1d.spectral_model import spectral_1d
 
 s1 = spectral_1D()
 ```
