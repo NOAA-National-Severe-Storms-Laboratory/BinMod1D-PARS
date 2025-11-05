@@ -195,20 +195,6 @@ class dist():
            self.nbins = (self.Nt0/self.bm)*(1./scip.gamma(self.mu0+1.))*\
                (1./self.mn)*(self.xbins/self.mn)**((nu/self.bm)-1.)*np.exp(-(self.xbins/self.mn)**(1./self.bm))
             
-            
-        
-        # if kernel=='Hydro': # 1/L /g
-        #     self.nedges = (self.Nt0/self.bm)*(1./scip.gamma(self.mu0+1.))*\
-        #         (1./self.mn)*(self.xedges/self.mn)**((nu/self.bm)-1.)*np.exp(-(self.xedges/self.mn)**(1./self.bm))
-                
-        #     self.nbins = (self.Nt0/self.bm)*(1./scip.gamma(self.mu0+1.))*\
-        #         (1./self.mn)*(self.xbins/self.mn)**((nu/self.bm)-1.)*np.exp(-(self.xbins/self.mn)**(1./self.bm))
-                       
-        # else: # Use Scott's normalized gamma distribution if not using hydro kernel.
-        #     self.nedges = (nu)**(nu)/scip.gamma(nu)*self.xedges**(nu-1.)*np.exp(-nu*self.xedges)
-        
-        #     self.nbins = (nu)**(nu)/scip.gamma(nu)*self.xbins**(nu-1.)*np.exp(-nu*self.xbins)
-            
         self.Nbins = 0.5*(self.nedges[:-1]+self.nedges[1:])*(self.x2-self.x1)
         self.Mbins = (1./6.)*(self.nedges[:-1]*(2.*self.x1+self.x2)+self.nedges[1:]*(self.x1+2.*self.x2))*(self.x2-self.x1)
 
