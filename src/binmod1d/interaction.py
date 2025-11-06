@@ -76,8 +76,12 @@ def setup_regions(x11,x21,ak1,ck1,x12,x22,ak2,ck2,xi1,xi2,kmin,cond_1,sc_inds):
     cond_touch = (check_bottom|check_top|check_left|check_right)
     
     # NEW
-    cond_BR_corner = ((x21==xi2)[:,:,None])&((x12==xi1)[:,None,:]) # Bottom right corner
-    cond_UL_corner = ((x11==xi1)[:,:,None])&((x22==xi2)[:,None,:]) # Upper left corner
+    #cond_BR_corner = ((x21==xi2)[:,:,None])&((x12==xi1)[:,None,:]) # Bottom right corner
+    #cond_UL_corner = ((x11==xi1)[:,:,None])&((x22==xi2)[:,None,:]) # Upper left corner
+    
+    # NEW 2
+    cond_BR_corner = (x21[:,:,None]==x_bottom_edge)&(x12[:,None,:]==y_right_edge)
+    cond_UL_corner = (x11[:,:,None]==x_top_edge)&(x22[:,None,:]==y_left_edge)
     
     cond_2_corner = (cond_BR_corner)&(check_left)
     cond_3_corner = (cond_UL_corner)&(check_bottom)
@@ -595,7 +599,8 @@ class Interaction():
             self.cond_1 = np.tile(((self.ind_i>=(self.bins-self.sbin)) | (self.ind_j>=(self.bins-self.sbin))),(self.Hlen,1,1))
             # WORKING
             self.self_col = np.ones((self.Hlen,self.pnum,self.bins,self.bins),dtype=int)
-            self.sc_inds = np.ones((self.Hlen,self.pnum,self.bins,self.bins),dtype=int)
+            #self.self_col = np.zeros((self.Hlen,self.pnum,self.bins,self.bins),dtype=int)
+            #self.sc_inds = np.ones((self.Hlen,self.pnum,self.bins,self.bins),dtype=int)
             
             dd = 0
             for d1 in range(self.dnum):
@@ -605,12 +610,13 @@ class Interaction():
                         #self.self_col[dd,:,:] = np.triu(np.ones((self.bins,self.bins),dtype=int),k=0)   
                         # WORKING
                         self.self_col[:,dd,:,:] = np.tile(np.triu(np.ones((self.bins,self.bins),dtype=int),k=0),(self.Hlen,1,1))
+   
                     dd += 1
             
         elif self.mom_num == 1:
             self.cond_1 = np.tile(((self.ind_i>=(self.bins-self.sbin)) | (self.ind_j>=(self.bins-self.sbin))),(1,1,1))
             self.self_col = np.ones((1,self.pnum,self.bins,self.bins),dtype=int)
-            self.sc_inds = np.ones((1,self.pnum,self.bins,self.bins),dtype=int)
+            #self.sc_inds = np.ones((1,self.pnum,self.bins,self.bins),dtype=int)
             
             dd = 0
             for d1 in range(self.dnum):
@@ -932,7 +938,7 @@ class Interaction():
             self.dNb_gain_frac[np.isnan(self.dMb_gain_frac)|np.isnan(self.dNb_gain_frac)] = 0.
 
 
-    def plot_source_target_vec(self,dist_ind1,dist_ind2,kk,ii,jj,invert=False,full=False):
+    def plot_source_target_vec(self,d1,d2,kk,ii,jj,invert=False,full=False):
         
         '''
         Method for plotting the integration region of the (kk,ii,jj) interaction.
@@ -943,26 +949,143 @@ class Interaction():
         
         import matplotlib.pyplot as plt
         
-        dist1 = self.dists[dist_ind1,kk]
-        dist2 = self.dists[dist_ind2,kk]
+        dist1 = self.dists[d1,kk]
+        dist2 = self.dists[d2,kk]
+        xedges   = dist1.xedges
         
-        regions = setup_regions(dist1.x1,dist1.x2,
-                                dist1.aki,dist1.cki,
-                                dist2.x1,dist2.x2,
-                                dist2.aki,dist2.cki,
-                                self.xi1,self.xi2,self.kmin,self.cond_1,self.self_col)
+        kbin_min = self.xi1[:,None]+self.xi1[None,:]
+        
+        idx_min = np.searchsorted(xedges, kbin_min, side='right')-1
+        
+        # Clamp values to valid bin range [0, B-1]
+        kmin = np.clip(idx_min, 0, self.bins-1) 
+        kmid = np.minimum(kmin+1,self.bins-1)
+
+        # For self-collection on mass-doubling grid, gain bounds cover exactly one bin
+        kdiag = np.diag_indices(kmin.shape[0])
+        kmin[kdiag] = kdiag[0]+self.sbin
+        kmid[kdiag] = kdiag[0]+self.sbin
+          
+        kmin = np.clip(kmin,0,self.bins-1)
+        kmid = np.clip(kmid,0,self.bins-1)
+        
+        cond_1 = np.tile(((self.ind_i>=(self.bins-self.sbin)) | (self.ind_j>=(self.bins-self.sbin))),(self.Hlen,1,1))
+            # WORKING
+        self_col = np.ones((self.Hlen,self.pnum,self.bins,self.bins),dtype=int)
+        
+        dd = 0
+        for dd1 in range(self.dnum):
+            for dd2 in range(d1,self.dnum):
+                if (dd1==d1) & (dd2==d2):
+                    pp = dd
+                    
+                if dd1==dd2:
+                    self_col[:,dd,:,:] = np.tile(np.triu(np.ones((self.bins,self.bins),dtype=int),k=0),(self.Hlen,1,1))
+        
+            dd += 1
+            
+        # (dnum x height x bins)
+        x11  = self.x1[d1,:,:]
+        x21  = self.x2[d1,:,:]
+        ak1  = self.aki[d1,:,:]
+        ck1  = self.cki[d1,:,:] 
+        
+        x12  = self.x1[d2,:,:]
+        x22  = self.x2[d2,:,:]
+        ak2  = self.aki[d2,:,:] 
+        ck2  = self.cki[d2,:,:]     
+        
+        Hlen,bins = x11.shape
+        
+        regions = setup_regions(x11,x21,ak1,ck1,x12,x22,ak2,ck2,self.xi1,self.xi2,kmin,cond_1,self_col[:,pp,:,:])
+        
+        x_bottom_edge = regions['x_bottom_edge']
+        x_top_edge = regions['x_top_edge']
+        y_left_edge = regions['y_left_edge']
+        y_right_edge = regions['y_right_edge']
+        
+        check_bottom = (x11[:,:,None]<x_bottom_edge) &\
+                       (x21[:,:,None]>x_bottom_edge)
+         
+        check_top = (x11[:,:,None]<x_top_edge) &\
+                    (x21[:,:,None]>x_top_edge)
+                    
+        check_left = (x12[:,None,:]<y_left_edge) &\
+                     (x22[:,None,:]>y_left_edge)
+                    
+        check_right = (x12[:,None,:]<y_right_edge) &\
+                      (x22[:,None,:]>y_right_edge)            
+               
+        check_middle = ((0.5*(x11[:,:,None]+x21[:,:,None]))+(0.5*(x12[:,None,:]+x22[:,None,:])))<(self.xi2[kmin][None,:,:])
+                   
+        
+        # NEW
+        #cond_BR_corner = ((x21==xi2)[:,:,None])&((x12==xi1)[:,None,:]) # Bottom right corner
+        #cond_UL_corner = ((x11==xi1)[:,:,None])&((x22==xi2)[:,None,:]) # Upper left corner
+        
+        #cond_BR_corner = ((x21==self.xi2[None,:])[:,:,None])&((x12==self.xi1[None,:])[:,None,:]) # Bottom right corner
+        #cond_UL_corner = ((x11==self.xi1[None,:])[:,:,None])&((x22==self.xi2[None,:])[:,None,:]) # Upper left corner
+        
+        cond_BR_corner = (x21[:,:,None]==x_bottom_edge)&(x12[:,None,:]==y_right_edge)
+        cond_UL_corner = (x11[:,:,None]==x_top_edge)&(x22[:,None,:]==y_left_edge)
+        
+       # print('cond_BR_corner',cond_BR_corner.shape)
+       # print('xi2=',self.xi2.shape)
+       # raise Exception()
+       
+       # print((x21[:,:,None]==self.xi2[None,:,None]))
+       # print(cond_BR_corner.shape)
+        #print((x12[:,None,:]==self.xi1[None,None,:]).shape)
+        #print((x11[:,:,None]==self.xi1[None,:,None]).shape)
+        #print((x22[:,None,:]==self.xi2[None,None,:]).shape)        
+        #print((((x21==self.xi2)[:,:,None])&((x12==self.xi1)[:,None,:])).shape)
+                       
+        #print((x21==self.xi2[None,:]).shape)
+        #print((x12[:,None]==self.xi1[None,:]).shape)
+        #print()
+        
+        #raise Exception()
+        
+        print('x21=',x21[kk,ii])
+        print('xi2=',self.xi2[ii])
+        print('x12=',x12[kk,jj])
+        print('xi1=',self.xi1[jj])
+        print('y_left_edge=',y_left_edge[kk,ii,jj])
+        print('y_right_edge=',y_right_edge[kk,ii,jj])
+        print('x_bottom_edge=',x_bottom_edge[kk,ii,jj])
+        print('x_top_edge=',x_top_edge[kk,ii,jj])
+       # print('check1=',(x21[:,:,None]==self.xi2[None,:,None])[kk,ii,jj])
+        
+        #print('x_bottom_edge=',x_bottom_edge[kk,ii,jj])
+        #print('x21[:,:,None]=',x21[kk,ii])
+        #print('y_right_edge=',y_right_edge[kk,ii,jj])
+        #print('x12[:,None,:]=',x22[])
         
 
+        print('check_bottom=',check_bottom[kk,ii,jj])
+        print('check_top=',check_top[kk,ii,jj])
+        print('check_left=',check_left[kk,ii,jj])
+        print('check_right=',check_right[kk,ii,jj])
+        print('check_middle=',check_middle[kk,ii,jj])
+        print('cond_BR_corner=',cond_BR_corner[kk,ii,jj])
+        print('cond_UL_corner=',cond_UL_corner[kk,ii,jj])
+        #print('cond_UL_corner_shape=',cond_UL_corner.shape)
+        
         xi1 = dist1.x1[ii]
         xi2 = dist1.x2[ii]
         xj1 = dist2.x1[jj]
         xj2 = dist2.x2[jj]
+        
+        print('xi1=',xi1)
+        print('xi2=',xi2)
+        print('xj1=',xj1)
+        print('xj2=',xj2)
     
         # NOTE: Need to avoid doing anything with the last bin
         kbin_min = dist1.xi1[:,None]+dist2.xi1[None,:]
         kbin_max = dist1.xi2[:,None]+dist2.xi2[None,:]
         
-        xk_min = dist2.xi2[self.kmin][ii,jj]
+        xk_min = dist2.xi2[kmin][ii,jj]
         
         # Find region with requested (ii,jj) indices.
         x_bottom_edge = regions['x_bottom_edge']
@@ -1006,20 +1129,61 @@ class Interaction():
         j10 = regions['10']['j']
         k10 = regions['10']['k']
         
-        cond = np.zeros((self.Hlen,self.bins,self.bins),dtype=int)
         
-        cond[k1,i1,j1]    = 1
-        cond[k2,i2,j2]    = 2
-        cond[k3,i3,j3]    = 3
-        cond[k4,i4,j4]    = 4
-        cond[k5,i5,j5]    = 5
-        cond[k6,i6,j6]    = 6
-        cond[k7,i7,j7]    = 7
-        cond[k8,i8,j8]    = 8
-        cond[k9,i9,j9]    = 9 
-        cond[k10,i10,j10] = 10
-        cond[k2b,i2b,j2b] = 11 
-        cond[k3b,i3b,j3b] = 12
+        cond_loss = np.zeros((self.Hlen,self.bins,self.bins),dtype=int)
+        cond_gain = np.zeros((self.Hlen,self.bins,self.bins),dtype=int)
+        
+        
+        cond_loss[k1,i1,j1]    = 1
+        cond_gain[k2,i2,j2]    = 2
+        cond_gain[k3,i3,j3]    = 3
+        cond_gain[k4,i4,j4]    = 4
+        cond_gain[k5,i5,j5]    = 5
+        cond_gain[k6,i6,j6]    = 6
+        cond_gain[k7,i7,j7]    = 7
+        cond_gain[k8,i8,j8]    = 8
+        cond_gain[k9,i9,j9]    = 9 
+        cond_gain[k10,i10,j10] = 10
+        cond_gain[k2b,i2b,j2b] = 11 
+        cond_gain[k3b,i3b,j3b] = 12
+        
+        cond_2 = np.zeros((self.Hlen,self.bins,self.bins),dtype=int)
+        cond_3 = np.zeros((self.Hlen,self.bins,self.bins),dtype=int)
+        cond_4 = np.zeros((self.Hlen,self.bins,self.bins),dtype=int)
+        cond_5 = np.zeros((self.Hlen,self.bins,self.bins),dtype=int)
+        cond_6 = np.zeros((self.Hlen,self.bins,self.bins),dtype=int)
+        cond_7 = np.zeros((self.Hlen,self.bins,self.bins),dtype=int)
+        cond_8 = np.zeros((self.Hlen,self.bins,self.bins),dtype=int)
+        cond_9 = np.zeros((self.Hlen,self.bins,self.bins),dtype=int) 
+        cond_10 = np.zeros((self.Hlen,self.bins,self.bins),dtype=int)
+        cond_11 = np.zeros((self.Hlen,self.bins,self.bins),dtype=int)
+        cond_12 = np.zeros((self.Hlen,self.bins,self.bins),dtype=int)
+        
+        cond_2[k2,i2,j2] = 1 
+        cond_3[k3,i3,j3] = 1 
+        cond_4[k4,i4,j4] = 1 
+        cond_5[k5,i5,j5] = 1
+        cond_6[k6,i6,j6] = 1 
+        cond_7[k7,i7,j7] = 1
+        cond_8[k8,i8,j8] = 1
+        cond_9[k9,i9,j9] = 1
+        cond_10[k10,i10,j10] = 1
+        cond_11[k2b,i2b,j2b] = 1
+        cond_12[k3b,i3b,j3b] = 1
+        
+        cond_gain_full = np.stack((cond_2,cond_3,cond_4,cond_5,cond_6,cond_7,
+                                    cond_8,cond_9,cond_10,cond_11,cond_12),axis=0)
+        
+        print('cond_gain_full=',np.unique((cond_gain_full>0).sum(axis=0)))
+        
+        print(np.unique(cond_gain))
+        print('cond = ',cond_gain[kk,ii,jj])
+        
+        print('cond_loss num = ',np.count_nonzero(cond_loss))
+        print('cond_gain num = ',np.count_nonzero(cond_gain))
+        
+       # print('k1 shape=',np.unique(k1))
+        #raise Exception()
             
         fig, ax = plt.subplots();   
         
@@ -1040,39 +1204,39 @@ class Interaction():
             
         else:
             
-            if cond[kk,ii,jj]==2:
+            if cond_gain[kk,ii,jj]==2:
                 # Triangle = ((xi1,xj1),(xi1,x_left_edge),(xi2,xj1))
                 kgain_t = Polygon(((xi1,xj1),(xi1,y_left_edge[kk,ii,jj]),(xi2,xj1)),closed=True,facecolor='purple')
-            elif cond[kk,ii,jj]==3:
+            elif cond_gain[kk,ii,jj]==3:
                 kgain_t = Polygon((((xi1,xj1),(xi1,xj2),(x_bottom_edge[kk,ii,jj],xj1))),closed=True,facecolor='purple')
-            elif cond[kk,ii,jj]==11:
-                kgain_t = Polygon((((xi1,xj1),(x_top_edge[kk,ii,jj],xj2),(xi2,xj2))),closed=True,facecolor='purple')
-            elif cond[kk,ii,jj]==12:
+            elif cond_gain[kk,ii,jj]==11:
+                kgain_t = Polygon((((xi2,xj1),(x_top_edge[kk,ii,jj],xj2),(xi2,xj2))),closed=True,facecolor='purple')
+            elif cond_gain[kk,ii,jj]==12:
                 kgain_t = Polygon(((xi1,xj2),(xi2,xj2),(xi2,y_right_edge[kk,ii,jj])),closed=True,facecolor='purple')
-            elif cond[kk,ii,jj]==7:
+            elif cond_gain[kk,ii,jj]==7:
                 kgain_t = Polygon(((x_top_edge[kk,ii,jj],xj2),(xi2,xj2),(xi2,y_right_edge[kk,ii,jj])),closed=True,facecolor='purple')
-            elif cond[kk,ii,jj]==8:
+            elif cond_gain[kk,ii,jj]==8:
                 kgain_t = Polygon(((xi1,xj1),(xi1,y_left_edge[kk,ii,jj]),(x_bottom_edge[kk,ii,jj],xj1)),closed=True,facecolor='purple')
-            elif np.isin(cond[kk,ii,jj],[4,9,10]):
+            elif np.isin(cond_gain[kk,ii,jj],[4,9,10]):
                 kgain_r = Polygon(((xi1,xj1),(xi1,xj2),(xi2,xj2),(xi2,xj1)),closed=True,facecolor='purple')
-            elif cond[kk,ii,jj]==5:
+            elif cond_gain[kk,ii,jj]==5:
                 kgain_t = Polygon(((x_top_edge[kk,ii,jj],xj1),(x_top_edge[kk,ii,jj],xj2),(x_bottom_edge[kk,ii,jj],xj1)),closed=True,facecolor='purple')
                 kgain_r =Polygon(((xi1,xj1),(xi1,xj2),(x_top_edge[kk,ii,jj],xj2),(x_top_edge[kk,ii,jj],xj1)),closed=True,facecolor='orange')
-            elif cond[kk,ii,jj]==6:
+            elif cond_gain[kk,ii,jj]==6:
                 kgain_t = Polygon(((xi1,y_right_edge[kk,ii,jj]),(xi1,y_left_edge[kk,ii,jj]),(xi2,y_right_edge[kk,ii,jj])),closed=True,facecolor='purple')
                 kgain_r =Polygon(((xi1,xj1),(xi1,y_right_edge[kk,ii,jj]),(xi2,y_right_edge[kk,ii,jj]),(xi2,xj1)),closed=True,facecolor='orange')
             
-            if  (np.isin(cond[kk,ii,jj],[2,3,5,6,7,8,11,12])):
+            if  (np.isin(cond_gain[kk,ii,jj],[2,3,5,6,7,8,11,12])):
                 ax.add_patch(kgain_t)
             
-            if (np.isin(cond[ii,jj],[4,5,6,9])):
+            if (np.isin(cond_gain[kk,ii,jj],[4,5,6,9])):
                 ax.add_patch(kgain_r)
             
             ax.plot([dist1.xi1[ii],dist1.xi2[ii]],[kbin_min[ii,jj]-dist1.xi1[ii],kbin_min[ii,jj]-dist1.xi2[ii]],'b')
             ax.plot([dist1.xi1[ii],dist1.xi2[ii]],[xk_min-dist1.xi1[ii],xk_min-dist1.xi2[ii]],'k')
             ax.plot([dist1.xi1[ii],dist1.xi2[ii]],[kbin_max[ii,jj]-dist1.xi1[ii],kbin_max[ii,jj]-dist1.xi2[ii]],'r')
     
-        return fig, ax, cond
+        return fig, ax, cond_gain, cond_loss
 
         
     # Advance PSD Mbins and Nbins by one time/height step
