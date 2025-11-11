@@ -22,7 +22,7 @@ class dist():
         if habit_dict is None:
             habit_dict = habits()[ptype]
         
-        self.init_dist(sbin,bins,D1,dist_var=dist_var,kernel=kernel,habit_dict=habit_dict,ptype=ptype,x0=x0,Tc=Tc,radar=radar,mom_num=mom_num)
+        self.init_dist(sbin,bins,D1,dist_var=dist_var,kernel=kernel,habit_dict=habit_dict,ptype=ptype,x0=x0,Tc=Tc,radar=radar,mom_num=mom_num,gam_norm=gam_norm)
         
         if gam_init:
             self.bin_gamma_dist(Nt0=Nt0,mu0=mu0,Dm0=Dm0,normalize=gam_norm)
@@ -32,7 +32,7 @@ class dist():
         elif mom_num==1:
             self.diagnose_1mom()
         
-    def init_dist(self,sbin,bins,D1,kernel='Hydro',habit_dict=None,ptype='rain',Tc=10.,dist_var='mass',x0=None,radar=False,mom_num=2):
+    def init_dist(self,sbin,bins,D1,kernel='Hydro',habit_dict=None,ptype='rain',Tc=10.,dist_var='mass',x0=None,radar=False,mom_num=2,gam_norm=False):
         
         if habit_dict is None:
             habit_dict = habits()[ptype]
@@ -49,8 +49,13 @@ class dist():
         self.av = habit_dict['av'] 
         self.bv = habit_dict['bv']
         self.sigma = habit_dict['sig']
-        self.am = habit_dict['am']    # Units: g * mm^(-(3+brho)) 
-        self.bm = habit_dict['bm']
+        
+        if gam_norm:
+            self.am = 1.0 
+            self.bm = 3.0
+        else:
+            self.am = habit_dict['am']    # Units: g * mm^(-(3+brho)) 
+            self.bm = habit_dict['bm']
         self.ptype = ptype
         self.mom_num = mom_num
         
@@ -184,9 +189,14 @@ class dist():
         # Number distribution function in terms of mass (n(x))
         
         if normalize:
+            #self.nedges = (nu)**(nu)/scip.gamma(nu)*self.xedges**(nu-1.)*np.exp(-nu*self.xedges)
+        
+            #self.nbins = (nu)**(nu)/scip.gamma(nu)*self.xbins**(nu-1.)*np.exp(-nu*self.xbins)
+            
             self.nedges = (nu)**(nu)/scip.gamma(nu)*self.xedges**(nu-1.)*np.exp(-nu*self.xedges)
         
             self.nbins = (nu)**(nu)/scip.gamma(nu)*self.xbins**(nu-1.)*np.exp(-nu*self.xbins)
+            
             
         else:
            self.nedges = (self.Nt0/self.bm)*(1./scip.gamma(self.mu0+1.))*\

@@ -277,8 +277,8 @@ class spectral_1d:
         
         plt.rc('text', usetex=True)
         plt.rc('font', family='serif')
-        plt.rc('xtick', labelsize=16) 
-        plt.rc('ytick', labelsize=16) 
+        plt.rc('xtick', labelsize=22) 
+        plt.rc('ytick', labelsize=22) 
         
         dist_num = len(self.dists) 
 
@@ -346,7 +346,7 @@ class spectral_1d:
         M_tot = np.nansum(M,axis=0)
         Rm_tot = np.nansum(Rm,axis=0)
         
-        fig, ax = plt.subplots(1,1,figsize=(14,8))
+        fig, ax = plt.subplots(1,1,figsize=(14,6))
 
         match var:
             case 'Z':
@@ -385,17 +385,24 @@ class spectral_1d:
         
         cbar.set_label(clabel,usetex=True,rotation=270,fontsize=fontsize,labelpad=labelpad) 
 
-        ax.set_xlabel('Time (seconds)',fontsize=16,usetex=True)
-        ax.set_ylabel('Height (km)',fontsize=16,usetex=True)
+        ax.set_xlabel('Time (seconds)',fontsize=36,usetex=True)
+        ax.set_ylabel('Height (km)',fontsize=36,usetex=True)
         
-        ax.axes.tick_params('both',labelsize=14)
+        ax.axes.tick_params('both',labelsize=26)
 
         fig.tight_layout()  
         
         return fig, ax
     
     
-    def plot_moments_radar(self,tind=-1,plot_habits=False):
+    def plot_moments_radar(self,ax=None,tind=-1,plot_habits=False,lstyle='-'):
+        
+        #lstyle = '-'
+        
+        if ax is None:
+            ax_switch = True 
+        else:
+            ax_switch = False
         
         plt.rc('text', usetex=True)
         plt.rc('font', family='serif')
@@ -553,17 +560,18 @@ class spectral_1d:
 
         if self.int_type==2: # Box model
             
-            fig, ax = plt.subplots(2,4,figsize=(14,8),sharey=True)
+            if ax is None:
+                fig, ax = plt.subplots(2,4,figsize=(14,8),sharey=True)
             
-            ax[0,0].plot(self.t,N_tot,'k')
-            ax[0,1].plot(self.t,Dm_tot,'k')
-            ax[0,2].plot(self.t,M_tot,'k')
-            ax[0,3].plot(self.t,Rm_tot,'k')
+            ax[0,0].plot(self.t,N_tot,'k',linestyle=lstyle)
+            ax[0,1].plot(self.t,Dm_tot,'k',linestyle=lstyle)
+            ax[0,2].plot(self.t,M_tot,'k',linestyle=lstyle)
+            ax[0,3].plot(self.t,Rm_tot,'k',linestyle=lstyle)
             
-            ax[1,0].plot(self.t,ZH,color='k')
-            ax[1,1].plot(self.t,ZDR,color='k')
-            ax[1,2].plot(self.t,KDP,color='k')
-            ax[1,3].plot(self.t,RHOHV,color='k')
+            ax[1,0].plot(self.t,ZH,color='k',linestyle=lstyle)
+            ax[1,1].plot(self.t,ZDR,color='k',linestyle=lstyle)
+            ax[1,2].plot(self.t,KDP,color='k',linestyle=lstyle)
+            ax[1,3].plot(self.t,RHOHV,color='k',linestyle=lstyle)
             
             ax[0,0].set_ylabel('Nt (1/L)',usetex=True,fontsize=18)
             ax[0,1].set_ylabel('Dm (mm)',usetex=True,fontsize=18)
@@ -590,25 +598,26 @@ class spectral_1d:
                 
                 for d1 in range(dist_num):
                     
-                    ax[0,0].plot(self.t,N[d1,:],label='dist {}'.format(d1+1))
-                    ax[0,1].plot(self.t,Dm[d1,:])
-                    ax[0,2].plot(self.t,M[d1,:])
-                    ax[0,3].plot(self.t,Rm[d1,:])
+                    ax[0,0].plot(self.t,N[d1,:],linestyle=lstyle,label='dist {}'.format(d1+1))
+                    ax[0,1].plot(self.t,Dm[d1,:],linestyle=lstyle)
+                    ax[0,2].plot(self.t,M[d1,:],linestyle=lstyle)
+                    ax[0,3].plot(self.t,Rm[d1,:],linestyle=lstyle)
    
         else:
             #fig, ax = plt.subplots(1,3,figsize=(12,6),sharey=True)
             
-            fig, ax = plt.subplots(2,4,figsize=(14,8),sharey=True)
+            if ax is None:
+                fig, ax = plt.subplots(2,4,figsize=(14,8),sharey=True)
             
-            ax[0,0].plot(N_tot,self.z/1000.,'k',label='total')
-            ax[0,1].plot(Dm_tot,self.z/1000.,'k')
-            ax[0,2].plot(M_tot,self.z/1000.,'k')
-            ax[0,3].plot(Rm_tot,self.z/1000.,'k')
+            ax[0,0].plot(N_tot,self.z/1000.,'k',linestyle=lstyle,label='total')
+            ax[0,1].plot(Dm_tot,self.z/1000.,'k',linestyle=lstyle)
+            ax[0,2].plot(M_tot,self.z/1000.,'k',linestyle=lstyle)
+            ax[0,3].plot(Rm_tot,self.z/1000.,'k',linestyle=lstyle)
             
-            ax[1,0].plot(ZH,self.z/1000.,color='k')
-            ax[1,1].plot(ZDR,self.z/1000.,color='k')
-            ax[1,2].plot(KDP,self.z/1000.,color='k')
-            ax[1,3].plot(RHOHV,self.z/1000.,color='k')
+            ax[1,0].plot(ZH,self.z/1000.,color='k',linestyle=lstyle)
+            ax[1,1].plot(ZDR,self.z/1000.,color='k',linestyle=lstyle)
+            ax[1,2].plot(KDP,self.z/1000.,color='k',linestyle=lstyle)
+            ax[1,3].plot(RHOHV,self.z/1000.,color='k',linestyle=lstyle)
             
             ax[0,0].set_xlabel('Nt (1/L)',usetex=True,fontsize=18)
             ax[0,1].set_xlabel('Dm (mm)',usetex=True,fontsize=18)
@@ -634,16 +643,17 @@ class spectral_1d:
             if plot_habits:
                 
                 for d1 in range(dist_num):
-                    ax[0,0].plot(N[d1,:],self.z/1000.,label='dist {}'.format(d1+1))
-                    ax[0,1].plot(Dm[d1,:],self.z/1000.)
-                    ax[0,2].plot(M[d1,:],self.z/1000.)
-                    ax[0,3].plot(Rm[d1,:],self.z/1000.)
+                    ax[0,0].plot(N[d1,:],self.z/1000.,linestyle=lstyle,label='dist {}'.format(d1+1))
+                    ax[0,1].plot(Dm[d1,:],self.z/1000.,linestyle=lstyle)
+                    ax[0,2].plot(M[d1,:],self.z/1000.,linestyle=lstyle)
+                    ax[0,3].plot(Rm[d1,:],self.z/1000.,linestyle=lstyle)
 
-        ax[0,0].legend(loc='upper center')
+        if ax_switch:
+            ax[0,0].legend(loc='upper center')
     
-        fig.tight_layout()  
+            fig.tight_layout()  
         
-        return fig, ax   
+            return fig, ax   
  
     def plot_init(self,log_switch=True,x_axis='mass'):
 
@@ -709,8 +719,8 @@ class spectral_1d:
       
         plt.rc('text', usetex=True)
         plt.rc('font', family='serif')
-        plt.rc('xtick', labelsize=16) 
-        plt.rc('ytick', labelsize=16) 
+        plt.rc('xtick', labelsize=26) 
+        plt.rc('ytick', labelsize=26) 
         
         # NOTE: probably need to figure out how to deal with x_axis='size' when
         # am and bm parameters are different for each habit.
@@ -783,7 +793,7 @@ class spectral_1d:
                 for d1 in range(self.dnum):
                     prefN[d1,:] = mbins*np.log(10)   
                     prefM[d1,:] = mbins**2*np.log(10)
-
+                    
                     #xbins[d1,:] = mbins.copy()
                 xbins = mbins.copy()
                 ylabel_num = r'dN/dlog(m)'
@@ -844,6 +854,10 @@ class spectral_1d:
         nN_final = prefN*np.heaviside(mbins[None,:]-x1_final,1)*np.heaviside(x2_final-mbins[None,:],1)*(ak_final*mbins[None,:]+ck_final)
         nM_final = prefM*np.heaviside(mbins[None,:]-x1_final,1)*np.heaviside(x2_final-mbins[None,:],1)*(ak_final*mbins[None,:]+ck_final)
 
+        if self.gam_norm:
+            nM_init /= 1000. 
+            nM_final /= 1000.
+            
 
         if xscale=='log':
             x = np.log10(xbins)
@@ -863,23 +877,23 @@ class spectral_1d:
             elif (x_axis=='mass'):
                 xlabel = r'm (g)'
         
-        ax[0].plot(x,nN_init,':k',label='initial')
-        ax[0].plot(x,np.nansum(nN_final,axis=0),'k',label=f_label)
+        ax[0].plot(x,nN_init,':k',linewidth=2,label='initial')
+        ax[0].plot(x,np.nansum(nN_final,axis=0),'k',linewidth=2,label=f_label)
         if plot_habits:
             for d1 in range(self.dnum):
-                ax[0].plot(x,nN_final[d1,:],label='dist {}'.format(d1+1))
+                ax[0].plot(x,nN_final[d1,:],linewidth=2,label='dist {}'.format(d1+1))
             
         # Factor of 1000 comes from converting g to g/m^3
-        ax[1].plot(x,1000.*nM_init,':k',label='initial')
-        ax[1].plot(x,1000.*np.nansum(nM_final,axis=0),'k',label=f_label)
+        ax[1].plot(x,1000.*nM_init,':k',linewidth=2,label='initial')
+        ax[1].plot(x,1000.*np.nansum(nM_final,axis=0),'k',linewidth=2,label=f_label)
         if plot_habits:
             for d1 in range(self.dnum):
-                ax[1].plot(x,1000.*nM_final[d1,:],label='dist {}'.format(d1+1))
+                ax[1].plot(x,1000.*nM_final[d1,:],linewidth=2,label='dist {}'.format(d1+1))
 
-        ax[0].set_ylabel(ylabel_num,fontsize=22)
-        ax[1].set_ylabel(ylabel_mass,fontsize=22)
+        ax[0].set_ylabel(ylabel_num,fontsize=26)
+        ax[1].set_ylabel(ylabel_mass,fontsize=26)
         
-        ax[1].set_xlabel(xlabel,fontsize=22)
+        ax[1].set_xlabel(xlabel,fontsize=26)
         
         if yscale=='log':
             ax[0].set_yscale('log')
@@ -897,8 +911,10 @@ class spectral_1d:
             if not (hasattr(self,'n_scott')):
                 self.n_scott = Scott_dists(self.xbins,self.Eagg,self.mu0+1,self.t,kernel_type=kernel_type)
         
-            ax[0].plot(x,prefN[0,:]*self.n_scott[:,tind],':r',label=f_label+ " analytical")
-            ax[1].plot(x,1000.*prefM[0,:]*self.n_scott[:,tind],':r',label=f_label+ "analytical")
+            ax[0].plot(x,prefN[0,:]*self.n_scott[:,tind],':r',linewidth=2,label=f_label+ " analytical")
+            #ax[1].plot(x,1000.*prefM[0,:]*self.n_scott[:,tind],':r',label=f_label+ "analytical")
+            
+            ax[1].plot(x,prefM[0,:]*self.n_scott[:,tind],':r',linewidth=2,label=f_label+ " analytical")
         
         if (feingold_solution & (self.int_type==2)):
             
@@ -918,11 +934,13 @@ class spectral_1d:
                     self.n_fein = Feingold_dists(self.xbins,self.t,self.mu0+1,self.Eagg,self.Ebr,self.lamf,kernel_type=kernel_type)
 
                 if kernel_type=='SBE':
-                    ax[0].plot(x,prefN[0,:]*self.n_fein[:,tind],':r',label=f_label+ " analytical")
-                    ax[1].plot(x,1000.*prefM[0,:]*self.n_fein[:,tind],':r',label=f_label+ " analytical")
+                    ax[0].plot(x,prefN[0,:]*self.n_fein[:,tind],':r',linewidth=2,label=f_label+ " analytical")
+                    #ax[1].plot(x,1000.*prefM[0,:]*self.n_fein[:,tind],':r',label=f_label+ " analytical")
+                    ax[1].plot(x,prefM[0,:]*self.n_fein[:,tind],':r',linewidth=2,label=f_label+ " analytical")
                 elif kernel_type=='SCE/SBE':
-                    ax[0].plot(x,prefN[0,:]*self.n_fein,':r',label=f_label+ " analytical")
-                    ax[1].plot(x,1000.*prefM[0,:]*self.n_fein,':r',label=f_label+ " analytical")
+                    ax[0].plot(x,prefN[0,:]*self.n_fein,':r',linewidth=2,label=f_label+ " analytical")
+                    #ax[1].plot(x,1000.*prefM[0,:]*self.n_fein,':r',label=f_label+ " analytical")
+                    ax[1].plot(x,prefM[0,:]*self.n_fein,':r',linewidth=2,label=f_label+ " analytical")
                     
         ax[0].legend() 
             
@@ -937,14 +955,14 @@ class spectral_1d:
         
         plt.rc('text', usetex=True)
         plt.rc('font', family='serif')
-        plt.rc('xtick', labelsize=16) 
-        plt.rc('ytick', labelsize=16) 
+        plt.rc('xtick', labelsize=22) 
+        plt.rc('ytick', labelsize=22) 
         
         z = self.z/1000.
         
         z_lvls = np.arange(np.max(z),np.min(z)-1.,-1.)
         
-        fig, ax = plt.subplots(len(z_lvls),1,figsize=(8,10),sharey=True,sharex=True)
+        fig, ax = plt.subplots(len(z_lvls),1,figsize=(6,10),sharey=True,sharex=True)
         
         mbins = self.dist0.xbins.copy() 
         
@@ -972,11 +990,11 @@ class spectral_1d:
         ax[0].set_xscale('linear')
         ax[0].set_ylim(bottom=0.001)
         
-        ax[0].set_title('Height = {} km'.format(z_lvls[0]),fontsize=16)
+        ax[0].set_title('Height = {} km'.format(z_lvls[0]),fontsize=26)
         #ax[0].set_ylabel(r'Number Density (1/cm$^{3}$ 1/mm)',fontsize=16)
         ax[0].set_ylabel(r'n(D) (1/cm$^{3}$ 1/mm)',fontsize=16)
         
-        ax[0].axes.tick_params(labelsize=16)
+        ax[0].axes.tick_params(labelsize=20)
         ax[0].set_xlim((0.,5.))
         
         for hh in range(1,len(z_lvls)):
@@ -1018,16 +1036,16 @@ class spectral_1d:
             ax[hh].set_xscale('linear')
             ax[hh].set_ylim(bottom=0.001)
             
-            ax[hh].set_title('Height = {} km'.format(z_lvls[hh]),fontsize=16)
+            ax[hh].set_title('Height = {} km'.format(z_lvls[hh]),fontsize=26)
             #ax[hh].set_ylabel(r'Number Density (1/cm$^{3}$ 1/mm)',fontsize=16)
             ax[hh].set_ylabel(r'n(D) (1/cm$^{3}$ 1/mm)',fontsize=16)
             
-            ax[hh].axes.tick_params(labelsize=16)
+            ax[hh].axes.tick_params(labelsize=20)
             ax[hh].set_xlim((0.,5.))
 
         
         ax[0].set_ylim((1e-5,1e5))
-        ax[-1].set_xlabel('Equivolume Diameter (mm)',fontsize=16)
+        ax[-1].set_xlabel('Equivolume Diameter (mm)',fontsize=22)
         if plot_habits:
             ax[-1].legend()
         
