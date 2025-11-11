@@ -37,6 +37,8 @@ from matplotlib.colors import BoundaryNorm
 
 from datetime import datetime
 
+from netCDF4 import Dataset
+
 import sys
 
 import os 
@@ -55,17 +57,75 @@ class spectral_1d:
                  mu0=3.,gam_norm=False,Ecol=0.001,Es=1.0,Eb=0.,moments=2,dist_var='mass',
                  kernel='Golovin',frag_dist='exp',habit_list=['rain'],
                  ptype='rain',Tc=10.,boundary=None,dist_num=1,cc_dest=1,br_dest=1, 
-                 radar=False,rk_order=1,adv_order=1,parallel=False,n_jobs=-1):
+                 radar=False,rk_order=1,adv_order=1,parallel=False,n_jobs=-1,load=None):
         '''
         Initialize model and PSD        
         '''       
         
-        self.setup_case(sbin=sbin,bins=bins,D1=D1,x0=x0,dt=dt,tmax=tmax,
+        # If not loading netcdf file, then manually set up case, attributes, variables, etc.
+        if load is None:
+            self.setup_case(sbin=sbin,bins=bins,D1=D1,x0=x0,dt=dt,tmax=tmax,
                         output_freq=output_freq,dz=dz,ztop=ztop,zbot=zbot,Nt0=Nt0,Dm0=Dm0,mu0=mu0,gam_norm=gam_norm,Ecol=Ecol,
                         Es=Es,Eb=Eb,moments=moments,dist_var=dist_var,kernel=kernel,frag_dist=frag_dist,
                         habit_list=habit_list,ptype=ptype,Tc=Tc,radar=radar,boundary=boundary,
                         dist_num=dist_num,cc_dest=cc_dest,br_dest=br_dest,rk_order=rk_order,adv_order=adv_order,
                         parallel=parallel,n_jobs=n_jobs)
+            
+        else: # If load is specified then load netcdf attributes/variables as object attribute/variables
+            
+            with Dataset(load,'r',format='NETCDF4') as file_nc:
+                
+                # Read spectral_1d object attributes from netcdf file
+                self.bins = file_nc.bins
+                self.sbin = file_nc.sbin
+                self.dnum = file_nc.dnum
+                self.moments = file_nc.moments
+                self.ptype  = file_nc.ptype
+                self.dt = file_nc.dt 
+                self.dz = file_nc.dz 
+                self.rk_order = file_nc.rk_order
+                self.adv_order = file_nc.adv_order
+                self.int_type = file_nc.int_type
+                self.radar =  bool(file_nc.radar)
+                self.indb = file_nc.indb
+                self.indc = file_nc.indc
+                self.dist_var = file_nc.dist_var
+                self.mu0 = file_nc.mu0
+                self.Dm0 = file_nc.Dm0
+                self.Nt0 = file_nc.Nt0
+                self.D1 = file_nc.D1
+                self.lamf = file_nc.lamf
+                self.x0 = file_nc.x0
+                self.Tc = file_nc.Tc
+                self.Ecol = file_nc.Ecol
+                self.Es = file_nc.Es
+                self.Eb = file_nc.Eb
+                self.Eagg = file_nc.Eagg
+                self.Ebr = file_nc.Ebr
+                self.Ecb = file_nc.Ecb
+                self.gam_norm = bool(file_nc.gam_norm)
+                self.boundary = file_nc.boundary
+                self.ztop = file_nc.ztop
+                self.zbot = file_nc.zbot
+                self.tmax = file_nc.tmax
+                
+                self.full = np.empty((self.dnum,self.Hlen,self.Tout_len),dtype=object)
+                
+                dist_names = list(file_nc.groups.keys())
+                
+                self.habit_list = [file_nc.groups[dd].habit for dd in dist_names]
+                
+                habit_dict = [habits()[habit_list[dd]] for dd in range(self.dnum)]
+                 
+                # Put distributions into 4D arrays
+                for dd in range(self.dnum):
+                    # Put distributions in numpy object array
+                    self.full[dd,:,:] = np.array([[dist(sbin=self.sbin,D1=self.D1,bins=self.bins,gam_init=False,dist_var=self.dist_var,
+                                 kernel=self.kernel,habit_dict=habit_dict[dd],ptype=self.ptype,x0=self.x0, 
+                                 Tc=self.Tc,radar=self.radar,mom_num=self.moments,
+                                 Mbins=file_nc.groups[dist_names[dd]].Mbins[:,hh,tt],
+                                 Nbins=file_nc.groups[dist_names[dd]].Nbins[:,hh,tt]) for tt in range(self.Tout_len)] for hh in range(self.Hlen)])
+
         
     def setup_case(self,sbin=4,bins=160,D1=0.001,x0=0.01,Nt0=1.,Dm0=2.0,mu0=3,gam_norm=False,dist_var='mass',kernel='Golovin',Ecol=1.53,Es=0.001,Eb=0.,
                         moments=2,ztop=3000.0,zbot=0.,tmax=800.,output_freq=60.,dt=10.,dz=10.,frag_dist='exp',habit_list=['rain'],ptype='rain',Tc=10.,
@@ -159,6 +219,8 @@ class spectral_1d:
         # If dnum > habit list then just use first element for all habits
         if len(habit_list) < self.dnum:
             habit_list = [habit_list[0] for dd in range(self.dnum)]
+        
+        self.habit_list = habit_list
         
         habit_dict = [habits()[habit_list[dd]] for dd in range(self.dnum)]
 
@@ -272,6 +334,154 @@ class spectral_1d:
             print('Initial Differential Reflectivity = {:.2f} dB'.format(self.dist0.ZDR))
             print('------')
             print('Initial Specific Differential Phase = {:.2f} deg/km'.format(self.dist0.KDP))
+    
+    def write_netcdf(self,filename):
+        '''
+        
+        Parameters
+        ----------
+        filename : STRING
+            Writes spectral_1d object attributes and variables to a netcdf file.
+
+        '''
+        
+        with Dataset(filename,'w',format='NETCDF4') as file_nc:
+            
+            # Write attributes
+            file_nc.bins = self.bins
+            file_nc.sbin = self.sbin
+            file_nc.dnum = self.dnum
+            file_nc.moments = self.moments
+            file_nc.ptype = self.ptype
+            file_nc.dt = self.dt 
+            file_nc.dz = self.dz 
+            file_nc.rk_order = self.rk_order
+            file_nc.adv_order = self.adv_order
+            file_nc.int_type = self.int_type
+            file_nc.radar = 1*self.radar
+            file_nc.indb = self.indb 
+            file_nc.indc = self.indc
+            file_nc.dist_var = self.dist_var
+            file_nc.mu0 = self.mu0
+            file_nc.Dm0 = self.Dm0
+            file_nc.Nt0 = self.Nt0
+            file_nc.D1 = self.D1 
+            file_nc.lamf = self.lamf
+            file_nc.x0 = self.dist0.x0
+            file_nc.Tc = self.Tc
+            file_nc.Ecol = self.Ecol
+            file_nc.Es = self.Es
+            file_nc.Eb = self.Eb 
+            file_nc.Eagg = self.Eagg 
+            file_nc.Ebr = self.Ebr 
+            file_nc.Ecb = self.Ecb
+            file_nc.gam_norm = 1*self.gam_norm
+            file_nc.boundary = self.boundary
+            file_nc.ztop = self.ztop 
+            file_nc.zbot = self.zbot
+            file_nc.tmax = self.tmax
+            file_nc.parallel = 1*self.parallel
+            
+            # Create dimensions
+            file_nc.createDimension('time',self.Tout_len)
+            file_nc.createDimension('height',self.Hlen)
+            file_nc.createDimension('dists',self.dnum)
+            file_nc.createDimension('bins',self.bins)
+            
+            # Put coordinates into 1D arrays
+            t = file_nc.createVariable('time','f4',('time',))
+            z = file_nc.createVariable('z','f4',('height',))
+            
+            xbins = file_nc.createVariable('xbins','f4',('bins',))
+            xi1 = file_nc.createVariable('xi1','f4',('bins',))
+            xi2 = file_nc.createVariable('xi2','f4',('bins',))
+            
+            t[:] = self.tout
+            z[:] = self.z 
+            xbins[:] = self.xbins
+            xi1[:] = self.xedges[:-1]
+            xi2[:] = self.xedges[1:]
+            
+            t.units = 'seconds'
+            z.units = 'meters'
+            xbins.units = 'g'
+            xi1.units = 'g'
+            xi2.units = 'g'
+            
+            t.description = 'Output time'
+            z.description = 'Gridbox Height'
+            xbins.description = 'Mass grid midpoint'
+            xi1.description = 'Mass grid left bin edge'
+            xi2.description = 'Mass grid right bin edge'
+            
+            # Put distributions into 4D arrays
+            for dd in range(self.dnum):
+                # Create group
+                dist_dd = file_nc.createGroup('dist{}'.format(dd+1))
+                
+                # Add attributes
+                dist_dd.habit = self.habit_list[dd]
+                dist_dd.am = self.dists[dd,0].am
+                dist_dd.bm = self.dists[dd,0].bm
+                dist_dd.av = self.dists[dd,0].av
+                dist_dd.bv = self.dists[dd,0].bv
+                dist_dd.arho = self.dists[dd,0].arho
+                dist_dd.brho = self.dists[dd,0].brho
+                
+                # Create Array Variables
+                Mbins = dist_dd.createVariable('Mbins','f4',('height','time','bins'))
+                Nbins = dist_dd.createVariable('Nbins','f4',('height','time','bins'))
+                #x1 = dist_dd.createVariable('x1','f4',('height','time','bins'))
+                #x2 = dist_dd.createVariable('x2','f4',('height','time','bins'))
+                #aki = dist_dd.createVariable('aki','f4',('height','time','bins'))
+                #cki = dist_dd.createVariable('cki','f4',('height','time','bins'))
+                
+                Mbins.units = 'g'
+                Nbins.units = '#'
+                #x1.units = 'g'
+                #x2.units = 'g'
+                #aki.units = '#/g?'
+                #cki.units = '#/g?'
+                
+                Mbins.description = 'Total Bin Mass'
+                Nbins.description = 'Total Bin Number'
+                #x1.description = 'Subgrid linear distribution left bin mass edge'
+                #x2.description = 'Subgrid linear distribution right bin mass edge'
+                #aki.description = 'Subgrid linear mass distribution slope'
+                #cki.description = 'Subgrid linear mass distribution intercept'
+                
+                Mbins[:] = np.array([[self.full[dd,hh,tt].Mbins for tt in range(self.Tout_len)] for hh in range(self.Hlen)])
+                Nbins[:] = np.array([[self.full[dd,hh,tt].Nbins for tt in range(self.Tout_len)] for hh in range(self.Hlen)])
+                #aki[:]   = np.array([[self.full[dd,hh,tt].aki for tt in range(self.Tout_len)] for hh in range(self.Hlen)])
+                #cki[:]   = np.array([[self.full[dd,hh,tt].cki for tt in range(self.Tout_len)] for hh in range(self.Hlen)])
+                        
+                # if self.radar:
+                #     Zh = dist_dd.createVariable('Zh','f4',('height','time','bins'))
+                #     Zv = dist_dd.createVariable('Zv','f4',('height','time','bins'))
+                #     Kdp = dist_dd.createVariable('Kdp','f4',('height','time','bins'))
+                #     Zhhvv_real = dist_dd.createVariable('Zhhvv_real','f4',('height','time','bins'))
+                #     Zhhvv_imag = dist_dd.createVariable('Zhhvv_imag','f4',('height','time','bins'))
+                    
+                #     Zh.units = 'mm^6/m^3'
+                #     Zv.units = 'mm^6/m^3'
+                #     Kdp.units = 'deg/km'
+                #     Zhhvv_real.units = 'mm^6/m^3'
+                #     Zhhvv_imag.units = 'mm^6/m^3'
+                    
+                #     Zh.description = 'bin radar horizontal reflectivity in linear units'
+                #     Zv.description = 'bin radar vertical reflectivity in linear units'
+                #     Kdp.description = 'bin radar specific differential phase'
+                #     Zhhvv_real.description = 'real component of bin radar cross-to-copolar reflectivity in linear units'
+                #     Zhhvv_imag.description = 'imaginary component of bin radar cross-to-copolar reflectivity in linear units'
+                    
+                #     Zh[:] = np.array([[self.full[dd,hh,tt].Zh for tt in range(self.Tout_len)] for hh in range(self.Hlen)])
+                #     Zv[:] = np.array([[self.full[dd,hh,tt].Zv for tt in range(self.Tout_len)] for hh in range(self.Hlen)])
+                #     Kdp[:]   = np.array([[self.full[dd,hh,tt].Kdp for tt in range(self.Tout_len)] for hh in range(self.Hlen)])
+                #     Zhhvv_full   = np.np.array([[self.full[dd,hh,tt].zhhvv for tt in range(self.Tout_len)] for hh in range(self.Hlen)])
+                         
+                #     Zhhvv_real[:] = np.real(Zhhvv_full)
+                #     Zhhvv_imag[:] = np.imag(Zhhvv_full)
+        
     
     def plot_time_height(self,var='Z'):
         
@@ -416,20 +626,7 @@ class spectral_1d:
         elif self.int_type==1:
             h = self.z/1000.
         elif self.int_type==0:
-            #t = self.t 
             h = self.z/1000.
-        
-        #if len(self.z)==1:
-        #    h = self.t
-        #elif len(self.t)==1:
-        #    h = self.z/1000.
-        
-        # N  = np.full_like(self.full,np.nan)
-        # M  = np.full_like(self.full,np.nan)
-        # Dm = np.full_like(self.full,np.nan)
-        # Rm = np.full_like(self.full,np.nan)      
-        # M3 = np.full_like(self.full,np.nan)  
-        # M4 = np.full_like(self.full,np.nan)  
         
         N  = np.full((dist_num,len(h)),np.nan)
         M  = np.full((dist_num,len(h)),np.nan)
@@ -478,21 +675,6 @@ class spectral_1d:
                 RHOHV_denom = np.sqrt(Zh*Zv)
                 if RHOHV_denom>0.:
                     RHOHV[ff] = np.abs(Zhhvv)/RHOHV_denom
-                
-            # M3_tot = np.nansum(M3,axis=0)
-            # M4_tot = np.nansum(M4,axis=0)
-            
-            # M3_tot[M3_tot==0.] = np.nan
-            
-            # Dm_tot = M4_tot/M3_tot
-            
-            # M3[M3==0.] = np.nan 
-            
-            # Dm = M4/M3
-            
-            # N_tot = np.nansum(N,axis=0)
-            # M_tot = np.nansum(M,axis=0)
-            # Rm_tot = np.nansum(Rm,axis=0)
         
         else:
             for ff in range(len(h)):
@@ -527,22 +709,6 @@ class spectral_1d:
                 if RHOHV_denom>0.:
                     RHOHV[ff] = np.abs(Zhhvv)/RHOHV_denom
                 
-            # M3_tot = np.nansum(M3,axis=0)
-            # M4_tot = np.nansum(M4,axis=0)
-            
-            # M3_tot[M3_tot==0.] = np.nan
-            
-            # Dm_tot = M4_tot/M3_tot
-            
-            # M3[M3==0.] = np.nan 
-            
-            # Dm = M4/M3
-            
-            # N_tot = np.nansum(N,axis=0)
-            # M_tot = np.nansum(M,axis=0)
-            # Rm_tot = np.nansum(Rm,axis=0)
-
-
         M3_tot = np.nansum(M3,axis=0)
         M4_tot = np.nansum(M4,axis=0)
         
@@ -1000,8 +1166,7 @@ class spectral_1d:
         for hh in range(1,len(z_lvls)):
         
             zind = np.nonzero(z==z_lvls[hh])[0][0]
-            
-            
+             
             nN_final = np.full((self.dnum,self.bins),np.nan)
             
             
@@ -1185,7 +1350,7 @@ class spectral_1d:
         Run bin model
         '''
          
-        # Full is an object array that holds
+        # Full is a numpy array that holds distribution objects for output
         self.full = np.empty((self.dnum,self.Hlen,self.Tout_len),dtype=object)
         
         # use Butcher table to get rk order coefficients
@@ -1273,7 +1438,7 @@ class spectral_1d:
             if self.Ecb>0.:
                 
                 pbar = tqdm(position=0, leave=True, mininterval=0,miniters=1,desc="Running 1D spectral bin model\n")
-                #with tqdm(position=0, leave=True) as pbar:
+
                 for tt in tqdm(range(1,self.Tlen)):
     
                     #print('Running 1D spectral bin model: step = {} out of {}'.format(tt,self.Tlen-1))
@@ -1285,23 +1450,10 @@ class spectral_1d:
                         M += np.nansum(self.dists[d1,0].Mbins) 
                         Mf+= np.nansum(self.dists[d1,0].Mbins*self.dists[d1,0].vt)
     
-                   # print('Total Mass = {:.2f} g/m^3 | Total Mass Flux = {:.2f} g/(m^2*s)'.format(1000.*M,1000.*Mf))
-    
-                    #tqdm.write('Running 1D spectral bin model: step = {} out of {}\n Total Mass = {:.2f} g/m^3 | Total Mass Flux = {:.2f} g/(m^2*s)'.format(tt,self.Tlen-1,1000.*M,1000.*Mf))
-                    
-                    #pbar.set_description('Running 1D spectral bin model: step = {} out of {}'.format(tt,self.Tlen-1))
-                    
                     pbar.set_description('Total Mass = {:.2f} g/m^3 | Total Mass Flux = {:.2f} g/(m^2*s)'.format(1000.*M,1000.*Mf))
                     
-                    #time.sleep(1)
-                    #tqdm.write('Total Mass = {:.2f} g/m^3 | Total Mass Flux = {:.2f} g/(m^2*s)'.format(1000.*M,1000.*Mf))
-    
-                    #sys.stdout.flush()  # Flush the output stream after each iteration
-    
                     Mbins_old = self.Ikernel.Mbins.copy() 
                     Nbins_old = self.Ikernel.Nbins.copy()
-  
-                    #M_net, N_net = self.Ikernel.interact(1.0)
                     
                     M_net, N_net = self.Ikernel.interact_2mom(1.0)
                    
