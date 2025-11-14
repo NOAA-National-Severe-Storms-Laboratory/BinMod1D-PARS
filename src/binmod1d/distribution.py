@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 # Number Distribution function class for arbitrary category
 class dist():
     
-    def __init__(self,sbin=4,bins=80,D1=0.01,x0=None,Nt0=1.,mu0=3,Dm0=2,gam_init=True,gam_norm=False,dist_var='mass',
+    def __init__(self,sbin=4,bins=80,D1=0.01,x0=None,Nt0=1.,Mt0=1.,mu0=3,Dm0=2,gam_init=True,gam_norm=False,dist_var='mass',
                  kernel='Hydro',habit_dict=None,ptype='rain',Tc=10.,radar=False,mom_num=2,Mbins=None,Nbins=None):
         
         self.mom_num = mom_num
@@ -27,7 +27,7 @@ class dist():
         self.init_dist(sbin,bins,D1,dist_var=dist_var,kernel=kernel,habit_dict=habit_dict,ptype=ptype,x0=x0,Tc=Tc,radar=radar,mom_num=mom_num,gam_norm=gam_norm)
         
         if gam_init:
-            self.bin_gamma_dist(Nt0=Nt0,mu0=mu0,Dm0=Dm0,normalize=gam_norm)
+            self.bin_gamma_dist(Nt0=Nt0,Mt0=Mt0,mu0=mu0,Dm0=Dm0,normalize=gam_norm)
             
         if mom_num==2:
             if (Mbins is not None) and (Nbins is not None):
@@ -58,12 +58,16 @@ class dist():
         self.bv = habit_dict['bv']
         self.sigma = habit_dict['sig']
         
-        if gam_norm:
-            self.am = 1.0 
-            self.bm = 3.0
-        else:
-            self.am = habit_dict['am']    # Units: g * mm^(-(3+brho)) 
-            self.bm = habit_dict['bm']
+        self.am = habit_dict['am']    # Units: g * mm^(-(3+brho)) 
+        self.bm = habit_dict['bm']
+        
+        # if gam_norm:
+        #     self.am = 1.0 
+        #     self.bm = 3.0
+        # else:
+        #     self.am = habit_dict['am']    # Units: g * mm^(-(3+brho)) 
+        #     self.bm = habit_dict['bm']
+            
         self.ptype = ptype
         self.mom_num = mom_num
         
@@ -178,7 +182,7 @@ class dist():
                 self.eps2 = (1+2*(self.rho2/self.rhoi)*Ki)/(1-(self.rho2/self.rhoi)*Ki)
             
         
-    def bin_gamma_dist(self,Nt0=1.,mu0=3,Dm0=2,normalize=False):
+    def bin_gamma_dist(self,Nt0=1.,Mt0=1.,mu0=3,Dm0=2,normalize=False):
         
         '''
         Description: Set up bins and integrals if using only mass moment
@@ -196,14 +200,16 @@ class dist():
 
         # Number distribution function in terms of mass (n(x))
         
-        if normalize:
+        if normalize: # Normalize mass distribution similar to Scott (1967) and Long (1974)
             #self.nedges = (nu)**(nu)/scip.gamma(nu)*self.xedges**(nu-1.)*np.exp(-nu*self.xedges)
         
             #self.nbins = (nu)**(nu)/scip.gamma(nu)*self.xbins**(nu-1.)*np.exp(-nu*self.xbins)
             
-            self.nedges = (nu)**(nu)/scip.gamma(nu)*self.xedges**(nu-1.)*np.exp(-nu*self.xedges)
+            mbar = Mt0/Nt0
+            
+            self.nedges = (self.Nt0/mbar)*((nu**nu)/scip.gamma(nu))*(self.xedges/mbar)**(nu-1.)*np.exp(-nu*self.xedges/mbar)
         
-            self.nbins = (nu)**(nu)/scip.gamma(nu)*self.xbins**(nu-1.)*np.exp(-nu*self.xbins)
+            self.nbins = (self.Nt0/mbar)*((nu**nu)/scip.gamma(nu))*(self.xbins/mbar)**(nu-1.)*np.exp(-nu*self.xbins/mbar)
             
             
         else:

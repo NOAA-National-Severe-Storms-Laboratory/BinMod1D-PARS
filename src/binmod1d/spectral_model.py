@@ -53,7 +53,7 @@ else:
 class spectral_1d:
     
     def __init__(self,sbin=8,bins=140,dt=2,
-                 tmax=800.,output_freq=60.,dz=10.,ztop=0.,zbot=0.,D1=0.25,x0=0.01,Nt0=1.,Dm0=2.0,
+                 tmax=800.,output_freq=60.,dz=10.,ztop=0.,zbot=0.,D1=0.25,x0=0.01,Nt0=1.,Mt0=1.,Dm0=2.0,
                  mu0=3.,gam_norm=False,Ecol=0.001,Es=1.0,Eb=0.,moments=2,dist_var='mass',
                  kernel='Golovin',frag_dist='exp',habit_list=['rain'],
                  ptype='rain',Tc=10.,boundary=None,dist_num=1,cc_dest=1,br_dest=1, 
@@ -65,7 +65,7 @@ class spectral_1d:
         # If not loading netcdf file, then manually set up case, attributes, variables, etc.
         if load is None:
             self.setup_case(sbin=sbin,bins=bins,D1=D1,x0=x0,dt=dt,tmax=tmax,
-                        output_freq=output_freq,dz=dz,ztop=ztop,zbot=zbot,Nt0=Nt0,Dm0=Dm0,mu0=mu0,gam_norm=gam_norm,Ecol=Ecol,
+                        output_freq=output_freq,dz=dz,ztop=ztop,zbot=zbot,Nt0=Nt0,Mt0=Mt0,Dm0=Dm0,mu0=mu0,gam_norm=gam_norm,Ecol=Ecol,
                         Es=Es,Eb=Eb,moments=moments,dist_var=dist_var,kernel=kernel,frag_dist=frag_dist,
                         habit_list=habit_list,ptype=ptype,Tc=Tc,radar=radar,boundary=boundary,
                         dist_num=dist_num,cc_dest=cc_dest,br_dest=br_dest,rk_order=rk_order,adv_order=adv_order,
@@ -126,8 +126,7 @@ class spectral_1d:
                                  Mbins=file_nc.groups[dist_names[dd]].Mbins[:,hh,tt],
                                  Nbins=file_nc.groups[dist_names[dd]].Nbins[:,hh,tt]) for tt in range(self.Tout_len)] for hh in range(self.Hlen)])
 
-        
-    def setup_case(self,sbin=4,bins=160,D1=0.001,x0=0.01,Nt0=1.,Dm0=2.0,mu0=3,gam_norm=False,dist_var='mass',kernel='Golovin',Ecol=1.53,Es=0.001,Eb=0.,
+    def setup_case(self,sbin=4,bins=160,D1=0.001,x0=0.01,Nt0=1.,Mt0=1.,Dm0=2.0,mu0=3,gam_norm=False,dist_var='mass',kernel='Golovin',Ecol=1.53,Es=0.001,Eb=0.,
                         moments=2,ztop=3000.0,zbot=0.,tmax=800.,output_freq=60.,dt=10.,dz=10.,frag_dist='exp',habit_list=['rain'],ptype='rain',Tc=10.,
                         radar=False,boundary=None,dist_num=1,cc_dest=1,br_dest=1,rk_order=1,adv_order=1,parallel=False,n_jobs=-1):
         self.Tc = Tc
@@ -136,8 +135,10 @@ class spectral_1d:
         self.bins = bins
         self.D1 = D1
         self.Nt0 = Nt0 
+        self.Mt0 = Mt0
         self.Dm0 = Dm0 
         self.mu0 = mu0 
+        self.x0 = x0
         self.gam_norm = gam_norm
         self.kernel = kernel
         self.Ecol = Ecol # Collision efficiency
@@ -227,7 +228,7 @@ class spectral_1d:
         dists = np.empty((self.dnum,self.Hlen),dtype=object)
         
         # initial distribution
-        dists[0,0] = dist(sbin=sbin,bins=bins,D1=D1,x0=x0,Nt0=Nt0,mu0=mu0,Dm0=Dm0,
+        dists[0,0] = dist(sbin=sbin,bins=bins,D1=D1,x0=x0,Nt0=Nt0,Mt0=Mt0,mu0=mu0,Dm0=Dm0,
                       gam_init=True,gam_norm=gam_norm,dist_var=dist_var,kernel=kernel,
                       habit_dict=habit_dict[0],ptype=ptype,Tc=Tc,radar=radar,mom_num=moments)
 
@@ -238,7 +239,7 @@ class spectral_1d:
                 
                 if not ((dd==0) & (hh==0)):
                     # Coalesced or fragmented particles
-                    dists[dd,hh] = dist(sbin=sbin,D1=D1,bins=bins,gam_init=False,dist_var=dist_var,
+                    dists[dd,hh] = dist(sbin=sbin,D1=D1,bins=bins,gam_init=False,gam_norm=gam_norm,dist_var=dist_var,
                                  kernel=kernel,habit_dict=habit_dict[dd],ptype=ptype,x0=self.dist0.x0, 
                                  Tc=Tc,radar=radar,mom_num=moments)
                     
@@ -865,8 +866,10 @@ class spectral_1d:
         
         # Initial
         ax[0].plot(np.log10(xbins),mbins*n_init,'k')
-        ax[1].plot(np.log10(xbins),1000.*mbins**2*n_init,'k')
-        
+        if self.gam_norm:
+            ax[1].plot(np.log10(xbins),mbins**2*n_init,'k')
+        else:
+            ax[1].plot(np.log10(xbins),1000.*mbins**2*n_init,'k')
         ax[0].set_ylabel(ylabel_num)
         ax[1].set_ylabel(ylabel_mass)
         ax[1].set_xlabel(xlabel)
@@ -881,7 +884,7 @@ class spectral_1d:
         return fig, ax
     
     
-    def plot_dists(self,tind=-1,hind=-1,x_axis='mass',y_axis='mass',xscale='log',yscale='linear',distscale='log',scott_solution=False,feingold_solution=False,plot_habits=False):
+    def plot_dists(self,tind=-1,hind=-1,x_axis='mass',y_axis='mass',xscale='log',yscale='linear',distscale='log',normbin=False,scott_solution=False,feingold_solution=False,plot_habits=False):
       
         plt.rc('text', usetex=True)
         plt.rc('font', family='serif')
@@ -909,6 +912,8 @@ class spectral_1d:
         xp2 = primary_init.x2
         ap = primary_init.aki
         cp = primary_init.cki
+        Mbins_init = primary_init.Mbins 
+        Nbins_init = primary_init.Nbins
         
        # xbins = np.full((self.dnum,self.bins),np.nan)
         prefN = np.full((self.dnum,self.bins),np.nan)
@@ -917,6 +922,8 @@ class spectral_1d:
         x2_final = np.full((self.dnum,self.bins),np.nan)
         ak_final = np.full((self.dnum,self.bins),np.nan)
         ck_final = np.full((self.dnum,self.bins),np.nan)
+        Mbins_final = np.full((self.dnum,self.bins),np.nan)
+        Nbins_final = np.full((self.dnum,self.bins),np.nan)
         bm = np.full((self.dnum,),np.nan)
         am = np.full((self.dnum,),np.nan)
 
@@ -927,8 +934,12 @@ class spectral_1d:
                 x2_final[d1,:] = self.full[d1,hind,tind].x2 
                 ak_final[d1,:] = self.full[d1,hind,tind].aki 
                 ck_final[d1,:] = self.full[d1,hind,tind].cki
+                Mbins_final[d1,:] = self.full[d1,hind,tind].Mbins
+                Nbins_final[d1,:] = self.full[d1,hind,tind].Nbins
+                
                 bm[d1] = self.full[d1,hind,tind].bm 
                 am[d1] = self.full[d1,hind,tind].am 
+
                 
         elif self.int_type==1:
             f_label = '{:.1f} km'.format(self.z[hind]/1000.)
@@ -937,6 +948,9 @@ class spectral_1d:
                 x2_final[d1,:] = self.full[d1,hind].x2 
                 ak_final[d1,:] = self.full[d1,hind].aki 
                 ck_final[d1,:] = self.full[d1,hind].cki
+                Mbins_final[d1,:] = self.full[d1,hind].Mbins.copy()
+                Nbins_final[d1,:] = self.full[d1,hind].Nbins.copy()
+                
                 bm[d1] = self.full[d1,hind].bm 
                 am[d1] = self.full[d1,hind].am 
                 
@@ -947,6 +961,9 @@ class spectral_1d:
                 x2_final[d1,:] = self.full[d1,tind].x2 
                 ak_final[d1,:] = self.full[d1,tind].aki 
                 ck_final[d1,:] = self.full[d1,tind].cki
+                Mbins_final[d1,:] = self.full[d1,tind].Mbins.copy()
+                Nbins_final[d1,:] = self.full[d1,tind].Nbins.copy()
+                
                 bm[d1] = self.full[d1,tind].bm 
                 am[d1] = self.full[d1,tind].am 
             
@@ -962,8 +979,13 @@ class spectral_1d:
                     
                     #xbins[d1,:] = mbins.copy()
                 xbins = mbins.copy()
-                ylabel_num = r'dN/dlog(m)'
-                ylabel_mass = r'dM/dlog(m)'
+                if normbin:
+                    ylabel_num = r'd$P_{N}$/dlog(m)'
+                    ylabel_mass = r'd$P_{M}$/dlog(m)'
+                    
+                else:
+                    ylabel_num = r'dN/dlog(m)'
+                    ylabel_mass = r'dM/dlog(m)'
                 
                 xlabel = r'log(m) [log(g)]'
                 
@@ -978,8 +1000,13 @@ class spectral_1d:
                
                 xbins = (mbins/am[0])**(1./bm[0])
    
-                ylabel_num = r'dN/dlog(D)'
-                ylabel_mass = r'dM/dlog(D)'
+                if normbin:
+                    ylabel_num = r'd$P_{N}$/dlog(D)'
+                    ylabel_mass = r'd$P_{M}$/dlog(D)'
+                    
+                else:
+                    ylabel_num = r'dN/dlog(D)'
+                    ylabel_mass = r'dM/dlog(D)'
                 
                 xlabel = r'log(D) [log(mm)]'
                 
@@ -997,8 +1024,14 @@ class spectral_1d:
 
                     #xbins[d1,:] = mbins.copy()
                 xbins = mbins.copy()
-                ylabel_num = r'dN/dm'
-                ylabel_mass = r'dM/dm'
+                
+                if normbin:
+                    ylabel_num = r'd$P_{N}$/dm'
+                    ylabel_mass = r'd$P_{M}$/dm'
+                    
+                else:
+                    ylabel_num = r'dN/dm'
+                    ylabel_mass = r'dM/dm'
                 
                 xlabel = r'log(m) [log(g)]'
                 
@@ -1011,14 +1044,46 @@ class spectral_1d:
 
                     #xbins[d1,:] = (mbins/self.full[d1,0].am)**(1./self.full[d1,0].bm)
                 xbins = (mbins/am[0])**(1./bm[0])
-                ylabel_num = r'dN/dD'
-                ylabel_mass = r'dM/dD'
+                
+                if normbin:
+                    ylabel_num = r'd$P_{N}$/dD'
+                    ylabel_mass = r'd$P_{M}$/dD'
+                else:
+                    ylabel_num = r'dN/dD'
+                    ylabel_mass = r'dM/dD'
          
-        nN_init = prefN[0,:]*np.heaviside(mbins-xp1,1)*np.heaviside(xp2-mbins,1)*(ap*mbins+cp)
-        nM_init = prefM[0,:]*np.heaviside(mbins-xp1,1)*np.heaviside(xp2-mbins,1)*(ap*mbins+cp)
+        if normbin:
+            #Nbins_init[Nbins_init<1e-6] = np.nan
+            #Mbins_init[Mbins_init<1e-6] = np.nan
+            prefN_init = prefN[0,:]/np.nansum(Nbins_init)
+            prefM_init = prefM[0,:]/np.nansum(Mbins_init)
+            
+           # Nbins_final[Nbins_final<1e-6] = np.nan
+           # Mbins_final[Mbins_final<1e-6] = np.nan
+            prefN_final = prefN/np.nansum(Nbins_final)
+            prefM_final = prefM/np.nansum(Mbins_final)
+            
+        else:
+            prefN_init = prefN[0,:].copy()
+            prefM_init = prefM[0,:].copy()
+            
+            prefN_final = prefN.copy()
+            prefM_final = prefM.copy()
+            
+        # nN_init = prefN[0,:]*np.heaviside(mbins-xp1,1)*np.heaviside(xp2-mbins,1)*(ap*mbins+cp)
+        # nM_init = prefM[0,:]*np.heaviside(mbins-xp1,1)*np.heaviside(xp2-mbins,1)*(ap*mbins+cp)
 
-        nN_final = prefN*np.heaviside(mbins[None,:]-x1_final,1)*np.heaviside(x2_final-mbins[None,:],1)*(ak_final*mbins[None,:]+ck_final)
-        nM_final = prefM*np.heaviside(mbins[None,:]-x1_final,1)*np.heaviside(x2_final-mbins[None,:],1)*(ak_final*mbins[None,:]+ck_final)
+        # nN_final = prefN*np.heaviside(mbins[None,:]-x1_final,1)*np.heaviside(x2_final-mbins[None,:],1)*(ak_final*mbins[None,:]+ck_final)
+        # nM_final = prefM*np.heaviside(mbins[None,:]-x1_final,1)*np.heaviside(x2_final-mbins[None,:],1)*(ak_final*mbins[None,:]+ck_final)
+
+
+        nN_init = prefN_init*np.heaviside(mbins-xp1,1)*np.heaviside(xp2-mbins,1)*(ap*mbins+cp)
+        nM_init = prefM_init*np.heaviside(mbins-xp1,1)*np.heaviside(xp2-mbins,1)*(ap*mbins+cp)
+
+        nN_final = prefN_final*np.heaviside(mbins[None,:]-x1_final,1)*np.heaviside(x2_final-mbins[None,:],1)*(ak_final*mbins[None,:]+ck_final)
+        nM_final = prefM_final*np.heaviside(mbins[None,:]-x1_final,1)*np.heaviside(x2_final-mbins[None,:],1)*(ak_final*mbins[None,:]+ck_final)
+
+
 
         if self.gam_norm:
             nM_init /= 1000. 
