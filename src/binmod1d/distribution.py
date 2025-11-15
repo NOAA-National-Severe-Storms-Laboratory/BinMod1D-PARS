@@ -542,8 +542,6 @@ class dist():
             return fig, ax
 
 
-
-
 def spheroid_factors(ar):
     
     La = (1./3.)*np.ones_like(ar)
