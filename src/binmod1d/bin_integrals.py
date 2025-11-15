@@ -331,6 +331,9 @@ def integrate_tri_kernel(px, py, m, f, ax, cx, ay, cy,
 
 def integrate_fast_kernel(px, py, m, f, ax, cx, ay, cy, domain_type, **params):
     
+    if len(ax)==0: # Hopefully this speeds things up?
+        return []
+    
     a = f[0,:] 
     b = f[1,:] 
     c = f[2,:] 
@@ -347,12 +350,6 @@ def integrate_fast_kernel(px, py, m, f, ax, cx, ay, cy, domain_type, **params):
             total += coeff * triangle_monomial_integral(i, j, params['xt1'], params['yt1'], 
                                                  params['xt2'], params['yt2'], 
                                                  params['xt3'], params['yt3'])
-            
-            # total += coeff * triangle_monomial_integral_fast(i, j, params['xt1'], params['yt1'], 
-            #                                       params['xt2'], params['yt2'], 
-            #                                       params['xt3'], params['yt3'])
-            
-            
             
     else:
         

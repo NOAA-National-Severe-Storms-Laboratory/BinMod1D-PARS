@@ -11,28 +11,36 @@ from .bin_integrals import Pn
 
 from .habits import habits
 
+import matplotlib.pyplot as plt
+
 # Number Distribution function class for arbitrary category
 class dist():
     
-    def __init__(self,sbin=4,bins=80,D1=0.01,x0=None,Nt0=1.,mu0=3,Dm0=2,gam_init=True,gam_norm=False,dist_var='mass',
-                 kernel='Hydro',habit_dict=None,ptype='rain',Tc=10.,radar=False,mom_num=2):
+    def __init__(self,sbin=4,bins=80,D1=0.01,x0=None,Nt0=1.,Mt0=1.,mu0=3,Dm0=2,gam_init=True,gam_norm=False,dist_var='mass',
+                 kernel='Hydro',habit_dict=None,ptype='rain',Tc=10.,radar=False,mom_num=2,Mbins=None,Nbins=None):
         
         self.mom_num = mom_num
         
         if habit_dict is None:
             habit_dict = habits()[ptype]
         
-        self.init_dist(sbin,bins,D1,dist_var=dist_var,kernel=kernel,habit_dict=habit_dict,ptype=ptype,x0=x0,Tc=Tc,radar=radar,mom_num=mom_num)
+        self.init_dist(sbin,bins,D1,dist_var=dist_var,kernel=kernel,habit_dict=habit_dict,ptype=ptype,x0=x0,Tc=Tc,radar=radar,mom_num=mom_num,gam_norm=gam_norm)
         
         if gam_init:
-            self.bin_gamma_dist(Nt0=Nt0,mu0=mu0,Dm0=Dm0,normalize=gam_norm)
-        
+            self.bin_gamma_dist(Nt0=Nt0,Mt0=Mt0,mu0=mu0,Dm0=Dm0,normalize=gam_norm)
+            
         if mom_num==2:
+            if (Mbins is not None) and (Nbins is not None):
+                self.Mbins = Mbins 
+                self.Nbins = Nbins
             self.diagnose() 
+            
         elif mom_num==1:
+            if (Mbins is not None):
+                self.Mbins = Mbins 
             self.diagnose_1mom()
         
-    def init_dist(self,sbin,bins,D1,kernel='Hydro',habit_dict=None,ptype='rain',Tc=10.,dist_var='mass',x0=None,radar=False,mom_num=2):
+    def init_dist(self,sbin,bins,D1,kernel='Hydro',habit_dict=None,ptype='rain',Tc=10.,dist_var='mass',x0=None,radar=False,mom_num=2,gam_norm=False):
         
         if habit_dict is None:
             habit_dict = habits()[ptype]
@@ -49,8 +57,17 @@ class dist():
         self.av = habit_dict['av'] 
         self.bv = habit_dict['bv']
         self.sigma = habit_dict['sig']
+        
         self.am = habit_dict['am']    # Units: g * mm^(-(3+brho)) 
         self.bm = habit_dict['bm']
+        
+        # if gam_norm:
+        #     self.am = 1.0 
+        #     self.bm = 3.0
+        # else:
+        #     self.am = habit_dict['am']    # Units: g * mm^(-(3+brho)) 
+        #     self.bm = habit_dict['bm']
+            
         self.ptype = ptype
         self.mom_num = mom_num
         
@@ -165,7 +182,7 @@ class dist():
                 self.eps2 = (1+2*(self.rho2/self.rhoi)*Ki)/(1-(self.rho2/self.rhoi)*Ki)
             
         
-    def bin_gamma_dist(self,Nt0=1.,mu0=3,Dm0=2,normalize=False):
+    def bin_gamma_dist(self,Nt0=1.,Mt0=1.,mu0=3,Dm0=2,normalize=False):
         
         '''
         Description: Set up bins and integrals if using only mass moment
@@ -183,10 +200,17 @@ class dist():
 
         # Number distribution function in terms of mass (n(x))
         
-        if normalize:
-            self.nedges = (nu)**(nu)/scip.gamma(nu)*self.xedges**(nu-1.)*np.exp(-nu*self.xedges)
+        if normalize: # Normalize mass distribution similar to Scott (1967) and Long (1974)
+            #self.nedges = (nu)**(nu)/scip.gamma(nu)*self.xedges**(nu-1.)*np.exp(-nu*self.xedges)
         
-            self.nbins = (nu)**(nu)/scip.gamma(nu)*self.xbins**(nu-1.)*np.exp(-nu*self.xbins)
+            #self.nbins = (nu)**(nu)/scip.gamma(nu)*self.xbins**(nu-1.)*np.exp(-nu*self.xbins)
+            
+            mbar = Mt0/Nt0
+            
+            self.nedges = (self.Nt0/mbar)*((nu**nu)/scip.gamma(nu))*(self.xedges/mbar)**(nu-1.)*np.exp(-nu*self.xedges/mbar)
+        
+            self.nbins = (self.Nt0/mbar)*((nu**nu)/scip.gamma(nu))*(self.xbins/mbar)**(nu-1.)*np.exp(-nu*self.xbins/mbar)
+            
             
         else:
            self.nedges = (self.Nt0/self.bm)*(1./scip.gamma(self.mu0+1.))*\
@@ -432,6 +456,91 @@ class dist():
             self.ZDR = 0. 
             self.KDP = 0.
             self.rhohv = 1.0
+
+    def plot(self,log_switch=True,x_axis='mass',ax=None):
+        '''
+        Plots number and mass distributions for distribution object.
+
+        Parameters
+        ----------
+        log_switch : Bool, optional
+            Whether distribution scaling is log or linear. The default is True.
+        x_axis : string, optional
+            Whether x axis is 'mass' or 'size'. The default is 'mass'.
+        ax : matplotlib.pyplot axes() object, optional
+            Plots number/mass distributions in existing pyplot axes. The default is None.
+
+        Returns
+        -------
+        fig : matplotlib figure object
+        ax : matplotlib axes object
+
+
+        '''
+
+        if ax is None:
+            ax_orig = True 
+        else:
+            ax_orig = False
+
+        plt.rc('text', usetex=True)
+        plt.rc('font', family='serif')
+        plt.rc('xtick', labelsize=16) 
+        plt.rc('ytick', labelsize=16)         
+
+        mbins = self.xbins
+        xp1 = self.x1
+        xp2 = self.x2
+        ap = self.aki
+        cp = self.cki
+        
+        bm = self.bm
+        am = self.am
+
+        if x_axis=='size':
+            prefactor = bm*np.log(10)
+            xbins = (mbins/am)**(1./bm)
+            
+            ylabel_num = r'dN/dlog(D)'
+            ylabel_mass = r'dM/dlog(D)'
+            
+            xlabel = r'log(D) [log(mm)]'
+            
+        elif x_axis=='mass':
+            prefactor = np.log(10)
+            xbins = mbins
+            
+            ylabel_num = r'dN/dlog(m)'
+            ylabel_mass = r'dM/dlog(m)'
+            
+            xlabel = r'log(m) [log(g)]'
+                 
+        n_init = prefactor*np.heaviside(mbins-xp1,1)*np.heaviside(xp2-mbins,1)*(ap*mbins+cp)
+
+        if ax is None:
+            fig, ax = plt.subplots(2,1,figsize=((8,10)),sharex=True)
+        
+        # Plot m*n(m) for number (N=int m*n(m)*dln(m)) | g_n(ln(r)) = bm*m*n(m), N = int g_n(ln(r))*dln(r)
+        # Plot m^2*n(m) for mass (M=int m^2*n(m)*dln(m)) | g_m(ln(r)) = bm*m^2*n(m), M = int g_m(ln(r))*dln(r) 
+        
+        # Initial
+        ax[0].plot(np.log10(xbins),mbins*n_init,'k')
+        ax[1].plot(np.log10(xbins),1000.*mbins**2*n_init,'k')
+        
+        ax[0].set_ylabel(ylabel_num)
+        ax[1].set_ylabel(ylabel_mass)
+        ax[1].set_xlabel(xlabel)
+        
+        #print('Initial Number = {:.2f} #/L'.format(np.nansum(mbins*n_init*(np.log10(medges[1:])-np.log10(medges[:-1])))))
+        #print('Initial Mass = {:.2f} g/cm^3'.format(np.nansum(1000.*mbins**2*n_init*(np.log10(medges[1:])-np.log10(medges[:-1])))))
+        
+        #print('number test size=',np.nansum(mbins*n_init*(np.log10(dedges[1:])-np.log10(dedges[:-1]))))
+        #print('mass test size=',np.nansum(1000.*mbins**2*n_init*(np.log10(dedges[1:])-np.log10(dedges[:-1]))))
+        
+ 
+        if ax_orig:
+            return fig, ax
+
 
 def spheroid_factors(ar):
     

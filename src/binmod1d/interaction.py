@@ -7,7 +7,7 @@ Created on Thu Oct  2 11:31:38 2025
 ## Import stuff
 import numpy as np
 
-from .collection_kernels import Prod_kernel, Constant_kernel, Golovin_kernel, hydro_kernel
+from .collection_kernels import hydro_kernel, long_kernel
 from .bin_integrals import In_int, gam_int, LGN_int, integrate_fast_kernel
 
 from joblib import Parallel, delayed, dump, load
@@ -118,7 +118,6 @@ def setup_regions(x11,x21,ak1,ck1,x12,x22,ak2,ck2,xi1,xi2,kmin,cond_1,sc_inds):
     k9, i9, j9  = np.nonzero(cond_9&sc_inds)
     k10,i10,j10 = np.nonzero(cond_10&sc_inds)
     
- 
     # Returns dictionary of source integration region type indices
     return    {'x_bottom_edge':x_bottom_edge,
                'x_top_edge':x_top_edge,
@@ -136,8 +135,6 @@ def setup_regions(x11,x21,ak1,ck1,x12,x22,ak2,ck2,xi1,xi2,kmin,cond_1,sc_inds):
                '8' :{'k':k8,'i':i8,'j':j8},
                '9' :{'k':k9,'i':i9,'j':j9},
                '10':{'k':k10,'i':i10,'j':j10}}
-
-
 
 
 def calculate_regions(x11,x21,ak1,ck1,x12,x22,ak2,ck2,PK,xi1,xi2,regions):
@@ -422,6 +419,8 @@ def calculate_regions(x11,x21,ak1,ck1,x12,x22,ak2,ck2,PK,xi1,xi2,regions):
 
 def calculate_1mom(i1,j1,n1,n2,dMi_loss,dMj_loss,dM_gain,kmin,kmid,dMb_gain_frac,breakup):
     
+#def calculate_1mom(i1,j1,n12,dMi_loss,dMj_loss,dM_gain,kmin,kmid,dMb_gain_frac,breakup):
+    
     '''
      This function calculate mass transfer rates
      for collision-coalescence and collisional breakup between
@@ -429,6 +428,8 @@ def calculate_1mom(i1,j1,n1,n2,dMi_loss,dMj_loss,dM_gain,kmin,kmid,dMb_gain_frac
     '''
     
     Hlen,bins = n1.shape
+   
+   # Hlen,bins = n12.shape[:2]
     
     n12 = n1[:,:,None]*n2[:,None,:]
     
@@ -450,7 +451,6 @@ def calculate_1mom(i1,j1,n1,n2,dMi_loss,dMj_loss,dM_gain,kmin,kmid,dMb_gain_frac
     else:
         
         Mb_gain  = np.zeros((Hlen,bins))
-        
         
     return M1_loss, M2_loss, M_gain, Mb_gain   
 
@@ -478,7 +478,7 @@ def calculate_2mom(x11,x21,ak1,ck1,M1,
     
     M2_loss = np.nansum(dMj_loss,axis=1) 
     N2_loss = np.nansum(dNi_loss,axis=1)
-       
+    
     # ChatGPT is the GOAT for telling me about np.add.at!
     M_gain = np.zeros((Hlen,bins))
     np.add.at(M_gain, (np.arange(Hlen)[:,None,None],kmin), dM_gain[:,:,:,0])
@@ -637,7 +637,9 @@ class Interaction():
         if self.Ebr>0.: # Setup fragment distribution if Ebr>0.     
             self.setup_fragments()
             
-        self.PK = self.create_kernels(dists)
+        #self.PK = self.create_kernels(dists)
+        
+        self.PK = self.create_kernels_new(dists)
          
         if parallel:
             
@@ -694,7 +696,6 @@ class Interaction():
             x1 = self.xi1.reshape(1,-1)
             x2 = self.xi2.reshape(1,-1)
             
-        
             dd = 0
         
             # Calculate regions and mass transfer rates
@@ -704,8 +705,12 @@ class Interaction():
                     self.regions[dd] = setup_regions(x1,x2,ak1mom,ck1mom,x1,x2,ak1mom,ck1mom,
                                       self.xi1,self.xi2,self.kmin,self.cond_1,self.self_col[:,dd,:,:])
             
+                    #self.dMi_loss[dd,:,:,:], self.dMj_loss[dd,:,:,:], self.dM_gain[dd,:,:,:,:], _, _ =  calculate_regions(x1,x2,ak1mom,ck1mom, 
+                    #          x1,x2,ak1mom,ck1mom,self.PK[:,d1,d2,:,:],self.xi1,self.xi2,self.regions[dd])
+                    
+                    
                     self.dMi_loss[dd,:,:,:], self.dMj_loss[dd,:,:,:], self.dM_gain[dd,:,:,:,:], _, _ =  calculate_regions(x1,x2,ak1mom,ck1mom, 
-                               x1,x2,ak1mom,ck1mom,self.PK[:,d1,d2,:,:],self.xi1,self.xi2,self.regions[dd])
+                                x1,x2,ak1mom,ck1mom,self.PK[:,dd,:,:],self.xi1,self.xi2,self.regions[dd])
                     
                     dd += 1
         
@@ -807,7 +812,78 @@ class Interaction():
                 self.x2[d1,zz,:]    = dists[d1,zz].x2.copy() 
                 self.aki[d1,zz,:]   = dists[d1,zz].aki.copy() 
                 self.cki[d1,zz,:]   = dists[d1,zz].cki.copy() 
-                
+
+    def create_kernels_new(self,dists):
+        
+        # Kernel ind, x, y
+        # NOTE: HK also has denominator bin width terms for x and y
+        HK = np.ones((4,self.pnum,self.bins,self.bins))
+        
+        ## Calculate Bilinear interpolation of collection kernel
+        # NOTE: fkernel form can be expressed in terms of K(x,y) = a + b*x +c*y +d*x*y
+        ## ELD: Does kernel need to be evaluated at rectangle and triangle endpoints for each integral?
+
+       
+        if (self.kernel=='Hydro') | (self.kernel=='Long'):
+            dd = 0
+            for d1 in range(self.dnum):
+                for d2 in range(d1,self.dnum):
+                    dist1 = dists[d1,0] 
+                    dist2 = dists[d2,0]
+       
+                    # Calculate corners of K(x,y), i.e. K(x0,y0), K(x1,y0), K(x0,y1), K(x1,y1)
+                    if self.kernel=='Hydro':
+                        HK[0,dd,:,:] = hydro_kernel(dist1.vt1,dist2.vt1,dist1.A1,dist2.A1)
+                        HK[1,dd,:,:] = hydro_kernel(dist1.vt2,dist2.vt1,dist1.A2,dist2.A1)
+                        HK[2,dd,:,:] = hydro_kernel(dist1.vt1,dist2.vt2,dist1.A1,dist2.A2)
+                        HK[3,dd,:,:] = hydro_kernel(dist1.vt2,dist2.vt2,dist1.A2,dist2.A2)
+                        
+                    elif self.kernel=='Long':
+                        HK[0,dd,:,:] = long_kernel(dist1.d1,dist2.d1,dist1.vt1,dist2.vt1,dist1.A1,dist2.A1)
+                        HK[1,dd,:,:] = long_kernel(dist1.d2,dist2.d1,dist1.vt2,dist2.vt1,dist1.A2,dist2.A1)
+                        HK[2,dd,:,:] = long_kernel(dist1.d1,dist2.d2,dist1.vt1,dist2.vt2,dist1.A2,dist2.A1)
+                        HK[3,dd,:,:] = long_kernel(dist1.d2,dist2.d2,dist1.vt2,dist2.vt2,dist1.A2,dist2.A1)
+                        
+                    dd += 1
+            
+                          
+            # Rearranged weights for Kernel in form: K(x,y) = a + b*x + c*y + d*x*y
+            PK = np.zeros_like(HK)  
+            PK[3,:,:,:] =  (HK[0,:,:,:]+HK[3,:,:,:]-(HK[1,:,:,:]+HK[2,:,:,:]))\
+                           /(dist1.dxbins[None,:,None]*dist2.dxbins[None,None,:])
+            PK[1,:,:,:] = ((HK[1,:,:,:]-HK[0,:,:,:])/dist1.dxbins[None,:,None])\
+                           -PK[3,:,:,:]*dist2.xi1[None,None,:] 
+            PK[2,:,:,:] = ((HK[2,:,:,:]-HK[0,:,:,:])/dist2.dxbins[None,None,:])\
+                           -PK[3,:,:,:]*dist1.xi1[None,:,None] 
+            PK[0,:,:,:] =   HK[0,:,:,:]\
+                           -PK[1,:,:,:]*dist1.xi1[None,:,None]\
+                           -PK[2,:,:,:]*dist2.xi1[None,None,:]\
+                           -PK[3,:,:,:]*dist1.xi1[None,:,None]*dist2.xi1[None,None,:]
+            
+        # Explicitly set Sum, product, and constant kernels. This is because
+        # numerical round-off errors are large.
+        if self.kernel == 'Golovin':
+           PK = HK.copy()
+           PK[0,:,:,:] = 0.0
+           PK[1,:,:,:] = 1.0
+           PK[2,:,:,:] = 1.0
+           PK[3,:,:,:] = 0.0
+           
+        elif self.kernel == 'Product':
+           PK = HK.copy()
+           PK[0,:,:,:] = 0.0
+           PK[1,:,:,:] = 0.0
+           PK[2,:,:,:] = 0.0
+           PK[3,:,:,:] = 1.0
+           
+        elif self.kernel == 'Constant':
+           PK = HK.copy()
+           PK[0,:,:,:] = 1.0
+           PK[1,:,:,:] = 0.0
+           PK[2,:,:,:] = 0.0
+           PK[3,:,:,:] = 0.0
+        
+        return PK                
            
     def create_kernels(self,dists):
         
@@ -816,6 +892,12 @@ class Interaction():
         # Kernel ind, x, y
         # NOTE: HK also has denominator bin width terms for x and y
         HK = np.ones((4,dlen,dlen,self.bins,self.bins))
+        
+        # Rearranged weights for Kernel in form: K(x,y) = a + b*x + c*y + d*x*y
+        PK = np.zeros_like(HK)  
+        
+        # pnum = self.pnum
+        #HK = np.ones((4,pnum,self.bins,self.bins))
 
         ## Calculate Bilinear interpolation of collection kernel
         # NOTE: fkernel form can be expressed in terms of K(x,y) = a + b*x +c*y +d*x*y
@@ -833,43 +915,29 @@ class Interaction():
                     HK[1,d1,d2,:,:] = hydro_kernel(dist1.vt2,dist2.vt1,dist1.A2,dist2.A1)
                     HK[2,d1,d2,:,:] = hydro_kernel(dist1.vt1,dist2.vt2,dist1.A1,dist2.A2)
                     HK[3,d1,d2,:,:] = hydro_kernel(dist1.vt2,dist2.vt2,dist1.A2,dist2.A2)
-                
-                elif self.kernel == 'Golovin':
-                    HK[0,d1,d2,:,:] = Golovin_kernel(dist1.x1,dist2.x1)
-                    HK[1,d1,d2,:,:] = Golovin_kernel(dist1.x2,dist2.x1)
-                    HK[2,d1,d2,:,:] = Golovin_kernel(dist1.x1,dist2.x2)
-                    HK[3,d1,d2,:,:] = Golovin_kernel(dist1.x2,dist2.x2)
                     
-                elif self.kernel == 'Product':
-                    HK[0,d1,d2,:,:] = Prod_kernel(dist1.x1,dist2.x1)
-                    HK[1,d1,d2,:,:] = Prod_kernel(dist1.x2,dist2.x1)
-                    HK[2,d1,d2,:,:] = Prod_kernel(dist1.x1,dist2.x2)
-                    HK[3,d1,d2,:,:] = Prod_kernel(dist1.x2,dist2.x2)
+                elif self.kernel=='Long':
+                    HK[0,d1,d2,:,:] = long_kernel(dist1.x1,dist2.x1,dist1.d1,dist2.d1,dist1.vt1,dist2.vt1,dist1.A1,dist2.A1)
+                    HK[1,d1,d2,:,:] = long_kernel(dist1.x2,dist2.x1,dist1.d2,dist2.d1,dist1.vt2,dist2.vt1,dist1.A2,dist2.A1)
+                    HK[2,d1,d2,:,:] = long_kernel(dist1.x1,dist2.x2,dist1.d1,dist2.d2,dist1.vt1,dist2.vt2,dist1.A2,dist2.A1)
+                    HK[3,d1,d2,:,:] = long_kernel(dist1.x2,dist2.x2,dist1.d2,dist2.d2,dist1.vt2,dist2.vt2,dist1.A2,dist2.A1)
                     
-                elif self.kernel == 'Constant':
-                    HK[0,d1,d2,:,:] = Constant_kernel(dist1.x1,dist2.x1)
-                    HK[1,d1,d2,:,:] = Constant_kernel(dist1.x2,dist2.x1)
-                    HK[2,d1,d2,:,:] = Constant_kernel(dist1.x1,dist2.x2)
-                    HK[3,d1,d2,:,:] = Constant_kernel(dist1.x2,dist2.x2)
-                            
-        # Rearranged weights for Kernel in form: K(x,y) = a + b*x + c*y + d*x*y
-        PK = np.zeros_like(HK)  
+                                  
+
         PK[3,:,:,:,:] =  (HK[0,:,:,:,:]+HK[3,:,:,:,:]-(HK[1,:,:,:,:]+HK[2,:,:,:,:]))\
                        /(dist1.dxbins[None,None,:,None]*dist2.dxbins[None,None,None,:])
+
+        # NOTE: NEW(?)               
         PK[1,:,:,:,:] = ((HK[1,:,:,:,:]-HK[0,:,:,:,:])/dist1.dxbins[None,None,:,None])\
-                       -PK[3,:,:,:,:]*dist2.xi2[None,None,None,:] 
+                           -PK[3,:,:,:,:]*dist2.xi1[None,None,None,:] 
+                           
         PK[2,:,:,:,:] = ((HK[2,:,:,:,:]-HK[0,:,:,:,:])/dist2.dxbins[None,None,None,:])\
                        -PK[3,:,:,:,:]*dist1.xi1[None,None,:,None] 
         PK[0,:,:,:,:] =   HK[0,:,:,:,:]\
                        -PK[1,:,:,:,:]*dist1.xi1[None,None,:,None]\
                        -PK[2,:,:,:,:]*dist2.xi1[None,None,None,:]\
                        -PK[3,:,:,:,:]*dist1.xi1[None,None,:,None]*dist2.xi1[None,None,None,:]
-        
-        PK[PK<1e-5] = 0.
-        #PK[np.abs(PK-1)<1e-4] = 1.
-        
-       # if self.kernel!='Hydro':
-       #     PK = np.round(PK)
+                   
         # Explicitly set Sum, product, and constant kernels. This is because
         # numerical round-off errors are large.
         if self.kernel == 'Golovin':
@@ -892,10 +960,6 @@ class Interaction():
            PK[1,:,:,:,:] = 0.0
            PK[2,:,:,:,:] = 0.0
            PK[3,:,:,:,:] = 0.0
-        
-        #print(np.unique(np.round(PK)))
-        #print('PK shape=',PK.shape)
-        #raise Exception()
         
         return PK
 
@@ -1172,7 +1236,7 @@ class Interaction():
         cond_12[k3b,i3b,j3b] = 1
         
         cond_gain_full = np.stack((cond_2,cond_3,cond_4,cond_5,cond_6,cond_7,
-                                    cond_8,cond_9,cond_10,cond_11,cond_12),axis=0)
+                                   cond_8,cond_9,cond_10,cond_11,cond_12),axis=0)
         
         print('cond_gain_full=',np.unique((cond_gain_full>0).sum(axis=0)))
         
@@ -1287,6 +1351,8 @@ class Interaction():
                     ck1  = self.cki[d1,:,:]               
                     ck2  = self.cki[d2,:,:] 
                     
+                    #ck12 =  ck1[:,:,None]*ck2[:,None,:] 
+                    
                     
                     # Batch each (bin x bin) combination. Make sure only to include
                     # pairs that will actually be used.
@@ -1308,6 +1374,16 @@ class Interaction():
                                     self.dMj_loss[dd,0,:,:],
                                     self.dM_gain[dd,0,:,:,:],
                                     self.kmin,self.kmid,self.dMb_gain_frac,self.breakup)
+                    
+                    # M1_loss_temp,M2_loss_temp,\
+                    # M_gain_temp,Mb_gain_temp =\
+                    # calculate_1mom(self.regions[dd]['1']['i'],
+                    #                self.regions[dd]['1']['j'],
+                    #                ck12,
+                    #                self.dMi_loss[dd,0,:,:],
+                    #                self.dMj_loss[dd,0,:,:],
+                    #                self.dM_gain[dd,0,:,:,:],
+                    #                self.kmin,self.kmid,self.dMb_gain_frac,self.breakup)                    
                         
                 M_loss[d1,:,:]    += M1_loss_temp 
                 M_loss[d2,:,:]    += M2_loss_temp
@@ -1377,12 +1453,19 @@ class Interaction():
                     #cond_1 = self.cond_1 | Mcheck # New cond_1. Basically exclude bin-pairs that are off grid and ones involving empty bins.
                     
                     
+                    # gain_loss_temp = Parallel(n_jobs=self.n_jobs,verbose=0)(delayed(calculate_2mom)(x11[batch,:],x21[batch,:],ak1[batch,:],ck1[batch,:],M1[batch,:],
+                    #                         x12[batch,:],x22[batch,:],ak2[batch,:],ck2[batch,:],M2[batch,:],
+                    #                         self.PK[:,d1,d2,:,:],self.xi1,self.xi2,self.kmin,self.kmid,self.cond_1[batch,:,:], 
+                    #                         self.dMb_gain_frac,self.dNb_gain_frac, 
+                    #                         self.self_col[batch,dd,:,:],breakup=self.breakup) for batch in self.batches)
+                      
                     gain_loss_temp = Parallel(n_jobs=self.n_jobs,verbose=0)(delayed(calculate_2mom)(x11[batch,:],x21[batch,:],ak1[batch,:],ck1[batch,:],M1[batch,:],
                                             x12[batch,:],x22[batch,:],ak2[batch,:],ck2[batch,:],M2[batch,:],
-                                            self.PK[:,d1,d2,:,:],self.xi1,self.xi2,self.kmin,self.kmid,self.cond_1[batch,:,:], 
+                                            self.PK[:,dd,:,:],self.xi1,self.xi2,self.kmin,self.kmid,self.cond_1[batch,:,:], 
                                             self.dMb_gain_frac,self.dNb_gain_frac, 
                                             self.self_col[batch,dd,:,:],breakup=self.breakup) for batch in self.batches)
-                            
+                    
+                    
                     M1_loss_temp = np.vstack([gl[0] for gl in gain_loss_temp])
                     M2_loss_temp = np.vstack([gl[1] for gl in gain_loss_temp])
                     M_gain_temp =  np.vstack([gl[2] for gl in gain_loss_temp])
@@ -1412,11 +1495,22 @@ class Interaction():
                     
                     #cond_1 = self.cond_1 | Mcheck # New cond_1. Basically exclude bin-pairs that are off grid and ones involving empty bins.
                             
+                    # M1_loss_temp, M2_loss_temp, M_gain_temp, Mb_gain_temp,\
+                    # N1_loss_temp, N2_loss_temp, N_gain_temp, Nb_gain_temp = calculate_2mom(x11,x21,ak1,ck1,M1, 
+                    #                 x12,x22,ak2,ck2,M2,self.PK[:,d1,d2,:,:],self.xi1,self.xi2,self.kmin,self.kmid,self.cond_1, 
+                    #                 self.dMb_gain_frac,self.dNb_gain_frac, 
+                    #                 self.self_col[:,dd,:,:],breakup=self.breakup)
+                    
+                    
                     M1_loss_temp, M2_loss_temp, M_gain_temp, Mb_gain_temp,\
                     N1_loss_temp, N2_loss_temp, N_gain_temp, Nb_gain_temp = calculate_2mom(x11,x21,ak1,ck1,M1, 
-                                    x12,x22,ak2,ck2,M2,self.PK[:,d1,d2,:,:],self.xi1,self.xi2,self.kmin,self.kmid,self.cond_1, 
+                                    x12,x22,ak2,ck2,M2,self.PK[:,dd,:,:],self.xi1,self.xi2,self.kmin,self.kmid,self.cond_1, 
                                     self.dMb_gain_frac,self.dNb_gain_frac, 
                                     self.self_col[:,dd,:,:],breakup=self.breakup)
+                    
+                    
+                    
+                    
                     
                 M_loss[d1,:,:]    += M1_loss_temp 
                 M_loss[d2,:,:]    += M2_loss_temp
