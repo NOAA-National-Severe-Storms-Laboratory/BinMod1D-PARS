@@ -141,7 +141,6 @@ def calculate_regions(x11,x21,ak1,ck1,x12,x22,ak2,ck2,PK,xi1,xi2,regions):
 
     Hlen, bins = np.shape(x11)
 
-    
     '''
     Vectorized Integration Regions:
     cond_1 :  Ignore CC process for these source bins; they don't map to the largest avail bin.
@@ -167,13 +166,6 @@ def calculate_regions(x11,x21,ak1,ck1,x12,x22,ak2,ck2,PK,xi1,xi2,regions):
     cond_9:   k bin: Rectangle collection within k bin. All Mass/Number goes into kbin
     cond_10:  k+1 bin: Rectangle collection within k+1 bin. All Mass/Number goes into kbin
     '''
-    
-    #x_bottom_edge,x_top_edge,y_left_edge,y_right_edge,\
-    #i1,j1,k1,i2,j2,k2,i2b,j2b,k2b,i3,j3,k3,i3b,j3b,k3b,\
-    #i4,j4,k4,i5,j5,k5,i6,j6,k6,i7,j7,k7,i8,j8,k8,\
-    #i9,j9,k9,i10,j10,k10 = setup_regions(x11,x21,ak1,ck1,x12,x22,ak2,ck2,
-    #                                     xi1,xi2,kmin,cond_1,sc_inds)
-    
     
     x_bottom_edge = regions['x_bottom_edge']
     x_top_edge = regions['x_top_edge']
@@ -417,9 +409,8 @@ def calculate_regions(x11,x21,ak1,ck1,x12,x22,ak2,ck2,PK,xi1,xi2,regions):
     return dMi_loss, dMj_loss, dM_gain, dNi_loss, dN_gain
 
 
-def calculate_1mom(i1,j1,n1,n2,dMi_loss,dMj_loss,dM_gain,kmin,kmid,dMb_gain_frac,breakup):
-    
-#def calculate_1mom(i1,j1,n12,dMi_loss,dMj_loss,dM_gain,kmin,kmid,dMb_gain_frac,breakup):
+
+def calculate_1mom_batch(bin_ind,n12,dMi_loss,dMj_loss,dM_gain,kmin,kmid,M_gain,M1_loss,M2_loss,Mb_gain,dMb_gain_frac,breakup):
     
     '''
      This function calculate mass transfer rates
@@ -427,14 +418,48 @@ def calculate_1mom(i1,j1,n1,n2,dMi_loss,dMj_loss,dM_gain,kmin,kmid,dMb_gain_frac
      each distribution for 1 moment calculations.
     '''
     
-    Hlen,bins = n1.shape
+    np.add.at(M1_loss,(bin_ind[0],bin_ind[1]),n12*dMi_loss) # Loss of dist1 mass with collisions from dist2
+    np.add.at(M2_loss,(bin_ind[0],bin_ind[2]),n12*dMj_loss) # Loss of dist2 mass with collisions from dist1
+    
+    # ChatGPT is the GOAT for telling me about np.add.at!
+    #M_gain = np.zeros((Hlen,bins))
+    np.add.at(M_gain, kmin, n12*(dM_gain[:,0]))
+    np.add.at(M_gain, kmid, n12*(dM_gain[:,1]))
+    
+    # ELD NOTE: Breakup here can take losses from each pair and calculate gains
+    # for breakup. Breakup gain arrays will be 3D.
+    if breakup:
+        
+        Mij_loss = n12*(dMi_loss+dMj_loss)[None,:]
+        Mb_gain = np.nansum((dMb_gain_frac[:,kmin][None,:,:])*Mij_loss[:,None,:],axis=2)
+        
+    #else:
+        
+      #  Mb_gain  = np.zeros((Hlen,bins))
+        
+    return M1_loss, M2_loss, M_gain, Mb_gain   
+
+
+
+
+#def calculate_1mom(i1,j1,n1,n2,dMi_loss,dMj_loss,dM_gain,kmin,kmid,dMb_gain_frac,breakup):
+    
+def calculate_1mom(i1,j1,n12,dMi_loss,dMj_loss,dM_gain,kmin,kmid,dMb_gain_frac,breakup):
+    
+    '''
+     This function calculate mass transfer rates
+     for collision-coalescence and collisional breakup between
+     each distribution for 1 moment calculations.
+    '''
+    
+    #Hlen,bins = n1.shape
    
-   # Hlen,bins = n12.shape[:2]
+    Hlen,bins = n12.shape[:2]
     
-    n12 = n1[:,:,None]*n2[:,None,:]
+   # n12 = n1[:,:,None]*n2[:,None,:]
     
-    M1_loss = np.nansum(n12*(dMi_loss[None,:,:]),axis=2) 
-    M2_loss = np.nansum(n12*(dMj_loss[None,:,:]),axis=1) 
+    M1_loss = np.nansum(n12*(dMi_loss[None,:,:]),axis=2) # Loss of dist1 mass with collisions from dist2
+    M2_loss = np.nansum(n12*(dMj_loss[None,:,:]),axis=1) # Loss of dist2 mass with collisions from dist1
        
     # ChatGPT is the GOAT for telling me about np.add.at!
     M_gain = np.zeros((Hlen,bins))
@@ -455,6 +480,61 @@ def calculate_1mom(i1,j1,n1,n2,dMi_loss,dMj_loss,dM_gain,kmin,kmid,dMb_gain_frac
     return M1_loss, M2_loss, M_gain, Mb_gain   
 
 
+def calculate_2mom_batch(x11,x21,ak1,ck1,M1, 
+                   x12,x22,ak2,ck2,M2,
+                   PK,xi1,xi2,kmin,kmid,cond_1_orig, 
+                   dMb_gain_frac,dNb_gain_frac, 
+                   sc_inds,breakup=False):
+    
+    '''
+     This function calculate mass and number transfer rates
+     for collision-coalescence and collisional breakup between
+     each distribution for 2 moment calculations (mass + number).
+    '''
+    
+    Hlen,bins = x11.shape
+    
+    # Set up integration regions for time-dependent subgrid linear distributions.
+    regions = setup_regions(x11,x21,ak1,ck1,x12,x22,ak2,ck2,xi1,xi2,kmin,cond_1_orig,sc_inds)
+    
+    # Calculate integration regions to determine CC loss/gain integrals.
+    dMi_loss, dMj_loss, dM_gain, dNi_loss, dN_gain = calculate_regions(x11,x21,ak1,ck1,x12,x22,ak2,ck2,PK,xi1,xi2,regions)
+    
+    M1_loss = np.nansum(dMi_loss,axis=2) # Loss of dist1 mass with collisions from dist2
+    N1_loss = np.nansum(dNi_loss,axis=2) # Loss of dist1 number with collisions from dist2
+    
+    M2_loss = np.nansum(dMj_loss,axis=1) # Loss of dist2 mass with collisions from dist1
+    N2_loss = np.nansum(dNi_loss,axis=1) # Loss of dist2 number with collisions from dist1
+    
+    # ChatGPT is the GOAT for telling me about np.add.at!
+    M_gain = np.zeros((Hlen,bins))
+    np.add.at(M_gain, (np.arange(Hlen)[:,None,None],kmin), dM_gain[:,:,:,0])
+    np.add.at(M_gain,  (np.arange(Hlen)[:,None,None],kmid), dM_gain[:,:,:,1])
+    
+    N_gain = np.zeros((Hlen,bins))
+    np.add.at(N_gain,  (np.arange(Hlen)[:,None,None],kmin), dN_gain[:,:,:,0])
+    np.add.at(N_gain,  (np.arange(Hlen)[:,None,None],kmid), dN_gain[:,:,:,1])
+    
+    # Initialize gain term arrays
+    Mb_gain  = np.zeros((Hlen,bins))
+    Nb_gain  = np.zeros((Hlen,bins))
+      
+    # ELD NOTE: Breakup here can take losses from each pair and calculate gains
+    # for breakup. Breakup gain arrays will be 3D.
+    if breakup:
+        
+        k1 = regions['1']['k']
+        i1 = regions['1']['i']
+        j1 = regions['1']['j']
+        
+        Mij_loss = dMi_loss[k1,i1,j1]+dMj_loss[k1,i1,j1]
+  
+        np.add.at(Mb_gain,  k1, np.transpose(dMb_gain_frac[:,kmin[i1,j1]]*Mij_loss))
+        np.add.at(Nb_gain,  k1, np.transpose(dNb_gain_frac[:,kmin[i1,j1]]*Mij_loss))
+        
+   
+    return M1_loss, M2_loss, M_gain, Mb_gain, N1_loss, N2_loss, N_gain, Nb_gain    
+
 def calculate_2mom(x11,x21,ak1,ck1,M1, 
                    x12,x22,ak2,ck2,M2,
                    PK,xi1,xi2,kmin,kmid,cond_1_orig, 
@@ -469,15 +549,17 @@ def calculate_2mom(x11,x21,ak1,ck1,M1,
     
     Hlen,bins = x11.shape
     
+    # Set up integration regions for time-dependent subgrid linear distributions.
     regions = setup_regions(x11,x21,ak1,ck1,x12,x22,ak2,ck2,xi1,xi2,kmin,cond_1_orig,sc_inds)
     
+    # Calculate integration regions to determine CC loss/gain integrals.
     dMi_loss, dMj_loss, dM_gain, dNi_loss, dN_gain = calculate_regions(x11,x21,ak1,ck1,x12,x22,ak2,ck2,PK,xi1,xi2,regions)
     
-    M1_loss = np.nansum(dMi_loss,axis=2) 
-    N1_loss = np.nansum(dNi_loss,axis=2) 
+    M1_loss = np.nansum(dMi_loss,axis=2) # Loss of dist1 mass with collisions from dist2
+    N1_loss = np.nansum(dNi_loss,axis=2) # Loss of dist1 number with collisions from dist2
     
-    M2_loss = np.nansum(dMj_loss,axis=1) 
-    N2_loss = np.nansum(dNi_loss,axis=1)
+    M2_loss = np.nansum(dMj_loss,axis=1) # Loss of dist2 mass with collisions from dist1
+    N2_loss = np.nansum(dNi_loss,axis=1) # Loss of dist2 number with collisions from dist1
     
     # ChatGPT is the GOAT for telling me about np.add.at!
     M_gain = np.zeros((Hlen,bins))
@@ -922,8 +1004,6 @@ class Interaction():
                     HK[2,d1,d2,:,:] = long_kernel(dist1.x1,dist2.x2,dist1.d1,dist2.d2,dist1.vt1,dist2.vt2,dist1.A2,dist2.A1)
                     HK[3,d1,d2,:,:] = long_kernel(dist1.x2,dist2.x2,dist1.d2,dist2.d2,dist1.vt2,dist2.vt2,dist1.A2,dist2.A1)
                     
-                                  
-
         PK[3,:,:,:,:] =  (HK[0,:,:,:,:]+HK[3,:,:,:,:]-(HK[1,:,:,:,:]+HK[2,:,:,:,:]))\
                        /(dist1.dxbins[None,None,:,None]*dist2.dxbins[None,None,None,:])
 
@@ -1329,14 +1409,28 @@ class Interaction():
                     ck2  = self.cki[d2,:,:] 
                     
                                         
+                    # (height x bins x bins)
+                    ck12 =  ck1[:,:,None]*ck2[:,None,:] 
+                    
                     gain_loss_temp = Parallel(n_jobs=self.n_jobs,verbose=0)(delayed(calculate_1mom)(
                                         self.regions[dd]['1']['i'],
                                         self.regions[dd]['1']['j'],
-                                        ck1[batch,:],ck2[batch,:],
+                                        ck12[batch,:,:],
                                         self.dMi_loss[dd,0,:,:],
                                         self.dMj_loss[dd,0,:,:],
                                         self.dM_gain[dd,0,:,:,:],
                                         self.kmin,self.kmid,self.dMb_gain_frac,self.breakup) for batch in self.batches)  
+
+                    
+                                        
+                    # gain_loss_temp = Parallel(n_jobs=self.n_jobs,verbose=0)(delayed(calculate_1mom)(
+                    #                     self.regions[dd]['1']['i'],
+                    #                     self.regions[dd]['1']['j'],
+                    #                     ck1[batch,:],ck2[batch,:],
+                    #                     self.dMi_loss[dd,0,:,:],
+                    #                     self.dMj_loss[dd,0,:,:],
+                    #                     self.dM_gain[dd,0,:,:,:],
+                    #                     self.kmin,self.kmid,self.dMb_gain_frac,self.breakup) for batch in self.batches)  
 
 
                     M1_loss_temp = np.vstack([gl[0] for gl in gain_loss_temp])
@@ -1347,43 +1441,22 @@ class Interaction():
       
                 else:
                 
-                    # (dnum x height x bins)
+                    # (height x bins)
                     ck1  = self.cki[d1,:,:]               
                     ck2  = self.cki[d2,:,:] 
                     
-                    #ck12 =  ck1[:,:,None]*ck2[:,None,:] 
-                    
-                    
-                    # Batch each (bin x bin) combination. Make sure only to include
-                    # pairs that will actually be used.
-                    #ck12 = ck1[:,:,None]*ck2[:,None,:].reshape(self.dnum,-1)
-                    
-                    # self.dMi_loss[dd,0,:,:].reshape(1,-1)
-                    # self.dMj_loss[dd,0,:,:].reshape(1,-1)
-                    # self.dM_gain[dd,0,:,:,:].reshape(-1,2)
-                    # kmin = kmin.flatten() 
-                    # kmid = kmid.flatten()
-                    # self.dMb_gain_frac.flatten()
+                    # (height x bins x bins)
+                    ck12 =  ck1[:,:,None]*ck2[:,None,:] 
                     
                     M1_loss_temp,M2_loss_temp,\
                     M_gain_temp,Mb_gain_temp =\
                     calculate_1mom(self.regions[dd]['1']['i'],
-                                    self.regions[dd]['1']['j'],
-                                    ck1,ck2,
-                                    self.dMi_loss[dd,0,:,:],
-                                    self.dMj_loss[dd,0,:,:],
-                                    self.dM_gain[dd,0,:,:,:],
-                                    self.kmin,self.kmid,self.dMb_gain_frac,self.breakup)
-                    
-                    # M1_loss_temp,M2_loss_temp,\
-                    # M_gain_temp,Mb_gain_temp =\
-                    # calculate_1mom(self.regions[dd]['1']['i'],
-                    #                self.regions[dd]['1']['j'],
-                    #                ck12,
-                    #                self.dMi_loss[dd,0,:,:],
-                    #                self.dMj_loss[dd,0,:,:],
-                    #                self.dM_gain[dd,0,:,:,:],
-                    #                self.kmin,self.kmid,self.dMb_gain_frac,self.breakup)                    
+                                   self.regions[dd]['1']['j'],
+                                   ck12,
+                                   self.dMi_loss[dd,0,:,:],
+                                   self.dMj_loss[dd,0,:,:],
+                                   self.dM_gain[dd,0,:,:,:],
+                                   self.kmin,self.kmid,self.dMb_gain_frac,self.breakup)                    
                         
                 M_loss[d1,:,:]    += M1_loss_temp 
                 M_loss[d2,:,:]    += M2_loss_temp
@@ -1399,6 +1472,116 @@ class Interaction():
                 
         return M_net
     
+
+    # Advance PSD Mbins and Nbins by one time/height step
+    def interact_1mom_SS(self,dt):
+
+        # Ndists x height x bins
+        Mbins_old = self.Mbins.copy() 
+        Mbins = np.zeros_like(Mbins_old)
+
+        M_loss = np.zeros_like(Mbins)
+        M_gain = np.zeros_like(Mbins)
+        
+        #print('M_loss_shape=',M_loss.shape)
+        #raise Exception()
+        
+        indc = self.indc
+        indb = self.indb
+
+        dd = 0
+        
+        for d1 in range(self.dnum):
+            for d2 in range(d1,self.dnum):
+                
+                # (dnum x height x bins)
+                ck1  = self.cki[d1,:,:]               
+                ck2  = self.cki[d2,:,:] 
+                
+                Mcheck = ((ck1==0.)[:,:,None]) | ((ck2==0.)[:,None,:])
+
+                cond_1 = self.cond_1 | Mcheck # New cond_1. Basically exclude bin-pairs that are off grid and ones involving empty bins.
+                
+                kr, ir, jr = np.nonzero((~cond_1)&self.self_col[:,dd,:,:])
+                
+               # print('(ck1[:,:,None]*ck2[:,None,:])=',(ck1[:,:,None]*ck2[:,None,:])[kr,ir,jr])
+                
+                # ELD NOTE: Try doing this calculation in the parallel call.
+                # (height x bins x bins)
+                ck12 =  (ck1[:,:,None]*ck2[:,None,:])
+                
+                M_gain_temp = np.zeros((self.Hlen,self.bins))
+                M1_loss = np.zeros((self.Hlen,self.bins))
+                M2_loss = np.zeros((self.Hlen,self.bins))
+                Mb_gain = np.zeros((self.Hlen,self.bins))
+                
+                dMi_loss_r = self.dMi_loss[dd,kr,ir,jr] # (batch,)
+                dMj_loss_r = self.dMj_loss[dd,kr,ir,jr]  #(batch,)
+                dM_gain_r  = self.dM_gain[dd,kr,ir,jr,:] #(batch,2)
+                dMb_gain_frac_r = self.dMb_gain_frac[ir,jr]
+                
+                #print('dMi_loss_r=',dM_gain_r.shape)
+               # raise Exception()
+              
+                if self.parallel:
+                    
+                    batches = np.array_split(np.arange(len(kr)),self.n_jobs) 
+                                                
+                    gain_loss_temp = Parallel(n_jobs=self.n_jobs,verbose=0)(delayed(calculate_1mom_batch)(
+                                        (kr[batch],ir[batch],jr[batch]),
+                                        ck12[kr[batch],ir[batch],jr[batch]],
+                                        dMi_loss_r[batch],
+                                        dMj_loss_r[batch],
+                                        dM_gain_r[batch,:],
+                                        (kr[batch],self.kmin[ir[batch],jr[batch]]),
+                                        (kr[batch],self.kmid[ir[batch],jr[batch]]),
+                                        M_gain_temp,M1_loss,M2_loss,
+                                        Mb_gain,dMb_gain_frac_r,self.breakup) for batch in batches)  
+
+
+                   # print('gain_loss_temp=',gain_loss_temp[1])
+
+                    M1_loss_temp = np.nansum(np.vstack([gl[0] for gl in gain_loss_temp]),axis=0)
+                    M2_loss_temp = np.nansum(np.vstack([gl[1] for gl in gain_loss_temp]),axis=0)
+                    M_gain_temp =  np.nansum(np.vstack([gl[2] for gl in gain_loss_temp]),axis=0)
+                    Mb_gain_temp = np.nansum(np.vstack([gl[3] for gl in gain_loss_temp]),axis=0)
+                    
+                   # print('gain_loss_temp=',len(gain_loss_temp))
+                    
+      
+                else:
+                         
+                    M1_loss_temp,M2_loss_temp,\
+                    M_gain_temp,Mb_gain_temp =\
+                    calculate_1mom_batch(
+                                   (kr,ir,jr),
+                                   ck12[kr,ir,jr],
+                                   dMi_loss_r,
+                                   dMj_loss_r,
+                                   dM_gain_r,
+                                   (kr,self.kmin[ir,jr]),
+                                   (kr,self.kmid[ir,jr]),
+                                   M_gain_temp,M1_loss,M2_loss,
+                                   Mb_gain,dMb_gain_frac_r,self.breakup)
+                 
+                    
+                #print('M1_loss_temp=',np.shape(M1_loss_temp))     
+                    
+                M_loss[d1,:,:]    += M1_loss_temp 
+                M_loss[d2,:,:]    += M2_loss_temp
+                
+                M_gain[indc,:,:]  += self.Eagg*M_gain_temp
+                M_gain[indb,:,:]  += self.Ebr*Mb_gain_temp
+
+                dd += 1
+                
+        M_loss *= self.Ecb
+        
+        M_net = dt*(M_gain-M_loss) 
+                
+        return M_net
+
+
     
     # Advance PSD Mbins and Nbins by one time/height step
     def interact_2mom(self,dt):
@@ -1507,11 +1690,7 @@ class Interaction():
                                     x12,x22,ak2,ck2,M2,self.PK[:,dd,:,:],self.xi1,self.xi2,self.kmin,self.kmid,self.cond_1, 
                                     self.dMb_gain_frac,self.dNb_gain_frac, 
                                     self.self_col[:,dd,:,:],breakup=self.breakup)
-                    
-                    
-                    
-                    
-                    
+                         
                 M_loss[d1,:,:]    += M1_loss_temp 
                 M_loss[d2,:,:]    += M2_loss_temp
                 
@@ -1533,3 +1712,121 @@ class Interaction():
         N_net = dt*(N_gain-N_loss)
         
         return M_net, N_net    
+
+    # Advance PSD Mbins and Nbins by one time/height step
+    def interact_2mom_SS(self,dt):
+
+        # Ndists x height x bins
+        Mbins_old = self.Mbins.copy() 
+        Nbins_old = self.Nbins.copy()
+        
+        Mbins = np.zeros_like(Mbins_old)
+        Nbins = np.zeros_like(Nbins_old)
+
+        M_loss = np.zeros_like(Mbins)
+        N_loss = np.zeros_like(Nbins) 
+        
+        M_gain = np.zeros_like(Mbins)
+        N_gain = np.zeros_like(Nbins)
+        
+        indc = self.indc
+        indb = self.indb
+        
+        dd = 0
+        for d1 in range(self.dnum):
+            for d2 in range(d1,self.dnum):
+                
+                # (dnum x height x bins)
+                x11  = self.x1[d1,:,:]
+                x21  = self.x2[d1,:,:]
+                ak1  = self.aki[d1,:,:]
+                ck1  = self.cki[d1,:,:] 
+                M1   = self.Mbins[d1,:,:]
+                
+                x12  = self.x1[d2,:,:]
+                x22  = self.x2[d2,:,:]
+                ak2  = self.aki[d2,:,:] 
+                ck2  = self.cki[d2,:,:] 
+                M2   = self.Mbins[d2,:,:]
+                
+
+                if self.parallel:
+                    
+                    # Set up batches for each bin-bin pair? Would need to unravel
+                    # arrays appropriately afterward. Also would need to figure out 
+                    # how to do self and cross collection appropriately.
+                    
+                    # Find all bin pairs
+                    
+
+                    
+                    #
+                    #Mcheck = ((M1==0.)[:,None]) | ((M2==0.)[None,:])
+                    #ikeep = np.nonzero(~(self.cond_1&Mcheck))
+                    
+                    #Mcheck = ((M1==0.)[:,:,None]) | ((M2==0.)[:,None,:])
+                    
+                    #cond_1 = self.cond_1 | Mcheck # New cond_1. Basically exclude bin-pairs that are off grid and ones involving empty bins.
+                    
+                    gain_loss_temp = Parallel(n_jobs=self.n_jobs,verbose=0)(delayed(calculate_2mom)(x11[batch,:],x21[batch,:],ak1[batch,:],ck1[batch,:],M1[batch,:],
+                                            x12[batch,:],x22[batch,:],ak2[batch,:],ck2[batch,:],M2[batch,:],
+                                            self.PK[:,dd,:,:],self.xi1,self.xi2,self.kmin,self.kmid,self.cond_1[batch,:,:], 
+                                            self.dMb_gain_frac,self.dNb_gain_frac, 
+                                            self.self_col[batch,dd,:,:],breakup=self.breakup) for batch in self.batches)
+                    
+                    
+                    M1_loss_temp = np.vstack([gl[0] for gl in gain_loss_temp])
+                    M2_loss_temp = np.vstack([gl[1] for gl in gain_loss_temp])
+                    M_gain_temp =  np.vstack([gl[2] for gl in gain_loss_temp])
+                    Mb_gain_temp = np.vstack([gl[3] for gl in gain_loss_temp])
+                    N1_loss_temp = np.vstack([gl[4] for gl in gain_loss_temp])
+                    N2_loss_temp = np.vstack([gl[5] for gl in gain_loss_temp])
+                    N_gain_temp  = np.vstack([gl[6] for gl in gain_loss_temp])
+                    Nb_gain_temp = np.vstack([gl[7] for gl in gain_loss_temp])
+            
+                else:
+
+                    
+                    # Calculate bin-source pairs
+                    
+                   # Mcheck = ((M1==0.)[:,:,None]) | ((M2==0.)[:,None,:])
+                    
+                    #cond_1 = self.cond_1 | Mcheck # New cond_1. Basically exclude bin-pairs that are off grid and ones involving empty bins.
+                            
+                    # M1_loss_temp, M2_loss_temp, M_gain_temp, Mb_gain_temp,\
+                    # N1_loss_temp, N2_loss_temp, N_gain_temp, Nb_gain_temp = calculate_2mom(x11,x21,ak1,ck1,M1, 
+                    #                 x12,x22,ak2,ck2,M2,self.PK[:,d1,d2,:,:],self.xi1,self.xi2,self.kmin,self.kmid,self.cond_1, 
+                    #                 self.dMb_gain_frac,self.dNb_gain_frac, 
+                    #                 self.self_col[:,dd,:,:],breakup=self.breakup)
+                    
+                    
+                    M1_loss_temp, M2_loss_temp, M_gain_temp, Mb_gain_temp,\
+                    N1_loss_temp, N2_loss_temp, N_gain_temp, Nb_gain_temp = calculate_2mom(x11,x21,ak1,ck1,M1, 
+                                    x12,x22,ak2,ck2,M2,self.PK[:,dd,:,:],self.xi1,self.xi2,self.kmin,self.kmid,self.cond_1, 
+                                    self.dMb_gain_frac,self.dNb_gain_frac, 
+                                    self.self_col[:,dd,:,:],breakup=self.breakup)
+                    
+  
+                M_loss[d1,:,:]    += M1_loss_temp 
+                M_loss[d2,:,:]    += M2_loss_temp
+                
+                M_gain[indc,:,:]  += self.Eagg*M_gain_temp
+                M_gain[indb,:,:]  += self.Ebr*Mb_gain_temp
+                
+                N_loss[d1,:,:]    += N1_loss_temp
+                N_loss[d2,:,:]    += N2_loss_temp
+                 
+                N_gain[indc,:,:]  += self.Eagg*N_gain_temp
+                N_gain[indb,:,:]  += self.Ebr*Nb_gain_temp
+                
+                dd += 1
+                
+        M_loss *= self.Ecb
+        N_loss *= self.Ecb 
+        
+        M_net = dt*(M_gain-M_loss) 
+        N_net = dt*(N_gain-N_loss)
+        
+        return M_net, N_net    
+
+

@@ -80,9 +80,14 @@ class spectral_1d:
                 self.sbin = file_nc.sbin
                 self.dnum = file_nc.dnum
                 self.moments = file_nc.moments
+                self.kernel = file_nc.kernel
                 self.ptype  = file_nc.ptype
+                self.Hlen = file_nc.Hlen
+                self.Tlen = file_nc.Tlen
+                self.Tout_len = file_nc.Tout_len
                 self.dt = file_nc.dt 
                 self.dz = file_nc.dz 
+                self.t = file_nc.t
                 self.rk_order = file_nc.rk_order
                 self.adv_order = file_nc.adv_order
                 self.int_type = file_nc.int_type
@@ -104,27 +109,79 @@ class spectral_1d:
                 self.Ebr = file_nc.Ebr
                 self.Ecb = file_nc.Ecb
                 self.gam_norm = bool(file_nc.gam_norm)
-                self.boundary = file_nc.boundary
+                if file_nc.boundary == 'None':
+                    self.boundary = None
+                else:
+                    self.boundary = file_nc.boundary
                 self.ztop = file_nc.ztop
                 self.zbot = file_nc.zbot
                 self.tmax = file_nc.tmax
+                if file_nc.parallel==0:
+                    self.parallel = False
+                else:
+                    self.parallel = True
                 
-                self.full = np.empty((self.dnum,self.Hlen,self.Tout_len),dtype=object)
+                self.frag_dist = file_nc.frag_dist
                 
                 dist_names = list(file_nc.groups.keys())
                 
                 self.habit_list = [file_nc.groups[dd].habit for dd in dist_names]
                 
                 habit_dict = [habits()[habit_list[dd]] for dd in range(self.dnum)]
-                 
-                # Put distributions into 4D arrays
-                for dd in range(self.dnum):
-                    # Put distributions in numpy object array
-                    self.full[dd,:,:] = np.array([[dist(sbin=self.sbin,D1=self.D1,bins=self.bins,gam_init=False,dist_var=self.dist_var,
-                                 kernel=self.kernel,habit_dict=habit_dict[dd],ptype=self.ptype,x0=self.x0, 
-                                 Tc=self.Tc,radar=self.radar,mom_num=self.moments,
-                                 Mbins=file_nc.groups[dist_names[dd]].Mbins[:,hh,tt],
-                                 Nbins=file_nc.groups[dist_names[dd]].Nbins[:,hh,tt]) for tt in range(self.Tout_len)] for hh in range(self.Hlen)])
+                            
+                if self.frag_dist is None:
+                    frag_dict = fragments('exp')
+                else:
+                    frag_dict = fragments(self.frag_dist)
+                                
+                self.lamf = frag_dict['lamf']
+                
+                # Stencils used for variable upwind advection
+                self.stencils = {1: np.array([-1, 1]) / 1,
+                                 2: np.array([1, -4, 3]) / 2,
+                                 3: np.array([-2, 9, -18, 11]) / 6,
+                                 4: np.array([3, -16, 36, -48, 25]) / 12}
+                
+                self.adv_base = self.stencils[adv_order]
+
+                if self.int_type==0:
+                    
+                    self.full = np.empty((self.dnum,self.Hlen,self.Tout_len),dtype=object)
+
+                    # Put distributions into 4D arrays
+                    for dd in range(self.dnum):
+                        # Put distributions in numpy object array
+                        self.full[dd,:,:] = np.array([[dist(sbin=self.sbin,D1=self.D1,bins=self.bins,gam_init=False,dist_var=self.dist_var,
+                                     kernel=self.kernel,habit_dict=habit_dict[dd],ptype=self.ptype,x0=self.x0, 
+                                     Tc=self.Tc,radar=self.radar,mom_num=self.moments,
+                                     Mbins=file_nc.groups[dist_names[dd]].variables['Mbins'][:][hh,tt,:],
+                                     Nbins=file_nc.groups[dist_names[dd]].variables['Nbins'][:][hh,tt,:]) for tt in range(self.Tout_len)] for hh in range(self.Hlen)])
+
+                elif self.int_type==1:
+                    
+                    self.full = np.empty((self.dnum,self.Hlen),dtype=object)
+
+                    # Put distributions into 4D arrays
+                    for dd in range(self.dnum):
+                        # Put distributions in numpy object array
+                        self.full[dd,:] = np.array([dist(sbin=self.sbin,D1=self.D1,bins=self.bins,gam_init=False,dist_var=self.dist_var,
+                                     kernel=self.kernel,habit_dict=habit_dict[dd],ptype=self.ptype,x0=self.x0, 
+                                     Tc=self.Tc,radar=self.radar,mom_num=self.moments,
+                                     Mbins=file_nc.groups[dist_names[dd]].variables['Mbins'][:][hh,:],
+                                     Nbins=file_nc.groups[dist_names[dd]].variables['Nbins'][:][hh,:]) for hh in range(self.Hlen)])
+
+                if self.int_type==2:
+                    
+                    self.full = np.empty((self.dnum,self.Tlen),dtype=object)
+
+                    # Put distributions into 4D arrays
+                    for dd in range(self.dnum):
+                        # Put distributions in numpy object array
+                        self.full[dd,:] = np.array([dist(sbin=self.sbin,D1=self.D1,bins=self.bins,gam_init=False,dist_var=self.dist_var,
+                                     kernel=self.kernel,habit_dict=habit_dict[dd],ptype=self.ptype,x0=self.x0, 
+                                     Tc=self.Tc,radar=self.radar,mom_num=self.moments,
+                                     Mbins=file_nc.groups[dist_names[dd]].variables['Mbins'][:][tt,:],
+                                     Nbins=file_nc.groups[dist_names[dd]].variables['Nbins'][:][tt,:]) for tt in range(self.Tlen)])
 
     def setup_case(self,sbin=4,bins=160,D1=0.001,x0=0.01,Nt0=1.,Mt0=1.,Dm0=2.0,mu0=3,gam_norm=False,dist_var='mass',kernel='Golovin',Ecol=1.53,Es=0.001,Eb=0.,
                         moments=2,ztop=3000.0,zbot=0.,tmax=800.,output_freq=60.,dt=10.,dz=10.,frag_dist='exp',habit_list=['rain'],ptype='rain',Tc=10.,
@@ -165,6 +222,7 @@ class spectral_1d:
         self.adv_order = adv_order
         self.boundary = boundary
         self.parallel = parallel
+        self.frag_dist = frag_dist
         
         if n_jobs == -1:
             self.n_jobs = os.cpu_count()
@@ -188,8 +246,9 @@ class spectral_1d:
             self.dt = 1
             
             # NOTE CURRENTLY NO OPTION FOR PARALLEL IN SS MODE
-            self.parallel = False
+            #self.parallel = False
             
+        # If height array is fixed then run as box model   
         elif (self.Tlen>1) & (self.Hlen==1):
             self.int_type = 2
             self.Hlen = 1
@@ -197,9 +256,10 @@ class spectral_1d:
             self.dh = self.t
             
             # NOTE CURRENTLY NO OPTION FOR PARALLEL IN BOX MODE
-            self.parallel = False
+            #self.parallel = False
             
-        else:
+        # If time array and height array are not fixed then run as full 1d model
+        else: 
             self.int_type=0
         
         # Ensure that cc_dest and br_dest are valid     
@@ -253,6 +313,7 @@ class spectral_1d:
                 
         self.xbins = self.dist0.xbins.copy() 
         self.xedges = self.dist0.xedges.copy()
+        
         
         # Initialize interaction kernel between each species
         # Interaction() takes a (Ndist x height) array of dist objects
@@ -356,9 +417,13 @@ class spectral_1d:
             file_nc.ptype = self.ptype
             file_nc.dt = self.dt 
             file_nc.dz = self.dz 
+            file_nc.Hlen = self.Hlen
+            file_nc.Tlen = self.Tlen
+            file_nc.Tout_len = self.Tout_len
             file_nc.rk_order = self.rk_order
             file_nc.adv_order = self.adv_order
             file_nc.int_type = self.int_type
+            file_nc.kernel = self.kernel
             file_nc.radar = 1*self.radar
             file_nc.indb = self.indb 
             file_nc.indc = self.indc
@@ -377,14 +442,25 @@ class spectral_1d:
             file_nc.Ebr = self.Ebr 
             file_nc.Ecb = self.Ecb
             file_nc.gam_norm = 1*self.gam_norm
-            file_nc.boundary = self.boundary
+            if self.boundary is None:
+                file_nc.boundary = 'None'
+            else:
+                file_nc.boundary = self.boundary
             file_nc.ztop = self.ztop 
             file_nc.zbot = self.zbot
             file_nc.tmax = self.tmax
+            file_nc.t = self.t
             file_nc.parallel = 1*self.parallel
-            
+            file_nc.n_jobs = self.n_jobs
+                
+            file_nc.frag_dist = self.frag_dist
+ 
             # Create dimensions
-            file_nc.createDimension('time',self.Tout_len)
+            if self.int_type==0:
+                file_nc.createDimension('time',self.Tout_len)
+            elif self.int_type==2:
+                file_nc.createDimension('time',self.Tlen)
+                
             file_nc.createDimension('height',self.Hlen)
             file_nc.createDimension('dists',self.dnum)
             file_nc.createDimension('bins',self.bins)
@@ -397,7 +473,13 @@ class spectral_1d:
             xi1 = file_nc.createVariable('xi1','f4',('bins',))
             xi2 = file_nc.createVariable('xi2','f4',('bins',))
             
-            t[:] = self.tout
+            if self.int_type==0:
+                t[:] = self.tout
+            elif self.int_type==2:
+                t[:] = self.t
+            else:
+                t[:] = np.array([0.])
+            
             z[:] = self.z 
             xbins[:] = self.xbins
             xi1[:] = self.xedges[:-1]
@@ -429,33 +511,73 @@ class spectral_1d:
                 dist_dd.arho = self.dists[dd,0].arho
                 dist_dd.brho = self.dists[dd,0].brho
                 
-                # Create Array Variables
-                Mbins = dist_dd.createVariable('Mbins','f4',('height','time','bins'))
-                Nbins = dist_dd.createVariable('Nbins','f4',('height','time','bins'))
-                #x1 = dist_dd.createVariable('x1','f4',('height','time','bins'))
-                #x2 = dist_dd.createVariable('x2','f4',('height','time','bins'))
-                #aki = dist_dd.createVariable('aki','f4',('height','time','bins'))
-                #cki = dist_dd.createVariable('cki','f4',('height','time','bins'))
+                # Full model
+                if self.int_type==0:
+                    
+                    # Create Array Variables
+                    Mbins = dist_dd.createVariable('Mbins','f4',('height','time','bins'))
+                    Nbins = dist_dd.createVariable('Nbins','f4',('height','time','bins'))
+                    x1    = dist_dd.createVariable('x1','f4',('height','time','bins'))
+                    x2    = dist_dd.createVariable('x2','f4',('height','time','bins'))
+                    aki   = dist_dd.createVariable('aki','f4',('height','time','bins'))
+                    cki   = dist_dd.createVariable('cki','f4',('height','time','bins'))
+                    
+                    Mbins[:] = np.array([[self.full[dd,hh,tt].Mbins for tt in range(self.Tout_len)] for hh in range(self.Hlen)])
+                    Nbins[:] = np.array([[self.full[dd,hh,tt].Nbins for tt in range(self.Tout_len)] for hh in range(self.Hlen)])
+                    aki[:]   = np.array([[self.full[dd,hh,tt].aki for tt in range(self.Tout_len)] for hh in range(self.Hlen)])
+                    cki[:]   = np.array([[self.full[dd,hh,tt].cki for tt in range(self.Tout_len)] for hh in range(self.Hlen)])
                 
+                # Steady State model
+                elif self.int_type==1:
+                    # Create Array Variables
+                    Mbins = dist_dd.createVariable('Mbins','f4',('height','bins'))
+                    Nbins = dist_dd.createVariable('Nbins','f4',('height','bins'))
+                    x1    = dist_dd.createVariable('x1','f4',('height','bins'))
+                    x2    = dist_dd.createVariable('x2','f4',('height','bins'))
+                    aki   = dist_dd.createVariable('aki','f4',('height','bins'))
+                    cki   = dist_dd.createVariable('cki','f4',('height','bins'))
+                    
+                    Mbins[:] = np.array([self.full[dd,hh].Mbins for hh in range(self.Hlen)])
+                    Nbins[:] = np.array([self.full[dd,hh].Nbins for hh in range(self.Hlen)])
+                    aki[:]   = np.array([self.full[dd,hh].aki for hh in range(self.Hlen)])
+                    cki[:]   = np.array([self.full[dd,hh].cki for hh in range(self.Hlen)])
+                 
+                # Box model
+                elif self.int_type==2:
+                    # Create Array Variables
+                    Mbins = dist_dd.createVariable('Mbins','f4',('time','bins'))
+                    Nbins = dist_dd.createVariable('Nbins','f4',('time','bins'))
+                    x1    = dist_dd.createVariable('x1','f4',('time','bins'))
+                    x2    = dist_dd.createVariable('x2','f4',('time','bins'))
+                    aki   = dist_dd.createVariable('aki','f4',('time','bins'))
+                    cki   = dist_dd.createVariable('cki','f4',('time','bins'))
+                    
+                    Mbins[:] = np.array([self.full[dd,tt].Mbins for tt in range(self.Tlen)])
+                    Nbins[:] = np.array([self.full[dd,tt].Nbins for tt in range(self.Tlen)])
+                    aki[:]   = np.array([self.full[dd,tt].aki for tt in range(self.Tlen)])
+                    cki[:]   = np.array([self.full[dd,tt].cki for tt in range(self.Tlen)])
+
+                else:
+                    
+                    print('int_type={} not considered'.format(self.int_type))
+                    raise Exception()
+                    
                 Mbins.units = 'g'
                 Nbins.units = '#'
-                #x1.units = 'g'
-                #x2.units = 'g'
-                #aki.units = '#/g?'
-                #cki.units = '#/g?'
+                x1.units = 'g'
+                x2.units = 'g'
+                aki.units = '#/g?'
+                cki.units = '#/g?'
                 
                 Mbins.description = 'Total Bin Mass'
                 Nbins.description = 'Total Bin Number'
-                #x1.description = 'Subgrid linear distribution left bin mass edge'
-                #x2.description = 'Subgrid linear distribution right bin mass edge'
-                #aki.description = 'Subgrid linear mass distribution slope'
-                #cki.description = 'Subgrid linear mass distribution intercept'
+                x1.description = 'Subgrid linear distribution left bin mass edge'
+                x2.description = 'Subgrid linear distribution right bin mass edge'
+                aki.description = 'Subgrid linear mass distribution slope'
+                cki.description = 'Subgrid linear mass distribution intercept'   
                 
-                Mbins[:] = np.array([[self.full[dd,hh,tt].Mbins for tt in range(self.Tout_len)] for hh in range(self.Hlen)])
-                Nbins[:] = np.array([[self.full[dd,hh,tt].Nbins for tt in range(self.Tout_len)] for hh in range(self.Hlen)])
-                #aki[:]   = np.array([[self.full[dd,hh,tt].aki for tt in range(self.Tout_len)] for hh in range(self.Hlen)])
-                #cki[:]   = np.array([[self.full[dd,hh,tt].cki for tt in range(self.Tout_len)] for hh in range(self.Hlen)])
-                        
+                    
+                    
                 # if self.radar:
                 #     Zh = dist_dd.createVariable('Zh','f4',('height','time','bins'))
                 #     Zv = dist_dd.createVariable('Zv','f4',('height','time','bins'))
@@ -884,17 +1006,24 @@ class spectral_1d:
         return fig, ax
     
     
-    def plot_dists(self,tind=-1,hind=-1,x_axis='mass',y_axis='mass',xscale='log',yscale='linear',distscale='log',normbin=False,scott_solution=False,feingold_solution=False,plot_habits=False):
-      
+    def plot_dists(self,tind=-1,hind=-1,x_axis='mass',y_axis='mass',xscale='log',yscale='linear',distscale='log',normbin=False,scott_solution=False,feingold_solution=False,plot_habits=False,ax=None,lstyle='-',lcolor='k'):
+
+        
         plt.rc('text', usetex=True)
         plt.rc('font', family='serif')
         plt.rc('xtick', labelsize=26) 
-        plt.rc('ytick', labelsize=26) 
+        plt.rc('ytick', labelsize=26)   
+      
+        if ax is None:
+            ax_switch = True 
+        else:
+            ax_switch = False
         
         # NOTE: probably need to figure out how to deal with x_axis='size' when
         # am and bm parameters are different for each habit.
         
-        fig, ax = plt.subplots(2,1,figsize=((8,10)),sharex=True)
+        if ax is None:
+            fig, ax = plt.subplots(2,1,figsize=((8,10)),sharex=True)
         
        # if (len(self.t)>1) & (len(self.z)==1):
             
@@ -1084,7 +1213,6 @@ class spectral_1d:
         nM_final = prefM_final*np.heaviside(mbins[None,:]-x1_final,1)*np.heaviside(x2_final-mbins[None,:],1)*(ak_final*mbins[None,:]+ck_final)
 
 
-
         if self.gam_norm:
             nM_init /= 1000. 
             nM_final /= 1000.
@@ -1108,15 +1236,17 @@ class spectral_1d:
             elif (x_axis=='mass'):
                 xlabel = r'm (g)'
         
-        ax[0].plot(x,nN_init,':k',linewidth=2,label='initial')
-        ax[0].plot(x,np.nansum(nN_final,axis=0),'k',linewidth=2,label=f_label)
+        if ax_switch:
+            ax[0].plot(x,nN_init,':k',linewidth=2,label='initial')
+        ax[0].plot(x,np.nansum(nN_final,axis=0),linestyle=lstyle,color=lcolor,linewidth=2,label=f_label)
         if plot_habits:
             for d1 in range(self.dnum):
                 ax[0].plot(x,nN_final[d1,:],linewidth=2,label='dist {}'.format(d1+1))
             
         # Factor of 1000 comes from converting g to g/m^3
-        ax[1].plot(x,1000.*nM_init,':k',linewidth=2,label='initial')
-        ax[1].plot(x,1000.*np.nansum(nM_final,axis=0),'k',linewidth=2,label=f_label)
+        if ax_switch:
+            ax[1].plot(x,1000.*nM_init,':k',linewidth=2,label='initial')
+        ax[1].plot(x,1000.*np.nansum(nM_final,axis=0),linestyle=lstyle,color=lcolor,linewidth=2,label=f_label)
         if plot_habits:
             for d1 in range(self.dnum):
                 ax[1].plot(x,1000.*nM_final[d1,:],linewidth=2,label='dist {}'.format(d1+1))
@@ -1175,9 +1305,13 @@ class spectral_1d:
                     
         ax[0].legend() 
             
-        plt.tight_layout()
+        #plt.tight_layout()
         
-        return fig, ax
+        if ax_switch:
+            
+            fig.tight_layout()  
+            
+            return fig, ax
      
 
     def plot_dists_height(self,tind=-1,plot_habits=False):
@@ -1290,6 +1424,8 @@ class spectral_1d:
         
         M_net = self.Ikernel.interact_1mom(dt)
         
+        #M_net = self.Ikernel.interact_1mom_SS(dt)
+        
        # print('M_net=',M_net[1,:,:].sum())
         #raise Exception()
     
@@ -1394,7 +1530,9 @@ class spectral_1d:
                     
                     Mbins_old = self.Ikernel.Mbins.copy() 
   
-                    M_net = self.Ikernel.interact_1mom(1.0)
+                    #M_net = self.Ikernel.interact_1mom(1.0)
+                    
+                    M_net = self.Ikernel.interact_1mom_SS(1.0)
                    
                     self.Ikernel.Mbins = np.maximum(Mbins_old+M_net*dh[:,None,:],0.)
                     self.Ikernel.Nbins = self.Ikernel.Mbins/self.xbins[None,None,:]
@@ -1466,25 +1604,6 @@ class spectral_1d:
                 for hh in range(self.Hlen):
                    for d1 in range(self.dnum):
                        self.full[d1,hh,tf] = deepcopy(self.dists[d1,hh])
-
-        
-        # Clean up
-        
-        # if self.parallel:
-            
-        #     del self.Ikernel.dMb_gain_frac
-        #     del self.Ikernel.dNb_gain_frac
-        #     del self.Ikernel.PK   
-        #     del self.Ikernel.kmin
-        #     del self.Ikernel.kmid
-        #     del self.Ikernel.cond_1
-        #     del self.Ikernel.self_col
-                 
-        #     del self.Ikernel.dMi_loss
-        #     del self.Ikernel.dMj_loss
-        #     del self.Ikernel.dM_gain
-
-        # delattr(self,'Ikernel')
 
 
     def run_steady_state_2mom(self):
@@ -1602,21 +1721,6 @@ class spectral_1d:
                 for hh in range(self.Hlen):
                    for d1 in range(self.dnum):
                        self.full[d1,hh,tf] = deepcopy(self.dists[d1,hh])
-
-        
-
-
-        # if self.parallel:
-            
-        #     del self.Ikernel.dMb_gain_frac
-        #     del self.Ikernel.dNb_gain_frac
-        #     del self.Ikernel.PK    
-        #     del self.Ikernel.kmin
-        #     del self.Ikernel.kmid
-        #     del self.Ikernel.cond_1
-        #     del self.Ikernel.self_col
-
-        # delattr(self,'Ikernel')
         
 
     def run(self):

@@ -115,6 +115,11 @@ class dist():
         self.vt = self.av*self.d**self.bv
         self.vt_edges = self.av*self.d_edges**self.bv
         
+        if ptype=='rain':
+            self.vt = np.clip(-0.1021 + 4.932*self.d-0.9551*self.d**2+0.07934*self.d**3-0.002362*self.d**4,0.01,10.)
+            self.vt_edges = np.clip(-0.1021 + 4.932*self.d_edges-0.9551*self.d_edges**2+0.07934*self.d_edges**3-0.002362*self.d_edges**4,0.01,10.)
+        
+        
         self.vt[self.vt>10.] = 10.
         self.vt_edges[self.vt_edges>10.]=10.
         
