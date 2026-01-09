@@ -87,7 +87,6 @@ class spectral_1d:
                 self.Tout_len = file_nc.Tout_len
                 self.dt = file_nc.dt 
                 self.dz = file_nc.dz 
-                self.t = file_nc.t
                 self.rk_order = file_nc.rk_order
                 self.adv_order = file_nc.adv_order
                 self.int_type = file_nc.int_type
@@ -146,6 +145,10 @@ class spectral_1d:
 
                 if self.int_type==0:
                     
+                    self.tout = file_nc.variables['tout'][:]
+                    self.t = file_nc.variables['t'][:]
+                    self.z = file_nc.variables['z'][:]
+                    
                     self.full = np.empty((self.dnum,self.Hlen,self.Tout_len),dtype=object)
 
                     # Put distributions into 4D arrays
@@ -159,7 +162,9 @@ class spectral_1d:
 
                 elif self.int_type==1:
                     
-                    self.full = np.empty((self.dnum,self.Hlen),dtype=object)
+                    self.z = file_nc.variables['z'][:]
+                    
+                    self.full = np.empty((self.dnum,self.Tlen),dtype=object)
 
                     # Put distributions into 4D arrays
                     for dd in range(self.dnum):
@@ -168,10 +173,11 @@ class spectral_1d:
                                      kernel=self.kernel,habit_dict=habit_dict[dd],ptype=self.ptype,x0=self.x0, 
                                      Tc=self.Tc,radar=self.radar,mom_num=self.moments,
                                      Mbins=file_nc.groups[dist_names[dd]].variables['Mbins'][:][hh,:],
-                                     Nbins=file_nc.groups[dist_names[dd]].variables['Nbins'][:][hh,:]) for hh in range(self.Hlen)])
+                                     Nbins=file_nc.groups[dist_names[dd]].variables['Nbins'][:][hh,:]) for hh in range(self.Tlen)])
 
                 if self.int_type==2:
                     
+                    self.t = file_nc.variables['t'][:]
                     self.full = np.empty((self.dnum,self.Tlen),dtype=object)
 
                     # Put distributions into 4D arrays
@@ -457,42 +463,54 @@ class spectral_1d:
  
             # Create dimensions
             if self.int_type==0:
-                file_nc.createDimension('time',self.Tout_len)
+                file_nc.createDimension('time_out',self.Tout_len)
+                file_nc.createDimension('time',self.Tlen)
+                file_nc.createDimension('height',self.Hlen)
+                t = file_nc.createVariable('t','f4',('time',))
+                tout = file_nc.createVariable('tout','f4',('time_out',))
+                z = file_nc.createVariable('z','f4',('height',))
+            elif self.int_type==1:
+                file_nc.createDimension('height',self.Tlen)
+                z = file_nc.createVariable('z','f4',('height',))
             elif self.int_type==2:
                 file_nc.createDimension('time',self.Tlen)
-                
-            file_nc.createDimension('height',self.Hlen)
+                t = file_nc.createVariable('t','f4',('time',))
+
             file_nc.createDimension('dists',self.dnum)
             file_nc.createDimension('bins',self.bins)
             
             # Put coordinates into 1D arrays
-            t = file_nc.createVariable('time','f4',('time',))
-            z = file_nc.createVariable('z','f4',('height',))
-            
             xbins = file_nc.createVariable('xbins','f4',('bins',))
             xi1 = file_nc.createVariable('xi1','f4',('bins',))
             xi2 = file_nc.createVariable('xi2','f4',('bins',))
             
             if self.int_type==0:
-                t[:] = self.tout
+                tout[:] = self.tout
+                t[:] = self.t
+                z[:] = self.z 
+                t.units = 'seconds'
+                t.description = 'time'
+                tout.units = 'seconds'
+                tout.description = 'Output time'
+                z.units = 'meters'
+                z.description = 'Gridbox Height'
+            elif self.int_type==1:
+                z[:] = self.z 
+                z.units = 'meters'
+                z.description = 'Gridbox Height'            
             elif self.int_type==2:
                 t[:] = self.t
-            else:
-                t[:] = np.array([0.])
+                t.units = 'seconds'
+                t.description = 'Output time'
             
-            z[:] = self.z 
             xbins[:] = self.xbins
             xi1[:] = self.xedges[:-1]
             xi2[:] = self.xedges[1:]
             
-            t.units = 'seconds'
-            z.units = 'meters'
             xbins.units = 'g'
             xi1.units = 'g'
             xi2.units = 'g'
             
-            t.description = 'Output time'
-            z.description = 'Gridbox Height'
             xbins.description = 'Mass grid midpoint'
             xi1.description = 'Mass grid left bin edge'
             xi2.description = 'Mass grid right bin edge'
@@ -515,47 +533,130 @@ class spectral_1d:
                 if self.int_type==0:
                     
                     # Create Array Variables
-                    Mbins = dist_dd.createVariable('Mbins','f4',('height','time','bins'))
-                    Nbins = dist_dd.createVariable('Nbins','f4',('height','time','bins'))
-                    x1    = dist_dd.createVariable('x1','f4',('height','time','bins'))
-                    x2    = dist_dd.createVariable('x2','f4',('height','time','bins'))
-                    aki   = dist_dd.createVariable('aki','f4',('height','time','bins'))
-                    cki   = dist_dd.createVariable('cki','f4',('height','time','bins'))
+                    Mbins = dist_dd.createVariable('Mbins','f8',('height','time_out','bins'))
+                    Nbins = dist_dd.createVariable('Nbins','f8',('height','time_out','bins'))
+                    x1    = dist_dd.createVariable('x1','f8',('height','time_out','bins'))
+                    x2    = dist_dd.createVariable('x2','f8',('height','time_out','bins'))
+                    aki   = dist_dd.createVariable('aki','f8',('height','time_out','bins'))
+                    cki   = dist_dd.createVariable('cki','f8',('height','time_out','bins'))
                     
                     Mbins[:] = np.array([[self.full[dd,hh,tt].Mbins for tt in range(self.Tout_len)] for hh in range(self.Hlen)])
                     Nbins[:] = np.array([[self.full[dd,hh,tt].Nbins for tt in range(self.Tout_len)] for hh in range(self.Hlen)])
                     aki[:]   = np.array([[self.full[dd,hh,tt].aki for tt in range(self.Tout_len)] for hh in range(self.Hlen)])
                     cki[:]   = np.array([[self.full[dd,hh,tt].cki for tt in range(self.Tout_len)] for hh in range(self.Hlen)])
+                    
+                    if self.radar:
+                        Zh = dist_dd.createVariable('Zh','f8',('height','time_out','bins'))
+                        Zv = dist_dd.createVariable('Zv','f8',('height','time_out','bins'))
+                        Kdp = dist_dd.createVariable('Kdp','f8',('height','time_out','bins'))
+                        Zhhvv_real = dist_dd.createVariable('Zhhvv_real','f8',('height','time_out','bins'))
+                        Zhhvv_imag = dist_dd.createVariable('Zhhvv_imag','f8',('height','time_out','bins'))
+                        
+                        Zh.units = 'mm^6/m^3'
+                        Zv.units = 'mm^6/m^3'
+                        Kdp.units = 'deg/km'
+                        Zhhvv_real.units = 'mm^6/m^3'
+                        Zhhvv_imag.units = 'mm^6/m^3'
+                        
+                        Zh.description = 'bin radar horizontal reflectivity in linear units'
+                        Zv.description = 'bin radar vertical reflectivity in linear units'
+                        Kdp.description = 'bin radar specific differential phase'
+                        Zhhvv_real.description = 'real component of bin radar cross-to-copolar reflectivity in linear units'
+                        Zhhvv_imag.description = 'imaginary component of bin radar cross-to-copolar reflectivity in linear units'
+                        
+                        Zh[:] = np.array([[self.full[dd,hh,tt].Zh for tt in range(self.Tout_len)] for hh in range(self.Hlen)])
+                        Zv[:] = np.array([[self.full[dd,hh,tt].Zv for tt in range(self.Tout_len)] for hh in range(self.Hlen)])
+                        Kdp[:]   = np.array([[self.full[dd,hh,tt].Kdp for tt in range(self.Tout_len)] for hh in range(self.Hlen)])
+                        Zhhvv_full   = np.array([[self.full[dd,hh,tt].zhhvv for tt in range(self.Tout_len)] for hh in range(self.Hlen)])
+                             
+                        Zhhvv_real[:] = np.real(Zhhvv_full)
+                        Zhhvv_imag[:] = np.imag(Zhhvv_full)
                 
                 # Steady State model
                 elif self.int_type==1:
                     # Create Array Variables
-                    Mbins = dist_dd.createVariable('Mbins','f4',('height','bins'))
-                    Nbins = dist_dd.createVariable('Nbins','f4',('height','bins'))
-                    x1    = dist_dd.createVariable('x1','f4',('height','bins'))
-                    x2    = dist_dd.createVariable('x2','f4',('height','bins'))
-                    aki   = dist_dd.createVariable('aki','f4',('height','bins'))
-                    cki   = dist_dd.createVariable('cki','f4',('height','bins'))
+                    Mbins = dist_dd.createVariable('Mbins','f8',('height','bins'))
+                    Nbins = dist_dd.createVariable('Nbins','f8',('height','bins'))
+                    x1    = dist_dd.createVariable('x1','f8',('height','bins'))
+                    x2    = dist_dd.createVariable('x2','f8',('height','bins'))
+                    aki   = dist_dd.createVariable('aki','f8',('height','bins'))
+                    cki   = dist_dd.createVariable('cki','f8',('height','bins'))
                     
-                    Mbins[:] = np.array([self.full[dd,hh].Mbins for hh in range(self.Hlen)])
-                    Nbins[:] = np.array([self.full[dd,hh].Nbins for hh in range(self.Hlen)])
-                    aki[:]   = np.array([self.full[dd,hh].aki for hh in range(self.Hlen)])
-                    cki[:]   = np.array([self.full[dd,hh].cki for hh in range(self.Hlen)])
+                    Mbins[:] = np.array([self.full[dd,hh].Mbins for hh in range(self.Tlen)])
+                    Nbins[:] = np.array([self.full[dd,hh].Nbins for hh in range(self.Tlen)])
+                    aki[:]   = np.array([self.full[dd,hh].aki for hh in range(self.Tlen)])
+                    cki[:]   = np.array([self.full[dd,hh].cki for hh in range(self.Tlen)])
+                    
+                    
+                    if self.radar:
+                        Zh = dist_dd.createVariable('Zh','f8',('height','bins'))
+                        Zv = dist_dd.createVariable('Zv','f8',('height','bins'))
+                        Kdp = dist_dd.createVariable('Kdp','f8',('height','bins'))
+                        Zhhvv_real = dist_dd.createVariable('Zhhvv_real','f8',('height','bins'))
+                        Zhhvv_imag = dist_dd.createVariable('Zhhvv_imag','f8',('height','bins'))
+                        
+                        Zh.units = 'mm^6/m^3'
+                        Zv.units = 'mm^6/m^3'
+                        Kdp.units = 'deg/km'
+                        Zhhvv_real.units = 'mm^6/m^3'
+                        Zhhvv_imag.units = 'mm^6/m^3'
+                        
+                        Zh.description = 'bin radar horizontal reflectivity in linear units'
+                        Zv.description = 'bin radar vertical reflectivity in linear units'
+                        Kdp.description = 'bin radar specific differential phase'
+                        Zhhvv_real.description = 'real component of bin radar cross-to-copolar reflectivity in linear units'
+                        Zhhvv_imag.description = 'imaginary component of bin radar cross-to-copolar reflectivity in linear units'
+                        
+                        Zh[:]       = np.array([self.full[dd,hh].Zh for hh in range(self.Tlen)])
+                        Zv[:]       = np.array([self.full[dd,hh].Zv for hh in range(self.Tlen)])
+                        Kdp[:]      = np.array([self.full[dd,hh].Kdp for hh in range(self.Tlen)])
+                        Zhhvv_full  = np.array([self.full[dd,hh].zhhvv for hh in range(self.Tlen)])
+                             
+                        Zhhvv_real[:] = np.real(Zhhvv_full)
+                        Zhhvv_imag[:] = np.imag(Zhhvv_full)
+                    
                  
                 # Box model
                 elif self.int_type==2:
                     # Create Array Variables
-                    Mbins = dist_dd.createVariable('Mbins','f4',('time','bins'))
-                    Nbins = dist_dd.createVariable('Nbins','f4',('time','bins'))
-                    x1    = dist_dd.createVariable('x1','f4',('time','bins'))
-                    x2    = dist_dd.createVariable('x2','f4',('time','bins'))
-                    aki   = dist_dd.createVariable('aki','f4',('time','bins'))
-                    cki   = dist_dd.createVariable('cki','f4',('time','bins'))
+                    Mbins = dist_dd.createVariable('Mbins','f8',('time','bins'))
+                    Nbins = dist_dd.createVariable('Nbins','f8',('time','bins'))
+                    x1    = dist_dd.createVariable('x1','f8',('time','bins'))
+                    x2    = dist_dd.createVariable('x2','f8',('time','bins'))
+                    aki   = dist_dd.createVariable('aki','f8',('time','bins'))
+                    cki   = dist_dd.createVariable('cki','f8',('time','bins'))
                     
                     Mbins[:] = np.array([self.full[dd,tt].Mbins for tt in range(self.Tlen)])
                     Nbins[:] = np.array([self.full[dd,tt].Nbins for tt in range(self.Tlen)])
                     aki[:]   = np.array([self.full[dd,tt].aki for tt in range(self.Tlen)])
                     cki[:]   = np.array([self.full[dd,tt].cki for tt in range(self.Tlen)])
+                    
+                    if self.radar:
+                        Zh = dist_dd.createVariable('Zh','f8',('time','bins'))
+                        Zv = dist_dd.createVariable('Zv','f8',('time','bins'))
+                        Kdp = dist_dd.createVariable('Kdp','f8',('time','bins'))
+                        Zhhvv_real = dist_dd.createVariable('Zhhvv_real','f8',('time','bins'))
+                        Zhhvv_imag = dist_dd.createVariable('Zhhvv_imag','f8',('time','bins'))
+                        
+                        Zh.units = 'mm^6/m^3'
+                        Zv.units = 'mm^6/m^3'
+                        Kdp.units = 'deg/km'
+                        Zhhvv_real.units = 'mm^6/m^3'
+                        Zhhvv_imag.units = 'mm^6/m^3'
+                        
+                        Zh.description = 'bin radar horizontal reflectivity in linear units'
+                        Zv.description = 'bin radar vertical reflectivity in linear units'
+                        Kdp.description = 'bin radar specific differential phase'
+                        Zhhvv_real.description = 'real component of bin radar cross-to-copolar reflectivity in linear units'
+                        Zhhvv_imag.description = 'imaginary component of bin radar cross-to-copolar reflectivity in linear units'
+                        
+                        Zh[:] = np.array([self.full[dd,tt].Zh for tt in range(self.Tlen)])
+                        Zv[:] = np.array([self.full[dd,tt].Zv for tt in range(self.Tlen)])
+                        Kdp[:]   = np.array([self.full[dd,tt].Kdp for tt in range(self.Tlen)])
+                        Zhhvv_full   = np.array([self.full[dd,tt].zhhvv for tt in range(self.Tlen)])
+                             
+                        Zhhvv_real[:] = np.real(Zhhvv_full)
+                        Zhhvv_imag[:] = np.imag(Zhhvv_full)
 
                 else:
                     
@@ -575,36 +676,6 @@ class spectral_1d:
                 x2.description = 'Subgrid linear distribution right bin mass edge'
                 aki.description = 'Subgrid linear mass distribution slope'
                 cki.description = 'Subgrid linear mass distribution intercept'   
-                
-                    
-                    
-                # if self.radar:
-                #     Zh = dist_dd.createVariable('Zh','f4',('height','time','bins'))
-                #     Zv = dist_dd.createVariable('Zv','f4',('height','time','bins'))
-                #     Kdp = dist_dd.createVariable('Kdp','f4',('height','time','bins'))
-                #     Zhhvv_real = dist_dd.createVariable('Zhhvv_real','f4',('height','time','bins'))
-                #     Zhhvv_imag = dist_dd.createVariable('Zhhvv_imag','f4',('height','time','bins'))
-                    
-                #     Zh.units = 'mm^6/m^3'
-                #     Zv.units = 'mm^6/m^3'
-                #     Kdp.units = 'deg/km'
-                #     Zhhvv_real.units = 'mm^6/m^3'
-                #     Zhhvv_imag.units = 'mm^6/m^3'
-                    
-                #     Zh.description = 'bin radar horizontal reflectivity in linear units'
-                #     Zv.description = 'bin radar vertical reflectivity in linear units'
-                #     Kdp.description = 'bin radar specific differential phase'
-                #     Zhhvv_real.description = 'real component of bin radar cross-to-copolar reflectivity in linear units'
-                #     Zhhvv_imag.description = 'imaginary component of bin radar cross-to-copolar reflectivity in linear units'
-                    
-                #     Zh[:] = np.array([[self.full[dd,hh,tt].Zh for tt in range(self.Tout_len)] for hh in range(self.Hlen)])
-                #     Zv[:] = np.array([[self.full[dd,hh,tt].Zv for tt in range(self.Tout_len)] for hh in range(self.Hlen)])
-                #     Kdp[:]   = np.array([[self.full[dd,hh,tt].Kdp for tt in range(self.Tout_len)] for hh in range(self.Hlen)])
-                #     Zhhvv_full   = np.np.array([[self.full[dd,hh,tt].zhhvv for tt in range(self.Tout_len)] for hh in range(self.Hlen)])
-                         
-                #     Zhhvv_real[:] = np.real(Zhhvv_full)
-                #     Zhhvv_imag[:] = np.imag(Zhhvv_full)
-        
     
     def plot_time_height(self,var='Z'):
         
@@ -613,7 +684,9 @@ class spectral_1d:
         plt.rc('xtick', labelsize=22) 
         plt.rc('ytick', labelsize=22) 
         
-        dist_num = len(self.dists) 
+        #dist_num = len(self.dists) 
+        
+        dist_num = self.dnum
 
         t = self.tout
         h = self.z/1000.
@@ -742,7 +815,9 @@ class spectral_1d:
         plt.rc('xtick', labelsize=16) 
         plt.rc('ytick', labelsize=16) 
         
-        dist_num = len(self.dists) 
+        #dist_num = len(self.dists) 
+        
+        dist_num = self.dnum
         
         if self.int_type==2:
             h = self.t
