@@ -7,7 +7,7 @@ Created on Thu Oct  2 11:31:38 2025
 ## Import stuff
 import numpy as np
 
-from .collection_kernels import hydro_kernel, long_kernel
+from .collection_kernels import hydro_kernel, long_kernel, hall_kernel
 from .bin_integrals import In_int, gam_int, LGN_int, integrate_fast_kernel
 
 from joblib import Parallel, delayed, dump, load
@@ -600,13 +600,18 @@ class Interaction():
     all Ndists distributions.
     '''
     
-    def __init__(self,dists,cc_dest,br_dest,Eagg,Ecb,Ebr,frag_dict=None,kernel='Golovin',mom_num=2,parallel=False,n_jobs=12):
+    def __init__(self,dists,cc_dest,br_dest,Eagg,Ecb,Ebr,frag_dict=None,kernel='Golovin',mom_num=2,gpu=False,parallel=False,n_jobs=12):
         
         # cc_dest is an integer (from 1 to len(dists)) that determines the destination 
         # for coalesced particles
         
         # br_dest is an integer  (from 1 to len(dists)) that determines the destination
         # for fragments
+        
+        if gpu:
+            import cupy as np  
+        else:
+            import numpy as np
         
         self.dists = dists
         self.frag_dict = frag_dict
@@ -906,7 +911,7 @@ class Interaction():
         ## ELD: Does kernel need to be evaluated at rectangle and triangle endpoints for each integral?
 
        
-        if (self.kernel=='Hydro') | (self.kernel=='Long'):
+        if (self.kernel=='Hydro') | (self.kernel=='Long') | (self.kernel=='Hall'):
             dd = 0
             for d1 in range(self.dnum):
                 for d2 in range(d1,self.dnum):
@@ -925,6 +930,12 @@ class Interaction():
                         HK[1,dd,:,:] = long_kernel(dist1.d2,dist2.d1,dist1.vt2,dist2.vt1,dist1.A2,dist2.A1)
                         HK[2,dd,:,:] = long_kernel(dist1.d1,dist2.d2,dist1.vt1,dist2.vt2,dist1.A2,dist2.A1)
                         HK[3,dd,:,:] = long_kernel(dist1.d2,dist2.d2,dist1.vt2,dist2.vt2,dist1.A2,dist2.A1)
+                        
+                    elif self.kernel=='Hall':
+                        HK[0,dd,:,:] = hall_kernel(dist1.d1,dist2.d1,dist1.vt1,dist2.vt1,dist1.A1,dist2.A1)
+                        HK[1,dd,:,:] = hall_kernel(dist1.d2,dist2.d1,dist1.vt2,dist2.vt1,dist1.A2,dist2.A1)
+                        HK[2,dd,:,:] = hall_kernel(dist1.d1,dist2.d2,dist1.vt1,dist2.vt2,dist1.A2,dist2.A1)
+                        HK[3,dd,:,:] = hall_kernel(dist1.d2,dist2.d2,dist1.vt2,dist2.vt2,dist1.A2,dist2.A1)                        
                         
                     dd += 1
             
@@ -1483,9 +1494,6 @@ class Interaction():
         M_loss = np.zeros_like(Mbins)
         M_gain = np.zeros_like(Mbins)
         
-        #print('M_loss_shape=',M_loss.shape)
-        #raise Exception()
-        
         indc = self.indc
         indb = self.indb
 
@@ -1498,7 +1506,7 @@ class Interaction():
                 ck1  = self.cki[d1,:,:]               
                 ck2  = self.cki[d2,:,:] 
                 
-                Mcheck = ((ck1==0.)[:,:,None]) | ((ck2==0.)[:,None,:])
+                Mcheck = ((ck1==0.)[:,:,None]) | ((ck2==0.)[:,None,:]) # If M1 or M2 is zero
 
                 cond_1 = self.cond_1 | Mcheck # New cond_1. Basically exclude bin-pairs that are off grid and ones involving empty bins.
                 
@@ -1737,17 +1745,51 @@ class Interaction():
             for d2 in range(d1,self.dnum):
                 
                 # (dnum x height x bins)
-                x11  = self.x1[d1,:,:]
-                x21  = self.x2[d1,:,:]
-                ak1  = self.aki[d1,:,:]
-                ck1  = self.cki[d1,:,:] 
-                M1   = self.Mbins[d1,:,:]
+                # x11  = self.x1[d1,:,:]
+                # x21  = self.x2[d1,:,:]
+                # ak1  = self.aki[d1,:,:]
+                # ck1  = self.cki[d1,:,:] 
+                # M1   = self.Mbins[d1,:,:]
                 
-                x12  = self.x1[d2,:,:]
-                x22  = self.x2[d2,:,:]
-                ak2  = self.aki[d2,:,:] 
+                # x12  = self.x1[d2,:,:]
+                # x22  = self.x2[d2,:,:]
+                # ak2  = self.aki[d2,:,:] 
+                # ck2  = self.cki[d2,:,:] 
+                # M2   = self.Mbins[d2,:,:]
+                
+                # (dnum x height x bins)
+                ck1  = self.cki[d1,:,:]               
                 ck2  = self.cki[d2,:,:] 
-                M2   = self.Mbins[d2,:,:]
+                
+                Mcheck = ((ck1==0.)[:,:,None]) | ((ck2==0.)[:,None,:]) # If M1 or M2 is zero
+
+                cond_1 = self.cond_1 | Mcheck # New cond_1. Basically exclude bin-pairs that are off grid and ones involving empty bins.
+                
+                kr, ir, jr = np.nonzero((~cond_1)&self.self_col[:,dd,:,:])
+                
+               # print('x1=',self.x1.shape)
+               # raise Exception()
+                
+                # (1 x bins (per bin pair))
+                x11  = self.x1[d1,:,ir]
+                x21  = self.x2[d1,:,ir]
+                ak1  = self.aki[d1,:,ir]
+                ck1  = self.cki[d1,:,ir] 
+                M1   = self.Mbins[d1,:,ir]
+                
+                # (1 x bins (per bin pair))
+                x12  = self.x1[d2,:,jr]
+                x22  = self.x2[d2,:,jr]
+                ak2  = self.aki[d2,:,jr] 
+                ck2  = self.cki[d2,:,jr] 
+                M2   = self.Mbins[d2,:,jr]
+                
+                
+                
+                
+                print('cond_1 shape=',cond_1.shape)
+                print('x11=',x11.shape)
+                raise Exception()
                 
 
                 if self.parallel:
@@ -1768,11 +1810,11 @@ class Interaction():
                     
                     #cond_1 = self.cond_1 | Mcheck # New cond_1. Basically exclude bin-pairs that are off grid and ones involving empty bins.
                     
-                    gain_loss_temp = Parallel(n_jobs=self.n_jobs,verbose=0)(delayed(calculate_2mom)(x11[batch,:],x21[batch,:],ak1[batch,:],ck1[batch,:],M1[batch,:],
-                                            x12[batch,:],x22[batch,:],ak2[batch,:],ck2[batch,:],M2[batch,:],
-                                            self.PK[:,dd,:,:],self.xi1,self.xi2,self.kmin,self.kmid,self.cond_1[batch,:,:], 
+                    gain_loss_temp = Parallel(n_jobs=self.n_jobs,verbose=0)(delayed(calculate_2mom_batch)(x11[batch],x21[batch],ak1[batch],ck1[batch],M1[batch],
+                                            x12[batch],x22[batch],ak2[batch],ck2[batch],M2[batch],
+                                            self.PK[:,dd,ir,jr],self.xi1,self.xi2,self.kmin[ir,jr],self.kmid[ir,jr],cond_1[:,ir,jr], 
                                             self.dMb_gain_frac,self.dNb_gain_frac, 
-                                            self.self_col[batch,dd,:,:],breakup=self.breakup) for batch in self.batches)
+                                            self.self_col[batch,dd,ir,jr],breakup=self.breakup) for batch in self.batches)
                     
                     
                     M1_loss_temp = np.vstack([gl[0] for gl in gain_loss_temp])
@@ -1801,8 +1843,8 @@ class Interaction():
                     
                     
                     M1_loss_temp, M2_loss_temp, M_gain_temp, Mb_gain_temp,\
-                    N1_loss_temp, N2_loss_temp, N_gain_temp, Nb_gain_temp = calculate_2mom(x11,x21,ak1,ck1,M1, 
-                                    x12,x22,ak2,ck2,M2,self.PK[:,dd,:,:],self.xi1,self.xi2,self.kmin,self.kmid,self.cond_1, 
+                    N1_loss_temp, N2_loss_temp, N_gain_temp, Nb_gain_temp = calculate_2mom_batch(x11,x21,ak1,ck1,M1, 
+                                    x12,x22,ak2,ck2,M2,self.PK[:,dd,ir,jr],self.xi1,self.xi2,self.kmin[ir,jr],self.kmid[ir,jr],cond_1[:,ir,jr], 
                                     self.dMb_gain_frac,self.dNb_gain_frac, 
                                     self.self_col[:,dd,:,:],breakup=self.breakup)
                     

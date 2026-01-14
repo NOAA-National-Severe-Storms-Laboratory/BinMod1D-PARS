@@ -15,7 +15,37 @@ Description:
     can be exact as well.
     
     Version 0.0: 
-
+        
+        ELD NOTE 01/09/2026: Try to maybe implement cupy replacement for numpy
+        for gpu numpy array operations.
+        
+    LIST OF THINGS TO DO:
+        
+        SHORT TERM:
+            1.) Complete Ikernel.interact_2mom_SS() and Ikernel.interact_1mom_SS() for
+                utilizing parallel processing and using GPU for box and SS models.
+            2.) Modify write_netcdf() method to only save necessary 1 moment variables (e.g., Mbins)
+            3.) Create timing tests for box model, steady-state model, and full 1D model (see tests/ directory)
+            4.) Incorporate stencils for different order advection schemes.
+            5.) Incorporate output_freq for box model (and possibly something similar for SS model)
+            6.) Fix issue when output_freq is incompatible with dt.
+            7.) Fix Ipython_launcher bug when using Jupyter notebook (seems like the progress bar
+                is messed up when it first launches but then works ok afterward.)
+            8.) Consolidate print messages for Mass and Mass flux so that normalized gamma
+                values make sense.
+            9.) Fix PSD issue for multiple categories and am/bm are different.
+    
+        MEDIUM TERM:
+            1.) Incorporate more detailed CC/BC methods:
+                a.) Phillips et al. 2015/2016 aggregation/breakup parameterizations
+                b.) McFarquhar et al. rain breakup distributions
+            2.) Add class/method that can be used to define limits of plots and/or
+                compare different spectral_1d objects.
+            
+        LONG TERM: 
+            1.) Add in additional microphysical processes (vapor deposition, riming, melting, etc.)
+            2.) Utilize T-Matrix calculations (either explicitly or using some kind of NN)
+    
 """
 
 ## Import stuff
@@ -57,7 +87,7 @@ class spectral_1d:
                  mu0=3.,gam_norm=False,Ecol=0.001,Es=1.0,Eb=0.,moments=2,dist_var='mass',
                  kernel='Golovin',frag_dist='exp',habit_list=['rain'],
                  ptype='rain',Tc=10.,boundary=None,dist_num=1,cc_dest=1,br_dest=1, 
-                 radar=False,rk_order=1,adv_order=1,parallel=False,n_jobs=-1,load=None):
+                 radar=False,rk_order=1,adv_order=1,gpu=False,parallel=False,n_jobs=-1,load=None):
         '''
         Initialize model and PSD        
         '''       
@@ -68,7 +98,7 @@ class spectral_1d:
                         output_freq=output_freq,dz=dz,ztop=ztop,zbot=zbot,Nt0=Nt0,Mt0=Mt0,Dm0=Dm0,mu0=mu0,gam_norm=gam_norm,Ecol=Ecol,
                         Es=Es,Eb=Eb,moments=moments,dist_var=dist_var,kernel=kernel,frag_dist=frag_dist,
                         habit_list=habit_list,ptype=ptype,Tc=Tc,radar=radar,boundary=boundary,
-                        dist_num=dist_num,cc_dest=cc_dest,br_dest=br_dest,rk_order=rk_order,adv_order=adv_order,
+                        dist_num=dist_num,cc_dest=cc_dest,br_dest=br_dest,rk_order=rk_order,adv_order=adv_order,gpu=gpu,
                         parallel=parallel,n_jobs=n_jobs)
             
         else: # If load is specified then load netcdf attributes/variables as object attribute/variables
@@ -143,6 +173,7 @@ class spectral_1d:
                 
                 self.adv_base = self.stencils[adv_order]
 
+                # FULL 1D model
                 if self.int_type==0:
                     
                     self.tout = file_nc.variables['tout'][:]
@@ -159,7 +190,7 @@ class spectral_1d:
                                      Tc=self.Tc,radar=self.radar,mom_num=self.moments,
                                      Mbins=file_nc.groups[dist_names[dd]].variables['Mbins'][:][hh,tt,:],
                                      Nbins=file_nc.groups[dist_names[dd]].variables['Nbins'][:][hh,tt,:]) for tt in range(self.Tout_len)] for hh in range(self.Hlen)])
-
+                ## Steady-state model (height only)
                 elif self.int_type==1:
                     
                     self.z = file_nc.variables['z'][:]
@@ -174,7 +205,7 @@ class spectral_1d:
                                      Tc=self.Tc,radar=self.radar,mom_num=self.moments,
                                      Mbins=file_nc.groups[dist_names[dd]].variables['Mbins'][:][hh,:],
                                      Nbins=file_nc.groups[dist_names[dd]].variables['Nbins'][:][hh,:]) for hh in range(self.Tlen)])
-
+                # Box model (time only)
                 if self.int_type==2:
                     
                     self.t = file_nc.variables['t'][:]
@@ -191,7 +222,7 @@ class spectral_1d:
 
     def setup_case(self,sbin=4,bins=160,D1=0.001,x0=0.01,Nt0=1.,Mt0=1.,Dm0=2.0,mu0=3,gam_norm=False,dist_var='mass',kernel='Golovin',Ecol=1.53,Es=0.001,Eb=0.,
                         moments=2,ztop=3000.0,zbot=0.,tmax=800.,output_freq=60.,dt=10.,dz=10.,frag_dist='exp',habit_list=['rain'],ptype='rain',Tc=10.,
-                        radar=False,boundary=None,dist_num=1,cc_dest=1,br_dest=1,rk_order=1,adv_order=1,parallel=False,n_jobs=-1):
+                        radar=False,boundary=None,dist_num=1,cc_dest=1,br_dest=1,rk_order=1,adv_order=1,gpu=False,parallel=False,n_jobs=-1):
         self.Tc = Tc
         self.radar = radar
         self.sbin = sbin 
@@ -227,6 +258,7 @@ class spectral_1d:
         self.rk_order = rk_order
         self.adv_order = adv_order
         self.boundary = boundary
+        self.gpu = gpu
         self.parallel = parallel
         self.frag_dist = frag_dist
         
@@ -326,7 +358,7 @@ class spectral_1d:
         # and sets up arrays for calculating interaction (i.e., source) terms
         # in the stochastic collection/breakup equation for multiple categories
         self.Ikernel = Interaction(dists,cc_dest,br_dest,self.Eagg,self.Ecb,self.Ebr, 
-                                   frag_dict,self.kernel,parallel=self.parallel,n_jobs=self.n_jobs,
+                                   frag_dict,self.kernel,gpu=gpu,parallel=self.parallel,n_jobs=self.n_jobs,
                                    mom_num=self.moments)
         
         self.lamf = frag_dict['lamf']
@@ -1083,7 +1115,6 @@ class spectral_1d:
     
     def plot_dists(self,tind=-1,hind=-1,x_axis='mass',y_axis='mass',xscale='log',yscale='linear',distscale='log',normbin=False,scott_solution=False,feingold_solution=False,plot_habits=False,ax=None,lstyle='-',lcolor='k'):
 
-        
         plt.rc('text', usetex=True)
         plt.rc('font', family='serif')
         plt.rc('xtick', labelsize=26) 
@@ -1605,9 +1636,9 @@ class spectral_1d:
                     
                     Mbins_old = self.Ikernel.Mbins.copy() 
   
-                    #M_net = self.Ikernel.interact_1mom(1.0)
+                    M_net = self.Ikernel.interact_1mom(1.0)
                     
-                    M_net = self.Ikernel.interact_1mom_SS(1.0)
+                    #M_net = self.Ikernel.interact_1mom_SS(1.0)
                    
                     self.Ikernel.Mbins = np.maximum(Mbins_old+M_net*dh[:,None,:],0.)
                     self.Ikernel.Nbins = self.Ikernel.Mbins/self.xbins[None,None,:]
@@ -1715,6 +1746,8 @@ class spectral_1d:
                     Nbins_old = self.Ikernel.Nbins.copy()
                     
                     M_net, N_net = self.Ikernel.interact_2mom(1.0)
+                    
+                    #M_net, N_net = self.Ikernel.interact_2mom_SS(1.0)
                    
                     self.Ikernel.Mbins = np.maximum(Mbins_old+M_net*dh[:,None,:],0.)
                     self.Ikernel.Nbins = np.maximum(Nbins_old+N_net*dh[:,None,:],0.)
