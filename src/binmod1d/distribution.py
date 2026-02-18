@@ -16,18 +16,18 @@ import matplotlib.pyplot as plt
 # Number Distribution function class for arbitrary category
 class dist():
     
-    def __init__(self,sbin=4,bins=80,D1=0.01,x0=None,Nt0=1.,Mt0=1.,mu0=3,Dm0=2,gam_init=True,gam_norm=False,dist_var='mass',
-                 kernel='Hydro',habit_dict=None,ptype='rain',Tc=10.,radar=False,mom_num=2,Mbins=None,Nbins=None):
+    def __init__(self,sbin=4,bins=80,D1=0.01,x0=None,Nt0=1.,Mt0=1.,mbar=None,mu0=3,Dm0=2,gam_init=True,gam_norm=False,dist_var='mass',
+                 kernel='Hydro',habit_dict=None,ptype='rain',Tc=10.,mom_num=2,Mbins=None,Nbins=None):
         
         self.mom_num = mom_num
         
         if habit_dict is None:
             habit_dict = habits()[ptype]
         
-        self.init_dist(sbin,bins,D1,dist_var=dist_var,kernel=kernel,habit_dict=habit_dict,ptype=ptype,x0=x0,Tc=Tc,radar=radar,mom_num=mom_num,gam_norm=gam_norm)
+        self.init_dist(sbin,bins,D1,dist_var=dist_var,kernel=kernel,habit_dict=habit_dict,ptype=ptype,x0=x0,Tc=Tc,mom_num=mom_num,gam_norm=gam_norm)
         
         if gam_init:
-            self.bin_gamma_dist(Nt0=Nt0,Mt0=Mt0,mu0=mu0,Dm0=Dm0,normalize=gam_norm)
+            self.bin_gamma_dist(Nt0=Nt0,Mt0=Mt0,mbar=mbar,mu0=mu0,Dm0=Dm0,normalize=gam_norm)
             
         if mom_num==2:
             if (Mbins is not None) and (Nbins is not None):
@@ -40,12 +40,12 @@ class dist():
                 self.Mbins = Mbins 
             self.diagnose_1mom()
         
-    def init_dist(self,sbin,bins,D1,kernel='Hydro',habit_dict=None,ptype='rain',Tc=10.,dist_var='mass',x0=None,radar=False,mom_num=2,gam_norm=False):
+    def init_dist(self,sbin,bins,D1,kernel='Hydro',habit_dict=None,ptype='rain',Tc=10.,dist_var='mass',x0=None,mom_num=2,gam_norm=False):
         
         if habit_dict is None:
             habit_dict = habits()[ptype]
         
-        self.radar = radar
+        #self.radar = radar
         self.kernel = kernel
         self.D1 = D1
         self.sbin = sbin 
@@ -60,13 +60,6 @@ class dist():
         
         self.am = habit_dict['am']    # Units: g * mm^(-(3+brho)) 
         self.bm = habit_dict['bm']
-        
-        # if gam_norm:
-        #     self.am = 1.0 
-        #     self.bm = 3.0
-        # else:
-        #     self.am = habit_dict['am']    # Units: g * mm^(-(3+brho)) 
-        #     self.bm = habit_dict['bm']
             
         self.ptype = ptype
         self.mom_num = mom_num
@@ -110,24 +103,87 @@ class dist():
         self.dmax1 = self.dmax_edges[:-1].copy() 
         self.dmax2 = self.dmax_edges[1:].copy()
         
+        rhoi = 0.92
+        
+        if ptype=='snow':
+            
+            self.ar  = self.ar*np.ones_like(self.d1)
+            self.ar1 = self.ar*np.ones_like(self.d1)
+            self.ar2 = self.ar*np.ones_like(self.d2)
+                
+            self.rho = self.arho*self.d**(self.bm-3.)  
+            self.rho[self.rho>rhoi] = rhoi
+            
+            self.rho1 = self.arho*self.d1**(self.bm-3.)  
+            self.rho1[self.rho1>rhoi] = rhoi
+            
+            self.rho2 = self.arho*self.d2**(self.bm-3.)
+            self.rho2[self.rho2>rhoi] = rhoi
+            
+            self.vt = self.av*self.d**self.bv
+            self.vt_edges = self.av*self.d_edges**self.bv
+            
+            self.vt[self.vt>10.] = 10.
+            self.vt_edges[self.vt_edges>10.]=10.
+            
+            self.vt1 = self.vt_edges[:-1].copy() 
+            self.vt2 = self.vt_edges[1:].copy()
+            
+        elif ptype=='rain':
+                     
+            self.ar = extended_brandes(self.d)
+            self.ar1 = extended_brandes(self.d1)
+            self.ar2 = extended_brandes(self.d2)
+                       
+            self.rho = np.ones_like(self.d)  # g/cm^3
+            self.rho1 = np.ones_like(self.d1) # g/cm^3
+            self.rho2 = np.ones_like(self.d2) # g/cm^3
+            
+            self.vt  = rain_terminal_velocity(self.d)
+            self.vt1 = rain_terminal_velocity(self.d1)
+            self.vt2 = rain_terminal_velocity(self.d2)
+            self.vt_edges = rain_terminal_velocity(self.d_edges)
+        
+        # if ptype=='rain':
+        #     # Use Brandes (2002) relation which is a curve fit to laboratory measurements from
+        #     # Gunn and Kinzer (1949) and Pruppacher and Pitter (1971)
+        #     # See (https://doi.org/10.1175/1520-0450(2002)041<0674:EIREWA>2.0.CO;2)
+        #     vt_brandes = lambda d: -0.1021 + 4.932*d-0.9551*d**2+0.07934*d**3-0.002362*d**4
+        #     dmin_brandes = 0.1 
+        #     dmax_brandes = 8.1
+        #     #self.vt = -0.1021 + 4.932*self.d-0.9551*self.d**2+0.07934*self.d**3-0.002362*self.d**4
+        #     #self.vt_edges = -0.1021 + 4.932*self.d_edges-0.9551*self.d_edges**2+0.07934*self.d_edges**3-0.002362*self.d_edges**4
+        #     self.vt = vt_brandes(self.d)
+        #     self.vt[self.d>dmax_brandes] = vt_brandes(dmax_brandes)
+        #     self.vt[self.d<dmin_brandes] = vt_brandes(dmin_brandes)
+            
+        #     self.vt_edges = vt_brandes(self.d_edges)
+        #     self.vt_edges[self.d_edges>dmax_brandes] = vt_brandes(dmax_brandes)
+        #     self.vt_edges[self.d_edges<dmin_brandes] = vt_brandes(dmin_brandes)
+            
+            
+        # else:
+        
         # Set up particle properties for mass grid
         # Fall speed (m/s)
-        self.vt = self.av*self.d**self.bv
-        self.vt_edges = self.av*self.d_edges**self.bv
         
-        if ptype=='rain':
-            self.vt = np.clip(-0.1021 + 4.932*self.d-0.9551*self.d**2+0.07934*self.d**3-0.002362*self.d**4,0.01,10.)
-            self.vt_edges = np.clip(-0.1021 + 4.932*self.d_edges-0.9551*self.d_edges**2+0.07934*self.d_edges**3-0.002362*self.d_edges**4,0.01,10.)
+        #self.vt = np.clip(-0.1021 + 4.932*self.d-0.9551*self.d**2+0.07934*self.d**3-0.002362*self.d**4,0.01,10.)
+        #self.vt_edges = np.clip(-0.1021 + 4.932*self.d_edges-0.9551*self.d_edges**2+0.07934*self.d_edges**3-0.002362*self.d_edges**4,0.01,10.)
+
+        # ORIGINAL for RAIN
+        # self.vt = self.av*self.d**self.bv
+        # self.vt_edges = self.av*self.d_edges**self.bv
         
+        # self.vt[self.vt>10.] = 10.
+        # self.vt_edges[self.vt_edges>10.]=10.
         
-        self.vt[self.vt>10.] = 10.
-        self.vt_edges[self.vt_edges>10.]=10.
-        
-        self.vt1 = self.vt_edges[:-1].copy() 
-        self.vt2 = self.vt_edges[1:].copy()
+        # self.vt1 = self.vt_edges[:-1].copy() 
+        # self.vt2 = self.vt_edges[1:].copy()
 
         # Midpoint Area (mm^2)
-        self.A = 0.25*np.pi*self.dmax**2.
+        # !!! Note, testing here
+        #self.A = 0.25*np.pi*self.dmax**2.
+        self.A = 0.25*np.pi*self.d**2.
         # Edge Area (mm^2)
         self.A_edges = 0.25*np.pi*self.d_edges**2.
         self.A1 = self.A_edges[:-1].copy() 
@@ -136,58 +192,70 @@ class dist():
         self.Mbins = np.zeros_like(self.xbins).astype(np.float64)
         self.Nbins = np.zeros_like(self.xbins).astype(np.float64)
         
-        if radar:
-            # Radar stuff
-            self.wavl = 110.
-            #self.sigma = 0.
-            self.ew0 = complex(81.0, 23.2)  # Dielectric constant of water at 0C
-            self.kw = (np.abs((self.ew0 - 1) / (self.ew0 + 2)))**2
-            self.cz = (4.0 * self.wavl**4)/(np.pi**4 * self.kw)
-            self.ckdp = (0.18 / np.pi) * self.wavl
-            self.rhoi = 0.92
+        # if radar: # NOTE. Almost certainly I should only update the distributions after the model runs. 
+        #             # No need to update the radar variables during runtime.
+        #     # Radar stuff
+        #     self.wavl = 110.
+        #     #self.sigma = 0.
+        #     self.ew0 = complex(81.0, 23.2)  # Dielectric constant of water at 0C
+        #     self.kw = (np.abs((self.ew0 - 1) / (self.ew0 + 2)))**2
+        #     self.cz = (4.0 * self.wavl**4)/(np.pi**4 * self.kw)
+        #     self.ckdp = (0.18 / np.pi) * self.wavl
+        #     self.rhoi = 0.92
             
-            # Calculate scattering amplitudes and whatnot
-            if self.ptype=='rain':
+        #     # Calculate scattering amplitudes and whatnot
+        #     if self.ptype=='rain':
                 
-                self.rho1 = 1.0 # g/cm^3
-                self.rho2 = 1.0 # g/cm^3
+        #         self.rho1 = 1.0 # g/cm^3
+        #         self.rho2 = 1.0 # g/cm^3
                 
-                self.eps1 = dielectric_water(Tc+273.15,self.ew0)
-                self.eps2 = self.eps1
+        #         self.eps1 = dielectric_water(Tc+273.15,self.ew0)
+        #         self.eps2 = self.eps1
                 
-                self.ar = 0.9951 + 0.0251*self.d-0.03644*self.d**2+0.00503*self.d**3-0.0002492*self.d**4
-                self.ar1 = 0.9951 + 0.0251*self.d1-0.03644*self.d1**2+0.00503*self.d1**3-0.0002492*self.d1**4
-                self.ar2 = 0.9951 + 0.0251*self.d2-0.03644*self.d2**2+0.00503*self.d2**3-0.0002492*self.d2**4
+        #         self.ar = 0.9951 + 0.0251*self.d-0.03644*self.d**2+0.00503*self.d**3-0.0002492*self.d**4
+        #         self.ar1 = 0.9951 + 0.0251*self.d1-0.03644*self.d1**2+0.00503*self.d1**3-0.0002492*self.d1**4
+        #         self.ar2 = 0.9951 + 0.0251*self.d2-0.03644*self.d2**2+0.00503*self.d2**3-0.0002492*self.d2**4
     
-                self.ar[self.ar>1.0] = 1.0 
-                self.ar[self.ar<0.56] = 0.56
+        #         self.ar[self.ar>1.0] = 1.0 
+        #         self.ar[self.ar<0.56] = 0.56
                 
-                self.ar1[self.ar1>1.0] = 1.0 
-                self.ar1[self.ar1<0.56] = 0.56
+        #         self.ar1[self.ar1>1.0] = 1.0 
+        #         self.ar1[self.ar1<0.56] = 0.56
                 
-                self.ar2[self.ar2>1.0] = 1.0 
-                self.ar2[self.ar2<0.56] = 0.56
+        #         self.ar2[self.ar2>1.0] = 1.0 
+        #         self.ar2[self.ar2<0.56] = 0.56
                 
-            elif self.ptype=='snow':
+        #     elif self.ptype=='snow':
                 
-                self.ar1 = self.ar*np.ones_like(self.d1)
-                self.ar2 = self.ar*np.ones_like(self.d2)
+        #         self.ar1 = self.ar*np.ones_like(self.d1)
+        #         self.ar2 = self.ar*np.ones_like(self.d2)
                 
-                self.rho1 = self.arho*self.d1**(self.bm-3.)  
-                self.rho1[self.rho1>self.rhoi] = 0.92 
+        #         self.rho1 = self.arho*self.d1**(self.bm-3.)  
+        #         self.rho1[self.rho1>self.rhoi] = 0.92 
                 
-                self.rho2 = self.arho*self.d2**(self.bm-3.)
-                self.rho2[self.rho2>self.rhoi] = 0.92 
+        #         self.rho2 = self.arho*self.d2**(self.bm-3.)
+        #         self.rho2[self.rho2>self.rhoi] = 0.92 
                 
-                epi = dielectric_ice(self.wavl,Tc+273.15)
+        #         epi = dielectric_ice(self.wavl,Tc+273.15)
                 
-                Ki = (epi-1.)/(epi+2.)
+        #         Ki = (epi-1.)/(epi+2.)
                 
-                self.eps1 = (1+2*(self.rho1/self.rhoi)*Ki)/(1-(self.rho1/self.rhoi)*Ki)
-                self.eps2 = (1+2*(self.rho2/self.rhoi)*Ki)/(1-(self.rho2/self.rhoi)*Ki)
-            
+        #         self.eps1 = (1+2*(self.rho1/self.rhoi)*Ki)/(1-(self.rho1/self.rhoi)*Ki)
+        #         self.eps2 = (1+2*(self.rho2/self.rhoi)*Ki)/(1-(self.rho2/self.rhoi)*Ki)
+                
+        #         self.angs = angular_moments(self.sigma)
+                
+        #         self.la1, self.lb1 = spheroid_factors(self.ar1)
+        #         self.la2, self.lb2 = spheroid_factors(self.ar2)
+                
+        #         self.fscatt_pre1 = ((np.pi**2 * (self.d1)**3) / (6 * self.wavl**2))
+        #         self.fscatt_pre2 = ((np.pi**2 * (self.d2)**3) / (6 * self.wavl**2))                   
+                
+        #         self.eps1_factor = (1 / (self.eps1 - 1))
+        #         self.eps2_factor = (1 / (self.eps2 -1))
+    
         
-    def bin_gamma_dist(self,Nt0=1.,Mt0=1.,mu0=3,Dm0=2,normalize=False):
+    def bin_gamma_dist(self,Nt0=1.,Mt0=1.,mbar=None,mu0=3,Dm0=2,normalize=False):
         
         '''
         Description: Set up bins and integrals if using only mass moment
@@ -210,7 +278,8 @@ class dist():
         
             #self.nbins = (nu)**(nu)/scip.gamma(nu)*self.xbins**(nu-1.)*np.exp(-nu*self.xbins)
             
-            mbar = Mt0/Nt0
+            if mbar is None:
+                mbar = Mt0/Nt0
             
             self.nedges = (self.Nt0/mbar)*((nu**nu)/scip.gamma(nu))*(self.xedges/mbar)**(nu-1.)*np.exp(-nu*self.xedges/mbar)
         
@@ -235,14 +304,12 @@ class dist():
     # NOTE: Need to clip xm to left/right bin boundaries
     def diagnose_1mom(self):
          
-            
         self.Nbins = self.Mbins/self.xbins
         
         self.n1 = self.n2 = self.cki = self.Mbins/self.dxi 
-               
-            
-        if self.radar:
-            self.radar_bins() 
+                        
+        # if self.radar:
+        #     self.radar_bins() 
                   
         # Diagnose mass- number-weighted bin fallspeeds and bin residence times
         self.vtm = self.vt.copy()
@@ -263,71 +330,69 @@ class dist():
         self.vtm[self.vtm>10.] = 10. 
         self.vtn[self.vtn>10.] = 10.
 
-
-    # Function for diagnosing linear distribution function following Wang et al. (2008)
-    # NOTE: Need to clip xm to left/right bin boundaries
+   
     def diagnose(self):
-
-        dx = self.xi2-self.xi1 #?
+        
+        # Google Gemini enhanced version. Needed to bug fix. (see original above)
+        eps = 1e-32 # Protection against div by zero
+        
+        # 1. Clean up input noise
+        self.Mbins[self.Mbins < eps] = 0.
+        self.Nbins[self.Nbins < eps] = 0.
+        
+        dx = self.xi2 - self.xi1
+        xm = np.zeros_like(self.Mbins)
+        
+        # 2. Safe mean calculation
+        safe = self.Nbins > 0.
+        xm[safe] = self.Mbins[safe] / self.Nbins[safe]
+        
+        # 3. Handle edge cases (xm must be within [xi1, xi2])
+        xm = np.clip(xm, self.xi1 + eps, self.xi2 - eps)
     
-        dx2 = dx**2
-
-        xm = self.xbins.copy()
+        xm1 = xm / self.xi1
+        cond_null = (self.Mbins <= 0.) | (self.Nbins <= 0.)
         
-        Mbins = self.Mbins.copy() # Mass will be conserved totally
-        Nbins = self.Nbins.copy() # Might need to adjust Number if xm is too large or too small
+        # Boundary logic for Scenarios A, B, C
+        bound_low = (2. + self.rhobins) / 3.
+        bound_high = (1. + 2. * self.rhobins) / 3.
         
-        xm[Nbins>0.] = Mbins[Nbins>0.]/Nbins[Nbins>0.]
-
-        xm1 = xm/self.xi1 #?
-
-        cond_null = (Mbins==0.)|(Nbins==0.)   
-        cond_a = ((2.+self.rhobins)/3.<=xm1) & (xm1<=(1.+2.*self.rhobins)/3.) & (~cond_null) 
-        cond_b = (1.<= xm1) & (xm1 < (2.+self.rhobins)/3.) & (~cond_null) 
-        cond_c = ((1.+2.*self.rhobins)/3. < xm1) & (xm1<=self.rhobins) & (~cond_null) 
-        
-        x1i = self.xi1.copy()
-        x2i = self.xi2.copy()
-        n1i = np.zeros_like(Mbins)
-        n2i = np.zeros_like(Mbins) 
-        flag = np.zeros_like(Mbins) 
-        
-        # Scenario a: distribution spans full bin
-        #x1i[cond_a] = self.xi1[cond_a] 
-        #x2i[cond_a] = self.xi2[cond_a] 
-        n1i[cond_a] = 2*(Nbins[cond_a]*(self.xi1[cond_a]+2.*self.xi2[cond_a])-3.*Mbins[cond_a])/(dx2[cond_a])
-        n2i[cond_a] = 2*(-Nbins[cond_a]*(2.*self.xi1[cond_a]+self.xi2[cond_a])+3.*Mbins[cond_a])/(dx2[cond_a])
-        flag[cond_a] = 1
-
-        # Scenario b: n1>0., n2==0.
-        #x1i[cond_b] = self.xi1[cond_b] 
-        x2i[cond_b] = self.xi1[cond_b]+3.*(xm[cond_b]-self.xi1[cond_b])
-        n1i[cond_b] = 2.*Nbins[cond_b]/(3.*(xm[cond_b]-self.xi1[cond_b]))
+        cond_a = (bound_low <= xm1) & (xm1 <= bound_high) & (~cond_null)
+        cond_b = (1. <= xm1) & (xm1 < bound_low) & (~cond_null)
+        cond_c = (bound_high < xm1) & (xm1 <= self.rhobins) & (~cond_null)
+    
+        x1i, x2i = self.xi1.copy(), self.xi2.copy()
+        n1i, n2i = np.zeros_like(xm), np.zeros_like(xm)
+    
+        # Scenario A: Spans full bin
+        n1i[cond_a] = 2*(self.Nbins[cond_a]*(self.xi1[cond_a] + 2.*self.xi2[cond_a]) - 3.*self.Mbins[cond_a]) / (dx[cond_a]**2)
+        n2i[cond_a] = 2*(-self.Nbins[cond_a]*(2.*self.xi1[cond_a] + self.xi2[cond_a]) + 3.*self.Mbins[cond_a]) / (dx[cond_a]**2)
+    
+        # Scenario B: Truncated at the right
+        x2i[cond_b] = self.xi1[cond_b] + 3.*(xm[cond_b] - self.xi1[cond_b])
+        n1i[cond_b] = 2.*self.Nbins[cond_b] / (3.*np.maximum(eps, xm[cond_b] - self.xi1[cond_b]))
         n2i[cond_b] = 0.
-        flag[cond_b]= 2
+    
+        # Scenario C: Truncated at the left
+        x1i[cond_c] = self.xi2[cond_c] - 3.*(self.xi2[cond_c] - xm[cond_c])
+        n1i[cond_c] = 0.
+        n2i[cond_c] = 2.*self.Nbins[cond_c] / (3.*np.maximum(eps, self.xi2[cond_c] - xm[cond_c]))
+    
+        # 4. Correct local slope/intercept
+        # Use local_dx because scenarios B/C compress the distribution
+        local_dx = x2i - x1i
+        self.aki = np.zeros_like(xm)
+        self.cki = np.zeros_like(xm)
         
-        # Scenario c: n2>0., n1==0.
-        x1i[cond_c] = self.xi2[cond_c]-3.*(self.xi2[cond_c]-xm[cond_c]) 
-        #x2i[cond_c] = self.xi2[cond_c] 
-        n1i[cond_c] = 0. 
-        n2i[cond_c] = 2.*Nbins[cond_c]/(3.*(self.xi2[cond_c]-xm[cond_c]))
-        flag[cond_c]= 3
+        valid = ~cond_null
+        self.aki[valid] = (n2i[valid] - n1i[valid]) / np.maximum(eps, local_dx[valid])
+        self.cki[valid] = (n1i[valid]*x2i[valid] - x1i[valid]*n2i[valid]) / np.maximum(eps, local_dx[valid])
         
-        # Null Scenario
-        flag[cond_null] = 0
-
-        self.aki = (n2i-n1i)/dx # Slope of linear subgrid distribution
-        self.cki = (n1i*x2i-x1i*n2i)/dx # intercept of linear subgrid distribution
+        # Store state
+        self.x1, self.x2, self.n1, self.n2 = x1i, x2i, n1i, n2i     
         
-        # Update parameters
-        self.x1 = x1i.copy() 
-        self.x2 = x2i.copy()
-        self.n1 = n1i.copy() 
-        self.n2 = n2i.copy() 
-        self.flag = flag.copy()
-            
-        if self.radar:
-            self.radar_bins() 
+        # if self.radar:
+        #     self.radar_bins() 
                   
         # Diagnose mass- number-weighted bin fallspeeds and bin residence times
         self.vtm = self.vt.copy()
@@ -347,7 +412,8 @@ class dist():
 
         self.vtm[self.vtm>10.] = 10. 
         self.vtn[self.vtn>10.] = 10.
-        
+           
+    
     def check_moments(self):
         
         Ncheck = 0.5*(self.x2-self.x1)*(self.n1+self.n2) 
@@ -359,28 +425,31 @@ class dist():
         
         print('Ndiff = {}'.format(Ncheck-self.Nbins))
         print('Mdiff = {}'.format(Mcheck-self.Mbins))
-         
+       
         
     def radar_bins(self):
         
-        angs = angular_moments(self.sigma)
-        
-        ang1 = angs[0]
-        ang2 = angs[1]
-        ang3 = angs[2]
-        ang4 = angs[3]
-        ang5 = angs[4]
+        ang1 = self.angs[0]
+        ang2 = self.angs[1]
+        ang3 = self.angs[2]
+        ang4 = self.angs[3]
+        ang5 = self.angs[4]
         #ang6 = angs[5]
-        ang7 = angs[6]
+        ang7 = self.angs[6]
         
-        la1, lb1 = spheroid_factors(self.ar1)
-        la2, lb2 = spheroid_factors(self.ar2)
+        # fhh_180_1 = fhh_0_1 = (((np.pi**2 * (self.d1)**3) / (6 * self.wavl**2)) * (1 / (self.lb1 + (1 / (self.eps1 -1)))))  
+        # fvv_180_1 = fvv_0_1 = (((np.pi**2 * (self.d1)**3) / (6 * self.wavl**2)) * (1 / (self.la1 + (1 / (self.eps1 -1)))))
         
-        fhh_180_1 = fhh_0_1 = (((np.pi**2 * (self.d1)**3) / (6 * self.wavl**2)) * (1 / (lb1 + (1 / (self.eps1 -1)))))  
-        fvv_180_1 = fvv_0_1 = (((np.pi**2 * (self.d1)**3) / (6 * self.wavl**2)) * (1 / (la1 + (1 / (self.eps1 -1)))))
+        # fhh_180_2 = fhh_0_2 = (((np.pi**2 * (self.d2)**3) / (6 * self.wavl**2)) * (1 / (self.lb2 + (1 / (self.eps2 -1)))))  
+        # fvv_180_2 = fvv_0_2 = (((np.pi**2 * (self.d2)**3) / (6 * self.wavl**2)) * (1 / (self.la2 + (1 / (self.eps2 -1)))))
         
-        fhh_180_2 = fhh_0_2 = (((np.pi**2 * (self.d2)**3) / (6 * self.wavl**2)) * (1 / (lb2 + (1 / (self.eps2 -1)))))  
-        fvv_180_2 = fvv_0_2 = (((np.pi**2 * (self.d2)**3) / (6 * self.wavl**2)) * (1 / (la2 + (1 / (self.eps2 -1)))))
+        
+        fhh_180_1 = fhh_0_1 = self.fscatt_pre1* (1 / (self.lb1 + self.eps1_factor))  
+        fvv_180_1 = fvv_0_1 = self.fscatt_pre1* (1 / (self.la1 + self.eps1_factor))  
+        
+        fhh_180_2 = fhh_0_2 = self.fscatt_pre2* (1 / (self.lb2 + self.eps2_factor))  
+        fvv_180_2 = fvv_0_2 = self.fscatt_pre2* (1 / (self.la2 + self.eps2_factor))
+        
         
         fZh1 = self.cz * ((np.abs(fhh_180_1))**2 -
                    2.0 * ang2 * np.real(np.conj(fhh_180_1) * (fhh_180_1 - fvv_180_1)) +
@@ -427,6 +496,7 @@ class dist():
         
         # Linearly interpolate scattering amplitudes across each bin
         # and then integrate each term to find radar values
+        # Integrations are: 1000 * int g(x) * n(x) dx = 1000 * int (ak_v * x + ck_v) * (aki*x +cki) 
         self.zh = 1000.*(ak_zh*self.moments(1.)+ck_zh*self.moments(0.))
         self.zv = 1000.*(ak_zv*self.moments(1.)+ck_zv*self.moments(0.))
         self.kdp = 1000.*(ak_kdp*self.moments(1.)+ck_kdp*self.moments(0.))
@@ -547,6 +617,90 @@ class dist():
             return fig, ax
 
 
+# Function for diagnosing linear distribution function following Wang et al. (2008)
+# NOTE: Need to clip xm to left/right bin boundaries
+
+# Mbins = (dnum,Hlen,bins,Tout)
+def update_1mom(Mbins,dxi):
+    
+   # return Mbins/dxi[None,None,:]
+
+    return Mbins/dxi
+
+    
+
+              
+    
+    #!!! TESTING
+    #self.Mfbins =self.av*(self.am)**(-self.bv/self.bm)*self.moments((self.bm+self.bv)/self.bm)
+    #self.Nfbins =self.av*(self.am)**(-self.bv/self.bm)*self.moments((self.bv)/self.bm)
+    
+    #self.Mfbins = self.vt*self.Mbins
+    #self.Nfbins = self.vt*self.Nbins
+    
+
+
+   
+def update_2mom(Mbins,Nbins,rhobins,bound_low,bound_high,dx,xi1,xi2):
+    # Google Gemini enhanced version. Needed to bug fix. (see original above)
+    
+    eps = 1e-32
+    
+    # 1. Clean noise across the 3D block
+    Mbins[Mbins < eps] = 0.
+    Nbins[Nbins < eps] = 0.
+    
+    # 2. Vectorized Mean mass calculation
+    xm = np.zeros_like(Mbins)
+    safe = Nbins > 0.
+    np.divide(Mbins, Nbins, out=xm, where=safe)
+    
+    # 3. Handle Scenario Boundaries
+    xm = np.clip(xm, xi1 + eps, xi2 - eps)
+    xm1 = xm / xi1
+    
+    # Scenario Conditions (masks of shape (dnum, Hlen, bins))
+    cond_null = (Mbins <= 0.) | (Nbins <= 0.)
+    cond_a = (bound_low <= xm1) & (xm1 <= bound_high) & (~cond_null)
+    cond_b = (1. <= xm1) & (xm1 < bound_low) & (~cond_null)
+    cond_c = (bound_high < xm1) & (xm1 <= rhobins) & (~cond_null)
+    
+    # Output arrays
+    x1i, x2i = xi1.copy(), xi2.copy()
+    n1i, n2i = np.zeros_like(xm), np.zeros_like(xm)
+    
+    # Scenario A Logic (Fully Vectorized)
+    n1i[cond_a] = 2 * (Nbins[cond_a] * (xi1[cond_a] + 2.*xi2[cond_a]) - 3.*Mbins[cond_a]) / (dx[cond_a]**2)
+    n2i[cond_a] = 2 * (-Nbins[cond_a] * (2.*xi1[cond_a] + xi2[cond_a]) + 3.*Mbins[cond_a]) / (dx[cond_a]**2)
+    
+    # Scenario B Logic
+    x2i[cond_b] = xi1[cond_b] + 3. * (xm[cond_b] - xi1[cond_b])
+    n1i[cond_b] = 2. * Nbins[cond_b] / (3. * np.maximum(eps, xm[cond_b] - xi1[cond_b]))
+    n2i[cond_b] = 0.
+    
+    # Scenario C Logic
+    x1i[cond_c] = xi2[cond_c] - 3. * (xi2[cond_c] - xm[cond_c])
+    n2i[cond_c] = 2. * Nbins[cond_c] / (3. * np.maximum(eps, xi2[cond_c] - xm[cond_c]))
+    n1i[cond_c] = 0.
+    
+    valid = ~cond_null
+    
+    aki = np.zeros_like(xm)
+    cki = np.zeros_like(xm)
+    
+    # 4. Final Coefficients
+    local_dx = np.maximum(eps, x2i-x1i)
+
+    aki[valid] = (n2i[valid]-n1i[valid])/local_dx[valid]
+    cki[valid] = (n1i[valid]*x2i[valid]-x1i[valid]*n2i[valid])/local_dx[valid]
+    
+    cond = 1*cond_a 
+    cond[cond_b] = 2 
+    cond[cond_c] = 3
+    
+    return aki, cki, x1i, x2i
+ 
+
 def spheroid_factors(ar):
     
     La = (1./3.)*np.ones_like(ar)
@@ -633,3 +787,49 @@ def dielectric_water(t,eps_0,t0=273.15,wave=110.):
     ew = complex(ew_real, ew_imag)
 
     return ew
+
+
+def extended_brandes(d):
+    """
+    Modified Brandes AR fit function:
+    - Unity (1.0) at d=0
+    - Matches original poly between ~0.3743 and 10
+    - Levels off to 0.4 for d > 10
+    """
+    d = np.atleast_1d(d)
+    res = np.zeros_like(d)
+    
+    # Constants
+    d_crit = 0.37426095
+    p_max = 0.99966286
+    v_10 = 0.4131  # P(10)
+    #s_10 = -0.1096 # P'(10)
+    L = 0.4        # Asymptote
+    k = 8.3664     # Decay constant to match slope at d=10
+    
+    # 1. Start at Unity and blend to Max
+    mask1 = d < d_crit
+    res[mask1] = p_max + (1.0 - p_max) * (1.0 - np.sin((np.pi/2) * (d[mask1]/d_crit)))
+    
+    # 2. Original Polynomial region
+    mask2 = (d >= d_crit) & (d <= 10)
+    res[mask2] = (0.9951 + 0.0251*d[mask2] - 0.03644*d[mask2]**2 + 
+                  0.005303*d[mask2]**3 - 0.0002492*d[mask2]**4)
+    
+    # 3. Level off to 0.4
+    mask3 = d > 10
+    res[mask3] = L + (v_10 - L) * np.exp(-k * (d[mask3] - 10))
+    
+    return res if res.size > 1 else res.item()
+
+
+
+def rain_terminal_velocity(d_mm):
+    """
+    Calculates terminal velocity (m/s) from diameter (mm) using a Weibull fit to
+    the Gunn & Kinzer (1949) and Beard (1979) measurements.
+    Corrects the coefficients from Table 2 of Simmel (2002) to match Gunn & Kinzer (1949)
+    and ensures physical continuity.
+    """
+
+    return 9.17*(1.-np.exp(-(1.85*d_mm)**(0.69)))

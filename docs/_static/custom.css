@@ -1,0 +1,27 @@
+/* This targets the logo specifically within the RTD sidebar */
+.wy-side-nav-search img.logo {
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
+    width: 150px !important;  /* Force the width */
+    height: auto !important;  /* Maintain aspect ratio */
+    max-width: 100%;
+    background: transparent;
+}
+
+/* Optional: Adds a little breathing room above/below the logo */
+.wy-side-nav-search {
+    padding: 20px 0;
+}
+
+/* Change the color of the top-left sidebar area */
+/*.wy-side-nav-search {
+/*    background-color: #2c3e50; /* Replace with a hex color from your logo! */
+/*}
+
+/* Change the project name text color/size */
+.wy-side-nav-search > a {
+    color: #ffffff;
+    font-weight: bold;
+    font-size: 110%;
+}
