@@ -32,7 +32,7 @@ No installation required! Click the badge below to launch these notebooks in a l
 :::
 
 :::{grid-item-card} ⛈️ 1D Column Examples
-:img-top: _static/Jupyter_logo.svg
+:img-top: _static/Full_example.svg
 :link: ../notebooks/BM1D_full_1d_examples
 :link-type: doc
 :class-header: sd-bg-light
