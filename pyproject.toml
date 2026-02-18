@@ -18,6 +18,7 @@ dependencies = [
 		"numba>=0.61.2",
 		"matplotlib>=3.10.3",
 		"netcdf4>=1.7.2",
+		"cmweather>=0.3.2",
 		]
 
 # optional:
