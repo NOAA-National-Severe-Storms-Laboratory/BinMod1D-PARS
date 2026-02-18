@@ -11,7 +11,7 @@
 explicitly simulates the evolution of rain or snow particle size distributions 
 (PSDs) and the resulting polarimetric radar profiles due to collisional 
 coalescence and breakup processes. These calculations represent a notoriously 
-difficult numerical problem and requires special consideration. BinMod1D however 
+difficult numerical problem and requires special consideration. **BinMod1D** however 
 makes it easy to both simulate PSD evolution in time and in height and visualize
 results from a variety of different formats.
 
@@ -39,7 +39,7 @@ BinMod1D can run in three different modes:
 
 :::{sidebar} Key Highlights
 * **Explicit Bin Physics:** No assumed Gamma distributions.
-* **Radar Ready:** Includes polarimetric operators for Z, ZDR, and KDP.
+* **Radar Ready:** Includes polarimetric operators for $Z$, $Z_{\mathrm{DR}}$, $K_{\mathrm{dp}}$, and $\rho_{\mathrm{hv}}$.
 * **Fast Solver:** Optimized for research-grade performance.
 :::
 
