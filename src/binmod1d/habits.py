@@ -11,7 +11,7 @@ def habits():
     
     habits = {}
     
-    habits['rain'] = {'arho':1.0,
+    habits['rain'] = {'arho':1.0, # g/cm^3 * 1/mm
                       'brho':0., 
                       'av':3.78,
                       'bv':0.67, 
@@ -19,7 +19,7 @@ def habits():
                       'br':0., 
                       'sig':10.}
     
-    habits['rain']['am'] =  0.001*(np.pi/6.)*habits['rain']['arho'] 
+    habits['rain']['am'] =  0.001*(np.pi/6.)*habits['rain']['arho'] # units of g 
     habits['rain']['bm'] =  3.-habits['rain']['brho']
     
     habits['snow'] = {'arho':0.2,
@@ -66,7 +66,13 @@ def fragments(dist='exp'):
         
         fragments = {'dist':dist,
                      'lamf':10.,
-                     'Df_med':0.55, 
-                     'Df_mode':0.5}
+                     'Df_med':0.25, 
+                     'Df_mode':0.2}
+        
+    elif dist=='Straub':
+        
+        fragments = {'dist':dist,
+                     'lamf':10.}
+        
         
     return fragments
