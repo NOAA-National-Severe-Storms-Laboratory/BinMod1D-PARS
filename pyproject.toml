@@ -13,7 +13,7 @@ license = {text = "MIT"}           # or point to license file
 dependencies = [
 		"numpy>=2.2.6",
 		"mpmath>=1.3.0",
-		"scipy>=1.16.0",
+		"scipy>=1.15.3",
 		#"joblib>=1.5.1",
 		"numba>=0.61.2",
 		"matplotlib>=3.10.3",
