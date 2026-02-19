@@ -294,6 +294,23 @@ rain_SS.plot_moments_radar()
 :width: 100%
 :align: center
 ```
+Notice that the mass flux, instead of the total mass, is conserved for all heights. 
+Other variables decrease or increase in a generalized power-law like way.
+
+We can see the evolution of the particle size distributions with height by using
+the **`plot_dists_height()`** method. We'll create a figure with 3 subpanels where
+we'll plot the size distribution at $3.0$ km, $1.5$ km, and $0$ km. To do this,
+we'll use the `dz` input which specifies the dz spacing for each subplots between
+`ztop` and `zbot`.
+
+```python
+rain_SS.plot_dists_height(dz=1.5)
+```
+```{image} _static/tutorial_dists_height_SS.svg
+:width: 600px
+:align: center
+```
+
 
 
 
