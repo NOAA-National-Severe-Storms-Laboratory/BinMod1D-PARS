@@ -845,6 +845,7 @@ class Interaction():
         
         '''
         Sets up Straub et al. (2010) Fragment distributions.
+        CURRENTLY NOT IMPLEMENTED!
         '''
         
         # Get Straub distribution parameters.

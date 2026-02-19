@@ -170,15 +170,15 @@ class dist():
         #self.vt = np.clip(-0.1021 + 4.932*self.d-0.9551*self.d**2+0.07934*self.d**3-0.002362*self.d**4,0.01,10.)
         #self.vt_edges = np.clip(-0.1021 + 4.932*self.d_edges-0.9551*self.d_edges**2+0.07934*self.d_edges**3-0.002362*self.d_edges**4,0.01,10.)
 
-        # ORIGINAL for RAIN
-        # self.vt = self.av*self.d**self.bv
-        # self.vt_edges = self.av*self.d_edges**self.bv
+        # ORIGINAL Atlas power-law for RAIN
+        self.vt = self.av*self.d**self.bv
+        self.vt_edges = self.av*self.d_edges**self.bv
         
-        # self.vt[self.vt>10.] = 10.
-        # self.vt_edges[self.vt_edges>10.]=10.
+        self.vt[self.vt>10.] = 10.
+        self.vt_edges[self.vt_edges>10.]=10.
         
-        # self.vt1 = self.vt_edges[:-1].copy() 
-        # self.vt2 = self.vt_edges[1:].copy()
+        self.vt1 = self.vt_edges[:-1].copy() 
+        self.vt2 = self.vt_edges[1:].copy()
 
         # Midpoint Area (mm^2)
         # !!! Note, testing here
@@ -832,4 +832,6 @@ def rain_terminal_velocity(d_mm):
     and ensures physical continuity.
     """
 
-    return 9.17*(1.-np.exp(-(1.85*d_mm)**(0.69)))
+    #return 9.17*(1.-np.exp(-(1.85*d_mm)**(0.69)))
+
+    return 9.43*(1.-np.exp(-(0.565*d_mm)**(1.147))) # Equation 5 from Best (1950) https://doi.org/10.1002/qj.49707632905

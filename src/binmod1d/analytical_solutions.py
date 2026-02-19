@@ -6,7 +6,7 @@ Created on Wed Sep 10 09:40:10 2025
 """
 import numpy as np
 import mpmath
-from scipy.special import gamma, gammaln, hyp2f1, i0, i1
+from scipy.special import gamma, gammaln, hyp2f1
 from scipy.special import i0e, i1e # Import scaled Bessel functions
 #from scipy.optimize import fsolve
 
@@ -490,24 +490,24 @@ def Feingold_dists(xbins, t, nu, E, B, gam, kernel_type='SBE'):
     return npbins
 
 
-def Feingold_dists_ORIG(xbins,t,nu,E,B,gam,kernel_type='SBE'):
+# def Feingold_dists_ORIG(xbins,t,nu,E,B,gam,kernel_type='SBE'):
     
-    if kernel_type=='SBE':
-        n0_xt = (1./gamma(nu))*(nu**nu)*xbins[:,None]**(nu-1)*np.exp(-nu*xbins[:,None]) # initial dist.
-        npbins = (n0_xt+gam*(np.exp(B*gam*t[None,:])-1)*np.exp(-gam*xbins[:,None]))/(1+(1./gam)*(np.exp(B*gam*t[None,:])-1)) 
+#     if kernel_type=='SBE':
+#         n0_xt = (1./gamma(nu))*(nu**nu)*xbins[:,None]**(nu-1)*np.exp(-nu*xbins[:,None]) # initial dist.
+#         npbins = (n0_xt+gam*(np.exp(B*gam*t[None,:])-1)*np.exp(-gam*xbins[:,None]))/(1+(1./gam)*(np.exp(B*gam*t[None,:])-1)) 
         
-    elif kernel_type=='SCE/SBE':
+#     elif kernel_type=='SCE/SBE':
         
-        # NOTE: only valid for C = K*E and B = K*(1-E)
+#         # NOTE: only valid for C = K*E and B = K*(1-E)
         
         
-        #E_new = 1.*E
+#         #E_new = 1.*E
         
-        E_new = 1000.*E
+#         E_new = 1000.*E
     
-        eta = 0.5*E_new*gam*(2.-E_new)
+#         eta = 0.5*E_new*gam*(2.-E_new)
     
-        npbins = (1-E_new)*gam**2*(i0(eta*xbins)-i1(eta*xbins))*np.exp(-(gam-eta)*xbins)
+#         npbins = (1-E_new)*gam**2*(i0(eta*xbins)-i1(eta*xbins))*np.exp(-(gam-eta)*xbins)
     
     
-    return npbins
+#     return npbins

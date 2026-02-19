@@ -1,7 +1,7 @@
 ```{image} _static/GPT_Banner_new.png
 :width: 800px
 :align: center
-:target: [https://github.com/NOAA-National-Severe-Storms-Laboratory/BinMod1D-PARS/](https://github.com/NOAA-National-Severe-Storms-Laboratory/BinMod1D-PARS/)
+:target: https://github.com/NOAA-National-Severe-Storms-Laboratory/BinMod1D-PARS/
 ```
 # Introduction
 
@@ -20,17 +20,20 @@ results from a variety of different formats.
 BinMod1D can run in three different modes:
 
 ::::{grid} 3
-:gutter: 2
+:gutter: 3
 
 :::{grid-item-card} 📦 Box Model
-**Time-only** simulation. Perfect for testing microphysical kernels and coalescence rates.
+:class-card: pop-card
+**Time-only** simulation. Perfect for testing microphysical kernels and coalescence and breakup rates.
 :::
 
 :::{grid-item-card} 🏔 Steady-State
-**Height-only** profile. Calculates the equilibrium state where $t \to \infty$.
+:class-card: pop-card
+**Height-only** profiles. Calculates the equilibrium state where $t \to \infty$.
 :::
 
 :::{grid-item-card} 🏗 1D Column
+:class-card: pop-card
 **Time & Height**. The full vertical evolution of the particle size distribution.
 :::
 
@@ -39,7 +42,7 @@ BinMod1D can run in three different modes:
 
 :::{sidebar} Key Highlights
 * **Explicit Bin Physics:** No assumed Gamma distributions.
-* **Radar Ready:** Includes polarimetric operators for $Z$, $Z_{\mathrm{DR}}$, $K_{\mathrm{dp}}$, and $\rho_{\mathrm{hv}}$.
+* **Radar Ready:** Includes polarimetric radar operators for $Z$, $Z_{\mathrm{DR}}$, $K_{\mathrm{dp}}$, and $\rho_{\mathrm{hv}}$.
 * **Fast Solver:** Optimized for research-grade performance.
 :::
 

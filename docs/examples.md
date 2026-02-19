@@ -28,17 +28,22 @@ No installation required! Click the badge below to launch these notebooks in a l
 :link-type: doc
 :class-header: sd-bg-light
 
-**Equilibrium Dynamics** Observe steady-state polarimetric radar profiles generated from **BinMod1D**
+**Equilibrium Dynamics** Generate steady-state polarimetric radar profiles for rain and snow cases
 :::
 
 :::{grid-item-card} ⛈️ 1D Column Examples
-:img-top: _static/Full_example.svg
+:img-top: _static/Full_example_Best.svg
 :link: ../notebooks/BM1D_full_1d_examples
 :link-type: doc
 :class-header: sd-bg-light
 
+
 **Time-Height Evolution**
 Simulate the full vertical evolution of precipitation particles over time.
+
++++
+
+{octicon}`alert;1em;sd-text-warning` **Note:** This mode is CPU-intensive. Running locally with multiple cores will provide the best performance.
 :::
 
 ::::
