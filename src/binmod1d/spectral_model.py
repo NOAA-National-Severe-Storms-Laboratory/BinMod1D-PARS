@@ -1603,7 +1603,7 @@ class spectral_1d:
             return fig, ax    
     
 
-    def plot_dists_height(self,tind=-1,plot_habits=False):
+    def plot_dists_height(self,tind=-1,dz=1.,plot_habits=False):
         
         if latex_check():
             plt.rc('text', usetex=True)
@@ -1611,9 +1611,9 @@ class spectral_1d:
         plt.rc('xtick', labelsize=22) 
         plt.rc('ytick', labelsize=22) 
         
-        z = self.z/1000.
+        z = self.z/1000. # Convert to km
         
-        z_lvls = np.arange(np.max(z),np.min(z)-1.,-1.)
+        z_lvls = np.arange(np.max(z),np.min(z)-dz,-dz)
         
         fig, ax = plt.subplots(len(z_lvls),1,figsize=(6,10),sharey=True,sharex=True)
         
