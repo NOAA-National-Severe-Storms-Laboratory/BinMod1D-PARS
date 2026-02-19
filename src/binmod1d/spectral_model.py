@@ -63,6 +63,8 @@ import matplotlib.pyplot as plt
 
 from matplotlib.colors import BoundaryNorm
 
+import shutil
+
 from datetime import datetime
 
 from netCDF4 import Dataset
@@ -104,9 +106,9 @@ class spectral_1d:
         dz : float, optional
             Height grid spacing in meters. The default is 10..
         ztop : float, optional
-            Top height of steady-state/1D model domain. The default is 0..
+            Top height of steady-state/1D model domain in meters. The default is 0..
         zbot : float, optional
-            Bottom height of steady-state/1D model domain. The default is 0..
+            Bottom height of steady-state/1D model domain in meters. The default is 0..
         D1 : float, optional
             Minimum equivolume diameter bin size in mm when the 'dist_var' parameter is 'size'. The default is 0.25.
         x0 : float, optional
@@ -735,6 +737,11 @@ class spectral_1d:
         self.kdp = 1000.*(ak_kdp[:,None,:,None]*self.Mbins+ck_kdp[:,None,:,None]*self.Nbins)
         self.zhhvv = 1000.*(ak_zhhvv[:,None,:,None]*self.Mbins+ck_zhhvv[:,None,:,None]*self.Nbins)
         
+        # Prevents sqrt error if zh, zv, or zhhvv are slightly negative
+        self.zh = np.maximum(self.zh,1e-10)
+        self.zv = np.maximum(self.zv,1e-10)
+        self.zhhvv = np.maximum(self.zhhvv,1e-10)
+        
         # Radar variables for each habit, linear units 
         zh_tot = np.nansum(self.zh,axis=2)
         zv_tot = np.nansum(self.zv,axis=2)
@@ -995,7 +1002,8 @@ class spectral_1d:
         For full 1D model runs, plots a time/height pcolor plot for specified input variable.
         '''
         
-        plt.rc('text', usetex=True)
+        if latex_check():
+            plt.rc('text', usetex=True)
         plt.rc('font', family='serif')
         plt.rc('xtick', labelsize=22) 
         plt.rc('ytick', labelsize=22) 
@@ -1063,7 +1071,8 @@ class spectral_1d:
         else:
             ax_switch = False
         
-        plt.rc('text', usetex=True)
+        if latex_check():
+            plt.rc('text', usetex=True)
         plt.rc('font', family='serif')
         plt.rc('xtick', labelsize=16) 
         plt.rc('ytick', labelsize=16) 
@@ -1204,10 +1213,11 @@ class spectral_1d:
  
     def plot_init(self,log_switch=True,x_axis='mass'):
 
-        plt.rc('text', usetex=True)
+        if latex_check():
+            plt.rc('text', usetex=True)
         plt.rc('font', family='serif')
-        plt.rc('xtick', labelsize=16) 
-        plt.rc('ytick', labelsize=16)         
+        plt.rc('xtick', labelsize=22) 
+        plt.rc('ytick', labelsize=22)         
 
         mbins = self.dist0.xbins
        # medges = self.dist0.xedges.copy() 
@@ -1266,7 +1276,8 @@ class spectral_1d:
 
     def plot_dists(self,tind=-1,hind=-1,x_axis='mass',y_axis='mass',xscale='log',yscale='linear',distscale='log',normbin=False,scott_solution=False,feingold_solution=False,plot_habits=False,ax=None,lstyle='-',lcolor='k'):
 
-        plt.rc('text', usetex=True)
+        if latex_check():
+            plt.rc('text', usetex=True)
         plt.rc('font', family='serif')
         plt.rc('xtick', labelsize=26) 
         plt.rc('ytick', labelsize=26)   
@@ -1468,7 +1479,7 @@ class spectral_1d:
             
         elif xscale=='linear':
             x = xbins.copy()
-            ax[0].set_xlim((0.,5.))
+            ax[0].set_xlim((0.,10.))
            # ax[1].set_ylim((0.,10.))
              
             if (x_axis=='size'):
@@ -1499,8 +1510,11 @@ class spectral_1d:
         if yscale=='log':
             ax[0].set_yscale('log')
             ax[1].set_yscale('log')
-            ax[0].set_ylim((1e-5,max(nN_init.max(),1000.*nN_final.max())))
-            ax[1].set_ylim((1e-5,max(nM_init.max(),1000.*nM_final.max())))
+            #ax[0].set_ylim((1e-5,max(nN_init.max(),1000.*nN_final.max())))
+            #ax[1].set_ylim((1e-5,max(nM_init.max(),1000.*nM_final.max())))
+            
+            ax[0].set_ylim(bottom=1e-5)
+            ax[1].set_ylim(bottom=1e-5)
 
         #print('number test=',np.nansum(mbins*n_init*(np.log(medges[1:])-np.log(medges[:-1]))))
        # print('mass test=',np.nansum(mbins**2*1000.*n_init*(np.log(medges[1:])-np.log(medges[:-1]))))
@@ -1591,7 +1605,8 @@ class spectral_1d:
 
     def plot_dists_height(self,tind=-1,plot_habits=False):
         
-        plt.rc('text', usetex=True)
+        if latex_check():
+            plt.rc('text', usetex=True)
         plt.rc('font', family='serif')
         plt.rc('xtick', labelsize=22) 
         plt.rc('ytick', labelsize=22) 
@@ -1689,80 +1704,6 @@ class spectral_1d:
         
         return fig, ax        
  
-    
-    def advance_1mom(self,M_old,dt):
-        
-        Mbins = np.zeros_like(M_old)
-        
-        #M_net = self.Ikernel.interact_1mom_array(dt)
-        
-        M_net = self.Ikernel.interact_1mom_SS_Final(dt)
-        
-        #M_net = self.Ikernel.interact_1mom_SS(dt)
-        
-       # M_net = self.Ikernel.interact_1mom_vectorized(dt)
-        
-        #M_net = self.Ikernel.interact_1mom_SS_NEW(dt)
-        
-        M_sed = np.zeros((self.dnum,self.Hlen,self.bins)) 
-       
-        if self.boundary is None:
-            M_sed[:,0,:] = (dt/self.dz)*(-self.Ikernel.Mfbins[:,0,:]) 
-        
-        M_sed[:,1:,:] = (dt/self.dz)*(self.Ikernel.Mfbins[:,:-1,:]-self.Ikernel.Mfbins[:,1:,:]) 
-        
-        M_transfer = M_old+M_sed+M_net
-        
-        M_new = np.maximum(M_transfer,0.) # Should be positive if not over fragmented.
-        Mbins[M_new>=0.] = M_new[M_new>=0.].copy()
-        
-
-        if self.boundary=='fixed': # If fixing top distribution. Can be helpful if trying to determine steady-state time.
-            Mbins[:,0,:] = M_old[:,0,:].copy()
-            
-        dM = (Mbins-M_old)/dt
-        
-        return dM
-    
-    
-    def advance_2mom(self,M_old,N_old,dt):
-        
-        Mbins = np.zeros_like(M_old)
-        Nbins = np.zeros_like(N_old)
-        
-        #M_net, N_net = self.Ikernel.interact_2mom_SS(dt)
-        
-        M_net, N_net = self.Ikernel.interact_2mom_SS_Final(dt)
-       
-        M_sed = np.zeros((self.dnum,self.Hlen,self.bins)) 
-        N_sed = np.zeros((self.dnum,self.Hlen,self.bins)) 
-       
-        if self.boundary is None:
-            M_sed[:,0,:] = (dt/self.dz)*(-self.Ikernel.Mfbins[:,0,:]) 
-            N_sed[:,0,:] = (dt/self.dz)*(-self.Ikernel.Nfbins[:,0,:]) 
-        
-        M_sed[:,1:,:] = (dt/self.dz)*(self.Ikernel.Mfbins[:,:-1,:]-self.Ikernel.Mfbins[:,1:,:]) 
-        N_sed[:,1:,:] = (dt/self.dz)*(self.Ikernel.Nfbins[:,:-1,:]-self.Ikernel.Nfbins[:,1:,:]) 
-        
-        M_transfer = M_old+M_sed+M_net
-        N_transfer = N_old+N_sed+N_net   
-        
-        M_new = np.maximum(M_transfer,0.) # Should be positive if not over fragmented.
-        Mbins[M_new>=0.] = M_new[M_new>=0.].copy()
-        
-        N_new = np.maximum(N_transfer,0.) # Should be positive if not over fragmented.
-        Nbins[N_new>=0.] = N_new[N_new>=0.].copy()
-        
-        if self.boundary=='fixed': # If fixing top distribution. Can be helpful if trying to determine steady-state time.
-            Mbins[:,0,:] = M_old[:,0,:].copy()
-            Nbins[:,0,:] = N_old[:,0,:].copy()
-            
-        dM = (Mbins-M_old)/dt
-        dN = (Nbins-N_old)/dt
-        
-        return dM, dN
- 
-    
  
     def run_steady_state_1mom(self, pbar=None):
         ''' 
@@ -1889,120 +1830,6 @@ class spectral_1d:
             Hlen = self.Tout_len
             self.Tout_len = Tout_len
             self.Hlen = Hlen
-    
-    
-    def run_steady_state_1mom_WORKING(self, pbar=None):
-        '''
-        Run steady-state 1-moment bin model using Adaptive Sub-stepping RK4.
-        Preserves Simmel/Wang smoothness while preventing Breakup explosions.
-        '''
-        
-        # 1. Initialize RK Coefficients
-        RK = init_rk(self.rk_order)
-        a = RK['a']
-        b = RK['b']
-        rklen = len(b)
-        
-        tf = 0
-        
-        # Pre-allocate RK stage storage
-        dM_stages = np.zeros((self.dnum, self.Hlen, self.bins, rklen))
-        
-        # ---------------------------------------------------------------------
-        # MAIN LOOP (Fixed Output Grid)
-        # ---------------------------------------------------------------------
-        for tt in range(1, self.Tlen):
-            
-            if pbar:
-                pbar.set_description(self.out_text(self.Ikernel.Mbins, self.Ikernel.Mfbins))
-                pbar.update(1)
-            
-            # Target Height Step for this output interval
-            # Assuming scalar or max step across domain
-            dh_target = np.max(self.dh)
-            
-            dh_covered = 0.0
-            
-            # Start State for this height level
-            M_current = self.Ikernel.Mbins.copy()
-            
-            # -----------------------------------------------------------------
-            # ADAPTIVE SUB-STEPPING LOOP
-            # -----------------------------------------------------------------
-            while dh_covered < dh_target:
-                
-                # A. Estimate Stiffness / Max Safe Step
-                dM_dt = self.get_steady_rate_1mom(M_current)
-                
-                # Stability Criterion: Limit relative change to ~10% per step
-                # Max Safe dh = 0.1 * (Mass / Derivative)
-                
-                valid_mask = (M_current > 1e-15) & (np.abs(dM_dt) > 1e-20)
-                
-                if np.any(valid_mask):
-                    scale_M = M_current[valid_mask] / (np.abs(dM_dt[valid_mask]) + 1e-30)
-                    min_scale = np.min(scale_M)
-                    
-                    dh_safe = 0.1 * min_scale
-                else:
-                    dh_safe = dh_target # Physics is quiet
-                
-                # Clamp step size
-                remaining = dh_target - dh_covered
-                dh_step = min(dh_safe, remaining)
-                
-                # Prevent infinitesimally small steps (stiff crash guard)
-                dh_step = max(dh_step, 1e-4)
-                
-                # B. Perform RK Integration Step with 'dh_step'
-                dM_stages.fill(0.)
-                
-                # Broadcast step size for the RK stages
-                # Shape: (dnum, Hlen, bins)
-                step_size_arr = np.full_like(self.dh, dh_step)[:, None, :]
-                
-                for ii in range(rklen):
-                    if ii == 0:
-                        M_stage = M_current
-                    else:
-                        # Sum previous stages
-                        k_sum_M = np.sum(a[ii, :ii][None, None, None, :] * dM_stages[:, :, :, :ii], axis=3)
-                        M_stage = np.maximum(M_current + step_size_arr * k_sum_M, 0.)
-                    
-                    # Compute rate for this stage
-                    dM_k = self.get_steady_rate_1mom(M_stage)
-                    dM_stages[:, :, :, ii] = dM_k
-                
-                # C. Final Update for this sub-step
-                total_sum_M = np.sum(b[None, None, None, :] * dM_stages, axis=3)
-                
-                M_current = np.maximum(M_current + step_size_arr * total_sum_M, 0.)
-                
-                dh_covered += dh_step
-            
-            # -----------------------------------------------------------------
-            # END SUB-STEPPING
-            # -----------------------------------------------------------------
-            
-            # Commit final state
-            self.Ikernel.Mbins = M_current
-            self.Ikernel.update_1mom_subgrid()
-            
-            # Save Output
-            if self.save_mask[tt]:
-                tf += 1
-                self.Mbins[:, :, :, tf] = self.Ikernel.Mbins.copy()
-        
-        # Post-processing
-        if self.int_type == 1:
-            self.Mbins = np.swapaxes(self.Mbins, 1, 3)
-            
-            Tout_len = self.Hlen
-            Hlen = self.Tout_len
-            
-            self.Tout_len = Tout_len
-            self.Hlen = Hlen
-
 
     def get_steady_rate_1mom(self, M_curr):
         '''
@@ -2154,103 +1981,6 @@ class spectral_1d:
         rate_sed[:, 1:, :] = (flux[:, :-1, :] - flux[:, 1:, :]) / self.dz
         
         return rate_sed
-
-    def run_steady_state_2mom_WORKING(self, pbar=None):
-        ''' 
-        Run steady-state bin model using Explicit Runge-Kutta integration.
-        Uses the Butcher table coefficients (a, b) initialized by init_rk.
-        '''
-        
-        # 1. Initialize Runge-Kutta Coefficients
-        RK = init_rk(self.rk_order)
-        a = RK['a']
-        b = RK['b']
-        rklen = len(b)
-        
-        step_size = self.dh[:, None, :] 
-        
-        tf = 0
-        
-        # Pre-allocate RK stage storage
-        # Shape: (dnum, Hlen, bins, rklen)
-        dM_stages = np.zeros((self.dnum, self.Hlen, self.bins, rklen))
-        dN_stages = np.zeros((self.dnum, self.Hlen, self.bins, rklen))
-
-        # ---------------------------------------------------------------------
-        # MAIN LOOP
-        # ---------------------------------------------------------------------
-        for tt in range(1, self.Tlen):
-            
-            if pbar:
-                pbar.set_description(self.out_text(self.Ikernel.Mbins, self.Ikernel.Mfbins))
-                pbar.update(1)
-
-            # Save state at start of step (y_n)
-            M_old = self.Ikernel.Mbins.copy() 
-            N_old = self.Ikernel.Nbins.copy()
-            
-            dM_stages.fill(0.) 
-            dN_stages.fill(0.)
-            
-            # -----------------------------------------------------------------
-            # RK STAGES
-            # -----------------------------------------------------------------
-            for ii in range(rklen):
-                
-                # 1. Calculate Intermediate State (y_stage)
-                # y_stage = y_n + h * sum(a_ij * k_j)
-                if ii == 0:
-                    M_stage = M_old
-                    N_stage = N_old
-                else:
-                    # Sum previous stages weighted by 'a'
-                    # np.nansum handles the broadcasting of the 'a' coefficients
-                    k_sum_M = np.sum(a[ii, :ii][None, None, None, :] * dM_stages[:, :, :, :ii], axis=3)
-                    k_sum_N = np.sum(a[ii, :ii][None, None, None, :] * dN_stages[:, :, :, :ii], axis=3)
-                    
-                    M_stage = np.maximum(M_old + step_size * k_sum_M, 0.)
-                    N_stage = np.maximum(N_old + step_size * k_sum_N, 0.)
-
-                # 2. Evaluate Derivative (k_i = f(y_stage))
-                # The 'derivative' here is the interaction rate per unit step
-                dM_dt, dN_dt = self.get_steady_rates(M_stage, N_stage)
-                
-                # 3. Store derivative for future stages
-                dM_stages[:, :, :, ii] = dM_dt
-                dN_stages[:, :, :, ii] = dN_dt
-            
-            # -----------------------------------------------------------------
-            # FINAL UPDATE (y_n+1)
-            # -----------------------------------------------------------------
-            # y_n+1 = y_n + h * sum(b_i * k_i)
-            
-            total_sum_M = np.sum(b[None, None, None, :] * dM_stages, axis=3)
-            total_sum_N = np.sum(b[None, None, None, :] * dN_stages, axis=3)
-            
-            self.Ikernel.Mbins = np.maximum(M_old + step_size * total_sum_M, 0.)
-            self.Ikernel.Nbins = np.maximum(N_old + step_size * total_sum_N, 0.)
-            
-            # Update auxiliary physics variables for the new state
-            self.Ikernel.update_2mom_subgrid()
-            
-            # -----------------------------------------------------------------
-            # SAVE OUTPUT
-            # -----------------------------------------------------------------
-            if self.save_mask[tt]:
-                tf += 1 
-                self.Mbins[:, :, :, tf] = self.Ikernel.Mbins.copy() 
-                self.Nbins[:, :, :, tf] = self.Ikernel.Nbins.copy() 
-   
-        # Post-processing: Swap axes if int_type==1 (Steady State logic)
-        if self.int_type == 1:
-            self.Mbins = np.swapaxes(self.Mbins, 1, 3)
-            self.Nbins = np.swapaxes(self.Nbins, 1, 3) 
-            
-            Tout_len = self.Hlen
-            Hlen = self.Tout_len
-            
-            self.Tout_len = Tout_len 
-            self.Hlen = Hlen
 
 
     def run_steady_state_2mom(self, pbar=None):
@@ -2417,142 +2147,6 @@ class spectral_1d:
             Hlen = self.Tout_len
             self.Tout_len = Tout_len
             self.Hlen = Hlen
-   
-
-    def run_steady_state_2mom_RK_ADJ(self, pbar=None):
-        ''' 
-        Run steady-state model with 2 moment bin prediction.
-        '''
-        
-        # 1. Initialize RK Coefficients
-        RK = init_rk(self.rk_order)
-        a = RK['a']
-        b = RK['b']
-        rklen = len(b)
-        
-        # Output counter
-        tf = 0
-        
-        # Pre-allocate RK stage storage
-        dM_stages = np.zeros((self.dnum, self.Hlen, self.bins, rklen))
-        dN_stages = np.zeros((self.dnum, self.Hlen, self.bins, rklen)) # For 2-mom
-
-        # ---------------------------------------------------------------------
-        # MAIN LOOP (Fixed Output Grid)
-        # ---------------------------------------------------------------------
-        for tt in range(1, self.Tlen):
-            
-            if pbar:
-                pbar.set_description(self.out_text(self.Ikernel.Mbins, self.Ikernel.Mfbins))
-                pbar.update(1)
-
-            # Target step
-            # Assuming self.dh is constant or an array. Let's assume a scalar 'dh_target' for simplicity
-            # If self.dh is an array (dnum, Hlen, bins), we take the max or relevant value.
-            # Let's assume we are stepping 'dh' meters forward.
-            dh_target = np.max(self.dh) 
-            
-            dh_covered = 0.0
-            
-            # Start State for this height level
-            M_current = self.Ikernel.Mbins.copy()
-            N_current = self.Ikernel.Nbins.copy()
-
-            # -----------------------------------------------------------------
-            # ADAPTIVE SUB-STEPPING LOOP
-            # -----------------------------------------------------------------
-            # We must reach dh_target, but we can take small steps to get there.
-            
-            while dh_covered < dh_target:
-                
-                # A. Estimate Stiffness / Max Safe Step
-                # Evaluate the derivative at the current state
-                dM_dt, dN_dt = self.get_steady_rates(M_current, N_current)
-                
-                # Stability Criterion:
-                # We want to limit the relative change per step to ~10% (0.1)
-                # Max Safe dh = 0.1 * (Mass / Derivative)
-                
-                # Avoid divide by zero/noise
-                valid_mask = (M_current > 1e-15) & (np.abs(dM_dt) > 1e-20)
-                
-                if np.any(valid_mask):
-                    scale_M = M_current[valid_mask] / (np.abs(dM_dt[valid_mask]) + 1e-30)
-                    min_scale = np.min(scale_M)
-                    
-                    # The "10% rule" - very robust for RK4
-                    dh_safe = 0.1 * min_scale
-                else:
-                    dh_safe = dh_target # Physics is quiet, take full step
-                
-                # Clamp step size
-                remaining = dh_target - dh_covered
-                dh_step = min(dh_safe, remaining)
-                
-                # Prevent infinitesimally small steps (stiff crash guard)
-                dh_step = max(dh_step, 1e-4) 
-
-                # B. Perform RK Integration Step with 'dh_step'
-                # (Standard RK loop, but using M_current as base)
-                
-                dM_stages.fill(0.)
-                dN_stages.fill(0.)
-                
-                # Store the step size for broadcasting in the RK loop
-                step_size_arr = np.full_like(self.dh, dh_step)[:, None, :]
-
-                for ii in range(rklen):
-                    if ii == 0:
-                        M_stage = M_current
-                        N_stage = N_current
-                    else:
-                        k_sum_M = np.sum(a[ii, :ii][None, None, None, :] * dM_stages[:, :, :, :ii], axis=3)
-                        k_sum_N = np.sum(a[ii, :ii][None, None, None, :] * dN_stages[:, :, :, :ii], axis=3)
-                        
-                        M_stage = np.maximum(M_current + step_size_arr * k_sum_M, 0.)
-                        N_stage = np.maximum(N_current + step_size_arr * k_sum_N, 0.)
-
-                    # Compute rates for this stage
-                    dM_k, dN_k = self.get_steady_rates(M_stage, N_stage)
-                    dM_stages[:, :, :, ii] = dM_k
-                    dN_stages[:, :, :, ii] = dN_k
-                
-                # C. Final Update for this sub-step
-                total_sum_M = np.sum(b[None, None, None, :] * dM_stages, axis=3)
-                total_sum_N = np.sum(b[None, None, None, :] * dN_stages, axis=3)
-                
-                M_current = np.maximum(M_current + step_size_arr * total_sum_M, 0.)
-                N_current = np.maximum(N_current + step_size_arr * total_sum_N, 0.)
-                
-                dh_covered += dh_step
-            
-            # -----------------------------------------------------------------
-            # END SUB-STEPPING
-            # -----------------------------------------------------------------
-            
-            # Commit final state to the kernel object for the next output step
-            self.Ikernel.Mbins = M_current
-            self.Ikernel.Nbins = N_current
-            self.Ikernel.update_2mom_subgrid()
-
-            # Save Output
-            if self.save_mask[tt]:
-                tf += 1 
-                self.Mbins[:, :, :, tf] = self.Ikernel.Mbins.copy() 
-                self.Nbins[:, :, :, tf] = self.Ikernel.Nbins.copy() 
-   
-        # Post-processing
-        if self.int_type == 1:
-            self.Mbins = np.swapaxes(self.Mbins, 1, 3)
-            self.Nbins = np.swapaxes(self.Nbins, 1, 3) 
-
-            Tout_len = self.Hlen
-            Hlen = self.Tout_len
-            
-            self.Tout_len = Tout_len
-            self.Hlen = Hlen
-
-
 
     def get_steady_rates(self, M_curr, N_curr):
         '''
@@ -2789,8 +2383,14 @@ class spectral_1d:
             #     self.activate_parallel()
                    
             if self.progress:
+                
+                if 'ipykernel_launcher.py' in sys.argv[0]:
+                    ncols = 800
+                else:
+                    ncols = None
 
-                with tqdm(total=self.Tlen-1,position=0,leave=True,mininterval=0,miniters=1,desc="Running 1D spectral bin model") as pbar:
+                #with tqdm(total=self.Tlen-1,position=0,leave=True,mininterval=0,miniters=1,desc="Running 1D spectral bin model") as pbar: # ORIGINAL
+                with tqdm(total=self.Tlen-1,position=0,leave=True,mininterval=0.2,miniters=None,ncols=ncols,desc="Running 1D spectral bin model") as pbar:
                     self._run_core(pbar)
                     
             else:
@@ -2822,6 +2422,21 @@ class spectral_1d:
         print('Model Complete! Time Elapsed = {:.2f} min'.format((time_end-time_start).total_seconds()/60.))
 
 
+def latex_check():
+    """
+    Verifies that all executables required by Matplotlib's usetex engine are in the system PATH.
+    """
+    # 1. Check for the LaTeX compiler
+    has_latex = shutil.which("latex") is not None
+    
+    # 2. Check for dvipng (required for rendering to screen / PNGs)
+    has_dvipng = shutil.which("dvipng") is not None
+    
+    # 3. Check for Ghostscript (required for vector formats like PDF/SVG)
+    # Note: Windows uses 'gswin64c' or 'gswin32c', Unix uses 'gs'
+    #has_gs = any(shutil.which(cmd) for cmd in ["gs", "gswin64c", "gswin32c"])
+    
+    return has_latex and has_dvipng
 
 
 
@@ -3666,6 +3281,235 @@ class spectral_1d:
     #             self.Hlen = Hlen
     
     
+    # def run_steady_state_2mom_WORKING(self, pbar=None):
+    #     ''' 
+    #     Run steady-state bin model using Explicit Runge-Kutta integration.
+    #     Uses the Butcher table coefficients (a, b) initialized by init_rk.
+    #     '''
+        
+    #     # 1. Initialize Runge-Kutta Coefficients
+    #     RK = init_rk(self.rk_order)
+    #     a = RK['a']
+    #     b = RK['b']
+    #     rklen = len(b)
+        
+    #     step_size = self.dh[:, None, :] 
+        
+    #     tf = 0
+        
+    #     # Pre-allocate RK stage storage
+    #     # Shape: (dnum, Hlen, bins, rklen)
+    #     dM_stages = np.zeros((self.dnum, self.Hlen, self.bins, rklen))
+    #     dN_stages = np.zeros((self.dnum, self.Hlen, self.bins, rklen))
+
+    #     # ---------------------------------------------------------------------
+    #     # MAIN LOOP
+    #     # ---------------------------------------------------------------------
+    #     for tt in range(1, self.Tlen):
+            
+    #         if pbar:
+    #             pbar.set_description(self.out_text(self.Ikernel.Mbins, self.Ikernel.Mfbins))
+    #             pbar.update(1)
+
+    #         # Save state at start of step (y_n)
+    #         M_old = self.Ikernel.Mbins.copy() 
+    #         N_old = self.Ikernel.Nbins.copy()
+            
+    #         dM_stages.fill(0.) 
+    #         dN_stages.fill(0.)
+            
+    #         # -----------------------------------------------------------------
+    #         # RK STAGES
+    #         # -----------------------------------------------------------------
+    #         for ii in range(rklen):
+                
+    #             # 1. Calculate Intermediate State (y_stage)
+    #             # y_stage = y_n + h * sum(a_ij * k_j)
+    #             if ii == 0:
+    #                 M_stage = M_old
+    #                 N_stage = N_old
+    #             else:
+    #                 # Sum previous stages weighted by 'a'
+    #                 # np.nansum handles the broadcasting of the 'a' coefficients
+    #                 k_sum_M = np.sum(a[ii, :ii][None, None, None, :] * dM_stages[:, :, :, :ii], axis=3)
+    #                 k_sum_N = np.sum(a[ii, :ii][None, None, None, :] * dN_stages[:, :, :, :ii], axis=3)
+                    
+    #                 M_stage = np.maximum(M_old + step_size * k_sum_M, 0.)
+    #                 N_stage = np.maximum(N_old + step_size * k_sum_N, 0.)
+
+    #             # 2. Evaluate Derivative (k_i = f(y_stage))
+    #             # The 'derivative' here is the interaction rate per unit step
+    #             dM_dt, dN_dt = self.get_steady_rates(M_stage, N_stage)
+                
+    #             # 3. Store derivative for future stages
+    #             dM_stages[:, :, :, ii] = dM_dt
+    #             dN_stages[:, :, :, ii] = dN_dt
+            
+    #         # -----------------------------------------------------------------
+    #         # FINAL UPDATE (y_n+1)
+    #         # -----------------------------------------------------------------
+    #         # y_n+1 = y_n + h * sum(b_i * k_i)
+            
+    #         total_sum_M = np.sum(b[None, None, None, :] * dM_stages, axis=3)
+    #         total_sum_N = np.sum(b[None, None, None, :] * dN_stages, axis=3)
+            
+    #         self.Ikernel.Mbins = np.maximum(M_old + step_size * total_sum_M, 0.)
+    #         self.Ikernel.Nbins = np.maximum(N_old + step_size * total_sum_N, 0.)
+            
+    #         # Update auxiliary physics variables for the new state
+    #         self.Ikernel.update_2mom_subgrid()
+            
+    #         # -----------------------------------------------------------------
+    #         # SAVE OUTPUT
+    #         # -----------------------------------------------------------------
+    #         if self.save_mask[tt]:
+    #             tf += 1 
+    #             self.Mbins[:, :, :, tf] = self.Ikernel.Mbins.copy() 
+    #             self.Nbins[:, :, :, tf] = self.Ikernel.Nbins.copy() 
+   
+    #     # Post-processing: Swap axes if int_type==1 (Steady State logic)
+    #     if self.int_type == 1:
+    #         self.Mbins = np.swapaxes(self.Mbins, 1, 3)
+    #         self.Nbins = np.swapaxes(self.Nbins, 1, 3) 
+            
+    #         Tout_len = self.Hlen
+    #         Hlen = self.Tout_len
+            
+    #         self.Tout_len = Tout_len 
+    #         self.Hlen = Hlen
+ 
+    # def run_steady_state_2mom_RK_ADJ(self, pbar=None):
+    #     ''' 
+    #     Run steady-state model with 2 moment bin prediction.
+    #     '''
+        
+    #     # 1. Initialize RK Coefficients
+    #     RK = init_rk(self.rk_order)
+    #     a = RK['a']
+    #     b = RK['b']
+    #     rklen = len(b)
+        
+    #     # Output counter
+    #     tf = 0
+        
+    #     # Pre-allocate RK stage storage
+    #     dM_stages = np.zeros((self.dnum, self.Hlen, self.bins, rklen))
+    #     dN_stages = np.zeros((self.dnum, self.Hlen, self.bins, rklen)) # For 2-mom
+
+    #     # ---------------------------------------------------------------------
+    #     # MAIN LOOP (Fixed Output Grid)
+    #     # ---------------------------------------------------------------------
+    #     for tt in range(1, self.Tlen):
+            
+    #         if pbar:
+    #             pbar.set_description(self.out_text(self.Ikernel.Mbins, self.Ikernel.Mfbins))
+    #             pbar.update(1)
+
+    #         # Target step
+    #         # Assuming self.dh is constant or an array. Let's assume a scalar 'dh_target' for simplicity
+    #         # If self.dh is an array (dnum, Hlen, bins), we take the max or relevant value.
+    #         # Let's assume we are stepping 'dh' meters forward.
+    #         dh_target = np.max(self.dh) 
+            
+    #         dh_covered = 0.0
+            
+    #         # Start State for this height level
+    #         M_current = self.Ikernel.Mbins.copy()
+    #         N_current = self.Ikernel.Nbins.copy()
+
+    #         # -----------------------------------------------------------------
+    #         # ADAPTIVE SUB-STEPPING LOOP
+    #         # -----------------------------------------------------------------
+    #         # We must reach dh_target, but we can take small steps to get there.
+            
+    #         while dh_covered < dh_target:
+                
+    #             # A. Estimate Stiffness / Max Safe Step
+    #             # Evaluate the derivative at the current state
+    #             dM_dt, dN_dt = self.get_steady_rates(M_current, N_current)
+                
+    #             # Stability Criterion:
+    #             # We want to limit the relative change per step to ~10% (0.1)
+    #             # Max Safe dh = 0.1 * (Mass / Derivative)
+                
+    #             # Avoid divide by zero/noise
+    #             valid_mask = (M_current > 1e-15) & (np.abs(dM_dt) > 1e-20)
+                
+    #             if np.any(valid_mask):
+    #                 scale_M = M_current[valid_mask] / (np.abs(dM_dt[valid_mask]) + 1e-30)
+    #                 min_scale = np.min(scale_M)
+                    
+    #                 # The "10% rule" - very robust for RK4
+    #                 dh_safe = 0.1 * min_scale
+    #             else:
+    #                 dh_safe = dh_target # Physics is quiet, take full step
+                
+    #             # Clamp step size
+    #             remaining = dh_target - dh_covered
+    #             dh_step = min(dh_safe, remaining)
+                
+    #             # Prevent infinitesimally small steps (stiff crash guard)
+    #             dh_step = max(dh_step, 1e-4) 
+
+    #             # B. Perform RK Integration Step with 'dh_step'
+    #             # (Standard RK loop, but using M_current as base)
+                
+    #             dM_stages.fill(0.)
+    #             dN_stages.fill(0.)
+                
+    #             # Store the step size for broadcasting in the RK loop
+    #             step_size_arr = np.full_like(self.dh, dh_step)[:, None, :]
+
+    #             for ii in range(rklen):
+    #                 if ii == 0:
+    #                     M_stage = M_current
+    #                     N_stage = N_current
+    #                 else:
+    #                     k_sum_M = np.sum(a[ii, :ii][None, None, None, :] * dM_stages[:, :, :, :ii], axis=3)
+    #                     k_sum_N = np.sum(a[ii, :ii][None, None, None, :] * dN_stages[:, :, :, :ii], axis=3)
+                        
+    #                     M_stage = np.maximum(M_current + step_size_arr * k_sum_M, 0.)
+    #                     N_stage = np.maximum(N_current + step_size_arr * k_sum_N, 0.)
+
+    #                 # Compute rates for this stage
+    #                 dM_k, dN_k = self.get_steady_rates(M_stage, N_stage)
+    #                 dM_stages[:, :, :, ii] = dM_k
+    #                 dN_stages[:, :, :, ii] = dN_k
+                
+    #             # C. Final Update for this sub-step
+    #             total_sum_M = np.sum(b[None, None, None, :] * dM_stages, axis=3)
+    #             total_sum_N = np.sum(b[None, None, None, :] * dN_stages, axis=3)
+                
+    #             M_current = np.maximum(M_current + step_size_arr * total_sum_M, 0.)
+    #             N_current = np.maximum(N_current + step_size_arr * total_sum_N, 0.)
+                
+    #             dh_covered += dh_step
+            
+    #         # -----------------------------------------------------------------
+    #         # END SUB-STEPPING
+    #         # -----------------------------------------------------------------
+            
+    #         # Commit final state to the kernel object for the next output step
+    #         self.Ikernel.Mbins = M_current
+    #         self.Ikernel.Nbins = N_current
+    #         self.Ikernel.update_2mom_subgrid()
+
+    #         # Save Output
+    #         if self.save_mask[tt]:
+    #             tf += 1 
+    #             self.Mbins[:, :, :, tf] = self.Ikernel.Mbins.copy() 
+    #             self.Nbins[:, :, :, tf] = self.Ikernel.Nbins.copy() 
+   
+    #     # Post-processing
+    #     if self.int_type == 1:
+    #         self.Mbins = np.swapaxes(self.Mbins, 1, 3)
+    #         self.Nbins = np.swapaxes(self.Nbins, 1, 3) 
+
+    #         Tout_len = self.Hlen
+    #         Hlen = self.Tout_len
+            
+    #         self.Tout_len = Tout_len
+    #         self.Hlen = Hlen
 
 
 
@@ -3787,7 +3631,120 @@ class spectral_1d:
                 
     #             self.Tout_len = Tout_len 
     #             self.Hlen = Hlen
+ 
     
+ 
+    # def run_steady_state_1mom_WORKING(self, pbar=None):
+    #     '''
+    #     Run steady-state 1-moment bin model using Adaptive Sub-stepping RK4.
+    #     Preserves Simmel/Wang smoothness while preventing Breakup explosions.
+    #     '''
+        
+    #     # 1. Initialize RK Coefficients
+    #     RK = init_rk(self.rk_order)
+    #     a = RK['a']
+    #     b = RK['b']
+    #     rklen = len(b)
+        
+    #     tf = 0
+        
+    #     # Pre-allocate RK stage storage
+    #     dM_stages = np.zeros((self.dnum, self.Hlen, self.bins, rklen))
+        
+    #     # ---------------------------------------------------------------------
+    #     # MAIN LOOP (Fixed Output Grid)
+    #     # ---------------------------------------------------------------------
+    #     for tt in range(1, self.Tlen):
+            
+    #         if pbar:
+    #             pbar.set_description(self.out_text(self.Ikernel.Mbins, self.Ikernel.Mfbins))
+    #             pbar.update(1)
+            
+    #         # Target Height Step for this output interval
+    #         # Assuming scalar or max step across domain
+    #         dh_target = np.max(self.dh)
+            
+    #         dh_covered = 0.0
+            
+    #         # Start State for this height level
+    #         M_current = self.Ikernel.Mbins.copy()
+            
+    #         # -----------------------------------------------------------------
+    #         # ADAPTIVE SUB-STEPPING LOOP
+    #         # -----------------------------------------------------------------
+    #         while dh_covered < dh_target:
+                
+    #             # A. Estimate Stiffness / Max Safe Step
+    #             dM_dt = self.get_steady_rate_1mom(M_current)
+                
+    #             # Stability Criterion: Limit relative change to ~10% per step
+    #             # Max Safe dh = 0.1 * (Mass / Derivative)
+                
+    #             valid_mask = (M_current > 1e-15) & (np.abs(dM_dt) > 1e-20)
+                
+    #             if np.any(valid_mask):
+    #                 scale_M = M_current[valid_mask] / (np.abs(dM_dt[valid_mask]) + 1e-30)
+    #                 min_scale = np.min(scale_M)
+                    
+    #                 dh_safe = 0.1 * min_scale
+    #             else:
+    #                 dh_safe = dh_target # Physics is quiet
+                
+    #             # Clamp step size
+    #             remaining = dh_target - dh_covered
+    #             dh_step = min(dh_safe, remaining)
+                
+    #             # Prevent infinitesimally small steps (stiff crash guard)
+    #             dh_step = max(dh_step, 1e-4)
+                
+    #             # B. Perform RK Integration Step with 'dh_step'
+    #             dM_stages.fill(0.)
+                
+    #             # Broadcast step size for the RK stages
+    #             # Shape: (dnum, Hlen, bins)
+    #             step_size_arr = np.full_like(self.dh, dh_step)[:, None, :]
+                
+    #             for ii in range(rklen):
+    #                 if ii == 0:
+    #                     M_stage = M_current
+    #                 else:
+    #                     # Sum previous stages
+    #                     k_sum_M = np.sum(a[ii, :ii][None, None, None, :] * dM_stages[:, :, :, :ii], axis=3)
+    #                     M_stage = np.maximum(M_current + step_size_arr * k_sum_M, 0.)
+                    
+    #                 # Compute rate for this stage
+    #                 dM_k = self.get_steady_rate_1mom(M_stage)
+    #                 dM_stages[:, :, :, ii] = dM_k
+                
+    #             # C. Final Update for this sub-step
+    #             total_sum_M = np.sum(b[None, None, None, :] * dM_stages, axis=3)
+                
+    #             M_current = np.maximum(M_current + step_size_arr * total_sum_M, 0.)
+                
+    #             dh_covered += dh_step
+            
+    #         # -----------------------------------------------------------------
+    #         # END SUB-STEPPING
+    #         # -----------------------------------------------------------------
+            
+    #         # Commit final state
+    #         self.Ikernel.Mbins = M_current
+    #         self.Ikernel.update_1mom_subgrid()
+            
+    #         # Save Output
+    #         if self.save_mask[tt]:
+    #             tf += 1
+    #             self.Mbins[:, :, :, tf] = self.Ikernel.Mbins.copy()
+        
+    #     # Post-processing
+    #     if self.int_type == 1:
+    #         self.Mbins = np.swapaxes(self.Mbins, 1, 3)
+            
+    #         Tout_len = self.Hlen
+    #         Hlen = self.Tout_len
+            
+    #         self.Tout_len = Tout_len
+    #         self.Hlen = Hlen
     
     # def run_steady_state_1mom_ORIG(self, pbar=None):
     #     '''
@@ -3876,6 +3833,78 @@ class spectral_1d:
             
     #         self.Tout_len = Tout_len
     #         self.Hlen = Hlen
+    
+    # def advance_1mom(self,M_old,dt):
+        
+    #     Mbins = np.zeros_like(M_old)
+        
+    #     #M_net = self.Ikernel.interact_1mom_array(dt)
+        
+    #     M_net = self.Ikernel.interact_1mom_SS_Final(dt)
+        
+    #     #M_net = self.Ikernel.interact_1mom_SS(dt)
+        
+    #    # M_net = self.Ikernel.interact_1mom_vectorized(dt)
+        
+    #     #M_net = self.Ikernel.interact_1mom_SS_NEW(dt)
+        
+    #     M_sed = np.zeros((self.dnum,self.Hlen,self.bins)) 
+       
+    #     if self.boundary is None:
+    #         M_sed[:,0,:] = (dt/self.dz)*(-self.Ikernel.Mfbins[:,0,:]) 
+        
+    #     M_sed[:,1:,:] = (dt/self.dz)*(self.Ikernel.Mfbins[:,:-1,:]-self.Ikernel.Mfbins[:,1:,:]) 
+        
+    #     M_transfer = M_old+M_sed+M_net
+        
+    #     M_new = np.maximum(M_transfer,0.) # Should be positive if not over fragmented.
+    #     Mbins[M_new>=0.] = M_new[M_new>=0.].copy()
+        
+
+    #     if self.boundary=='fixed': # If fixing top distribution. Can be helpful if trying to determine steady-state time.
+    #         Mbins[:,0,:] = M_old[:,0,:].copy()
+            
+    #     dM = (Mbins-M_old)/dt
+        
+    #     return dM
+    
+    
+    # def advance_2mom(self,M_old,N_old,dt):
+        
+    #     Mbins = np.zeros_like(M_old)
+    #     Nbins = np.zeros_like(N_old)
+        
+    #     #M_net, N_net = self.Ikernel.interact_2mom_SS(dt)
+        
+    #     M_net, N_net = self.Ikernel.interact_2mom_SS_Final(dt)
+       
+    #     M_sed = np.zeros((self.dnum,self.Hlen,self.bins)) 
+    #     N_sed = np.zeros((self.dnum,self.Hlen,self.bins)) 
+       
+    #     if self.boundary is None:
+    #         M_sed[:,0,:] = (dt/self.dz)*(-self.Ikernel.Mfbins[:,0,:]) 
+    #         N_sed[:,0,:] = (dt/self.dz)*(-self.Ikernel.Nfbins[:,0,:]) 
+        
+    #     M_sed[:,1:,:] = (dt/self.dz)*(self.Ikernel.Mfbins[:,:-1,:]-self.Ikernel.Mfbins[:,1:,:]) 
+    #     N_sed[:,1:,:] = (dt/self.dz)*(self.Ikernel.Nfbins[:,:-1,:]-self.Ikernel.Nfbins[:,1:,:]) 
+        
+    #     M_transfer = M_old+M_sed+M_net
+    #     N_transfer = N_old+N_sed+N_net   
+        
+    #     M_new = np.maximum(M_transfer,0.) # Should be positive if not over fragmented.
+    #     Mbins[M_new>=0.] = M_new[M_new>=0.].copy()
+        
+    #     N_new = np.maximum(N_transfer,0.) # Should be positive if not over fragmented.
+    #     Nbins[N_new>=0.] = N_new[N_new>=0.].copy()
+        
+    #     if self.boundary=='fixed': # If fixing top distribution. Can be helpful if trying to determine steady-state time.
+    #         Mbins[:,0,:] = M_old[:,0,:].copy()
+    #         Nbins[:,0,:] = N_old[:,0,:].copy()
+            
+    #     dM = (Mbins-M_old)/dt
+    #     dN = (Nbins-N_old)/dt
+        
+    #     return dM, dN
 
 
     # IF USING SHARED MEMORY OR NUMPY MEMMAP ARRAYS

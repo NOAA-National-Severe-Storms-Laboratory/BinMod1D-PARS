@@ -13,8 +13,8 @@ def habits():
     
     habits['rain'] = {'arho':1.0, # g/cm^3 * 1/mm
                       'brho':0., 
-                      'av':3.78,
-                      'bv':0.67, 
+                      'av':3.78, # Atlas and Ulbrich (1977)
+                      'bv':0.67, # Atlas and Ulbrich (1977)
                       'ar':1.0,
                       'br':0., 
                       'sig':10.}
@@ -69,6 +69,7 @@ def fragments(dist='exp'):
                      'Df_med':0.25, 
                      'Df_mode':0.2}
         
+    # NOTE: CURRENTLY NOT IMPLEMENTED YET!
     elif dist=='Straub':
         
         fragments = {'dist':dist,

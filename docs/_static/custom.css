@@ -25,3 +25,14 @@
     font-weight: bold;
     font-size: 110%;
 }
+
+/* Custom hover effect for cards */
+.pop-card {
+    transition: transform .2s ease-in-out, box-shadow .2s ease-in-out !important;
+}
+
+.pop-card:hover {
+    transform: scale(1.03);
+    box-shadow: 0 10px 20px rgba(0,0,0,0.19), 0 6px 6px rgba(0,0,0,0.23) !important;
+    z-index: 10;
+}
