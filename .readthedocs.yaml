@@ -13,3 +13,8 @@ python:
       path: .
       extra_requirements:
         - docs  # Optional: only if you have a [project.optional-dependencies] section for docs
+        
+sphinx:
+  # This is the line that was missing! 
+  # Ensure the path points to your conf.py relative to the root.
+  configuration: docs/conf.py

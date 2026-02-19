@@ -311,6 +311,14 @@ rain_SS.plot_dists_height(dz=1.5)
 :align: center
 ```
 
+Now let's try to incorporate breakup. We'll set the breakup efficiency to $0.05$ and 
+we'll choose a lognormal fragment distribution.
+
+```python
+rain_SS = spectral_1d(sbin=1,bins=40,D1=0.01,tmax=0.,dz=20.,ztop=3000.,zbot=0.,Nt0=10.,Dm0=1.25,mu0=0.,habit_list=['rain'],ptype='rain',kernel='Hydro',Ecol=1.0,Es=0.2,Eb=0.05,radar=True,dist_var='size')
+```
+
+
 
 
 
@@ -319,6 +327,13 @@ rain_SS.plot_dists_height(dz=1.5)
 ## Customizing the model
 
 ### Handling multiple distributions
+
+**BinMod1d** can easy use as many distributions as users want. To specify multiple 
+distributions, users can use the `habit_list` input parameter. The `habit_list` parameter
+is a list of strings where each string dictates the type of habit that represents each
+distribution. Therefore, the length of the `habit_list` indicates the number of 
+requested distributions. Users can then 
+
 
 ### Using custom distribution and habit parameters
 
