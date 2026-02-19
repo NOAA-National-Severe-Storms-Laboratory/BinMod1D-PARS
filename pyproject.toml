@@ -29,6 +29,16 @@ dependencies = [
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[project.optional-dependencies]
+docs = [
+    "myst-parser",
+    "sphinx-design",
+    "sphinx-copybutton",
+    "sphinx-rtd-theme",
+    "nbsphinx",
+    "ipython"  # often needed for nbsphinx
+]
+
 #[tool.setuptools]
 # This explicitly sets the content type, although 'readme = "README.md"' often implies it for markdown
 #long-description-content-type = "text/markdown" # <--- Crucial for rendering Markdown correctly
