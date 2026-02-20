@@ -15,8 +15,8 @@ No installation required! Click the badge below to launch these notebooks in a l
 
 :::{grid-item-card} 📉 Analytical Examples
 :img-top: _static/Golovin_example.svg
-:link: ../notebooks/BM1D_analytical_examples
-:link-type: doc
+:link: https://github.com/NOAA-National-Severe-Storms-Laboratory/BinMod1D-PARS/blob/main/notebooks/BM1D_analytical_examples.ipynb
+:link-type: url
 :class-header: sd-bg-light
 
 **Verification & Fundamentals** Explore how the model performs against known analytical solutions for bin microphysics.
@@ -24,8 +24,8 @@ No installation required! Click the badge below to launch these notebooks in a l
 
 :::{grid-item-card} ☁️ Steady State Examples
 :img-top: _static/SS_example.svg
-:link: ../notebooks/BM1D_steady_state_examples
-:link-type: doc
+:link: https://github.com/NOAA-National-Severe-Storms-Laboratory/BinMod1D-PARS/blob/main/notebooks/BM1D_steady_state_examples.ipynb
+:link-type: url
 :class-header: sd-bg-light
 
 **Equilibrium Dynamics** Generate steady-state polarimetric radar profiles for rain and snow cases
@@ -33,8 +33,8 @@ No installation required! Click the badge below to launch these notebooks in a l
 
 :::{grid-item-card} ⛈️ 1D Column Examples
 :img-top: _static/Full_example_Best.svg
-:link: ../notebooks/BM1D_full_1d_examples
-:link-type: doc
+:link: https://github.com/NOAA-National-Severe-Storms-Laboratory/BinMod1D-PARS/blob/main/notebooks/BM1D_full_1d_examples.ipynb
+:link-type: url
 :class-header: sd-bg-light
 
 
