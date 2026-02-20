@@ -21,6 +21,7 @@ class dist():
         
         self.mom_num = mom_num
         
+        # If no habit dict, than just use ptype here.
         if habit_dict is None:
             habit_dict = habits()[ptype]
         

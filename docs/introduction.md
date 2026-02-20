@@ -15,8 +15,12 @@ difficult numerical problem and requires special consideration. **BinMod1D** how
 makes it easy to both simulate PSD evolution in time and in height and visualize
 results from a variety of different formats.
 
+```{image} _static/tutorial_time_height_Z_full.svg
+:width: 100%
+:align: center
+```
 
-### 🛠 Model Capabilities
+## 🛠 Model Capabilities
 BinMod1D can run in three different modes:
 
 ::::{grid} 3
@@ -36,15 +40,49 @@ BinMod1D can run in three different modes:
 :class-card: pop-card
 **Time & Height**. The full vertical evolution of the particle size distribution.
 :::
-
 ::::
 
++++
 
-:::{sidebar} Key Highlights
-* **Explicit Bin Physics:** No assumed Gamma distributions.
-* **Radar Ready:** Includes polarimetric radar operators for $Z$, $Z_{\mathrm{DR}}$, $K_{\mathrm{dp}}$, and $\rho_{\mathrm{hv}}$.
-* **Fast Solver:** Optimized for research-grade performance.
+::::{grid} 2
+:gutter: 3
+:class-container: sd-items-start
+:class-row: sd-items-start
+
+:::{grid-item-card}
+:columns: 5
+:class-card: sd-bg-light sd-shadow-sm pop-card
+:class-body: sd-d-flex sd-align-items-center sd-justify-content-center
+```{image} _static/tutorial_dists_height_breakup_SS_2cat.svg
+:width: 100%
+:align: center
+```
 :::
 
+<br>
 
+:::{grid-item-card}
+:columns: 7
+:class-card: sd-shadow-sm
+:class-header: sd-bg-light sd-text-black sd-font-weight-bold sd-text-center
+:class-body: sd-bg-white
+🌟 Key Highlights
+^^^
 
+<br>
+<br>
+
+<i class="fa fa-flask sd-text-primary" aria-hidden="true" style="margin-right: 8px;"></i> 
+**Explicit Bin Physics:** No assumed Gamma distributions.
+
+<br>
+
+<i class="fa fa-rss sd-text-warning" aria-hidden="true" style="margin-right: 8px;"></i> 
+**Radar Ready:** Includes polarimetric radar operators for $Z$, $Z_{\mathrm{DR}}$, $K_{\mathrm{dp}}$, and $\rho_{\mathrm{hv}}$.
+
+<br>
+
+<i class="fa fa-bolt sd-text-success" aria-hidden="true" style="margin-right: 8px;"></i> 
+**Fast Solver:** Optimized for research-grade performance.
+:::
+::::

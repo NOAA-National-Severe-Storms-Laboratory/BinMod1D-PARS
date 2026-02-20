@@ -138,7 +138,9 @@ class spectral_1d:
         frag_dist : str, optional
             Type of fragment distribution. The default is 'exp'.
         habit_list : list, optional
-            List of number of distribution (determined by len(habit_lists)) habits. The default is ['rain'].
+            List of distribution parameters for each category (total number determined by len(habit_lists)). 
+            elements of list can be either strings where each string defines a default habit type from the
+            habits() function in the habits module or a dictionary with the necessary parameters. The default is ['rain'].
         ptype : str, optional
             Whether particles are rain or snow. NOTE: currently not considering mixed phase or mixture of rain/show. The default is 'rain'.
         Tc : float, optional
@@ -444,12 +446,41 @@ class spectral_1d:
             D1=None
         
         # If dnum > habit list then just use first element for all habits
-        if len(habit_list) < self.dnum:
-            habit_list = [habit_list[0] for dd in range(self.dnum)]
+        # if len(habit_list) < self.dnum:
+        #     habit_list = [habit_list[0] for dd in range(self.dnum)]
         
-        self.habit_list = habit_list
+        # self.habit_list = habit_list
         
-        self.habit_dict = [habits()[habit_list[dd]] for dd in range(self.dnum)]
+        # self.habit_dict = [habits()[habit_list[dd]] for dd in range(self.dnum)]
+        
+        # Create habit dictionaries from input list
+        self.habit_dict = [None]*self.dnum
+        
+        for hl in range(self.dnum):
+            
+            if isinstance(habit_list[hl],dict):
+                self.habit_dict[hl] = habit_list[hl]
+            elif isinstance(habit_list[hl],str):
+                try:
+                    habit_temp = habits()[habit_list[hl]]
+                except:
+                    raise RuntimeError('habit string not in habits() list')
+                    
+                self.habit_dict[hl] = habit_temp 
+                
+            # Make sure we have arho, brho, and am and bm. IF we have one set
+            # but not the other, then just compute it. Assume that we have the
+            # aspect ratio parameters
+            
+            if ('arho' and 'brho' in list(self.habit_dict[hl])) and ('am' and 'bm' not in list(self.habit_dict[hl])):
+                # Note: Assume equivolume diameter for now.
+                self.habit_dict[hl]['am'] = 0.001*(np.pi/6.)*self.habit_dict[hl]['arho']
+                self.habit_dict[hl]['bm'] = 3.-self.habit_dict[hl]['brho']
+                
+            if ('arho' and 'brho' not in list(self.habit_dict[hl])) and ('am' and 'bm' in list(self.habit_dict[hl])):
+                # Note: Assume equivolume diameter for now.
+                self.habit_dict[hl]['arho'] = 1000.*(6./np.pi)*self.habit_dict[hl]['am']
+                self.habit_dict[hl]['brho'] = 3.-self.habit_dict[hl]['bm']
         
         dists = np.empty((self.dnum,),dtype=object)
         
@@ -524,10 +555,12 @@ class spectral_1d:
             self.Nbins = np.zeros_like(self.Mbins)
             self.Nbins[0,0,:,0] = dist0.Nbins.copy()          
 
-        if frag_dist is None:
-            frag_dict = fragments('exp')
-        else:
+        if isinstance(frag_dist,str):
             frag_dict = fragments(frag_dist)
+        elif isinstance(frag_dict,dict):
+            frag_dict = self.frag_dict
+        else:
+            raise RuntimeError('frag_dict must be either a string or a dictionary object. Strings must match defaults in habits.py module.')
                 
         self.xbins = dist0.xbins.copy() 
         self.xedges = dist0.xedges.copy()

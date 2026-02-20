@@ -182,6 +182,7 @@ plot some results.
 
 ```python
 rain_box = spectral_1d(sbin=1,bins=40,D1=0.01,dt=2.,tmax=1800.,Nt0=10.,Dm0=1.25,mu0=0.,habit_list=['rain'],ptype='rain',kernel='Hydro',Ecol=1.0,Es=0.2,radar=True,dist_var='size')
+rain_box.run()
 ```
 
 This run should be really quick for an **`sbin`** value of 1 and only one distribution.
@@ -269,6 +270,7 @@ where each variable is in meters.
 
 ```python
 rain_SS = spectral_1d(sbin=1,bins=40,D1=0.01,tmax=0.,dz=20.,ztop=3000.,zbot=0.,Nt0=10.,Dm0=1.25,mu0=0.,habit_list=['rain'],ptype='rain',kernel='Hydro',Ecol=1.0,Es=0.2,radar=True,dist_var='size')
+rain_SS.run()
 ```
 Now we can plot the distributions as before to get a sense for what the final distributions look like. 
 We can use the **`plot_dist()`** like before. **`plot_dists()`** can plot any time or 
@@ -295,7 +297,7 @@ rain_SS.plot_moments_radar()
 :align: center
 ```
 Notice that the mass flux, instead of the total mass, is conserved for all heights. 
-Other variables decrease or increase in a generalized power-law like way.
+Other variables decrease or increase in a generalized power-law-like way.
 
 We can see the evolution of the particle size distributions with height by using
 the **`plot_dists_height()`** method. We'll create a figure with 3 subpanels where
@@ -311,31 +313,197 @@ rain_SS.plot_dists_height(dz=1.5)
 :align: center
 ```
 
-Now let's try to incorporate breakup. We'll set the breakup efficiency to $0.05$ and 
-we'll choose a lognormal fragment distribution.
+Now let's try to incorporate breakup. We'll set the breakup efficiency to $0.035$ and we'll
+raise the coalescence efficiency to $0.8$ so that we can better see the effects of 
+combined coalescence and breakup. We'll also choose a lognormal distribution to represent
+fragments.
 
 ```python
-rain_SS = spectral_1d(sbin=1,bins=40,D1=0.01,tmax=0.,dz=20.,ztop=3000.,zbot=0.,Nt0=10.,Dm0=1.25,mu0=0.,habit_list=['rain'],ptype='rain',kernel='Hydro',Ecol=1.0,Es=0.2,Eb=0.05,radar=True,dist_var='size')
+rain_breakup_SS = spectral_1d(sbin=1,bins=40,D1=0.01,tmax=0.,dz=20.,ztop=3000.,zbot=0.,Nt0=10.,Dm0=1.25,mu0=0.,habit_list=['rain'],frag_dist='LGN',ptype='rain',kernel='Hydro',Ecol=1.0,Es=0.8,Eb=0.035,radar=True,dist_var='size')
+rain_breakup_SS.run()
+```
+
+Now let's plot the resulting moments and radar variables as well as the same 
+distribution plot as before with height
+
+```{image} _static/tutorial_moments_breakup_SS.svg
+:width: 100%
+:align: center
 ```
 
 
-
+```{image} _static/tutorial_dists_height_breakup_SS.svg
+:width: 600px
+:align: center
+```
 
 
 ### Full time/height mode (1D Column Model)
+
+Finally, let's do a full 1D model run with both coalescence and breakup turned on. To
+initialize a full 1D column model simulation, users just need to modify both the
+time (`tmax`) and top and bottom (`ztop` and `zbot`) input values. Let's use the same `tmax` 
+parameter (i.e., 30 minute simulation) along with the same height grid as in the
+steady-state example. We'll also fix the top boundary conditon with `boundary='fixed'` 
+in order for the model approach a steady-state solution after a sufficiently long
+period of time. Note that **BinMod1D** uses numba functionality which will parallelize
+calculations if users have multiple CPUs. Therefore, even this simulation will not take
+very long on most modern PCs.
+
+```python
+rain_breakup_full = spectral_1d(sbin=1,bins=40,D1=0.01,dt=2,tmax=1800.,dz=20.,ztop=3000.,zbot=0.,Nt0=10.,Dm0=1.25,mu0=0.,habit_list=['rain'],frag_dist='LGN',ptype='rain',kernel='Hydro',boundary='fixed',Ecol=1.0,Es=0.8,Eb=0.035,radar=True,dist_var='size')
+rain_breakup_full.run()
+```
+
+Now we can plot the full time/height reflectivity profile by using the **`plot_time_height()`**
+method. Reflectivity is plotted by default so we just need to call the function with no arguments.
+
+```python
+rain_breakup_full.plot_time_height()
+```
+
+```{image} _static/tutorial_time_height_Z_full.svg
+:width: 100%
+:align: center
+```
+
+This simulation shows a rapid increase in simulated radar reflectivity toward the
+ground during the initial rain evolution due to rapid size sorting of large drops 
+sedimenting and then a leveling off of reflectivity afterward in a quasi-steady state. 
+We can use **`plot_moments_radar()`** to directly overlay the height profiles of the 
+distribution and radar variables at $30$ minutes with the steady-state solution from before.
+To do this, we first return the pyplot figure and axis when plotting the full 1D results.
+Then, we can use this axis handle as an input to the steady-state plotting. Let's set `lstyle='--`
+when we plot the steady-state solution. This will plot the steady-state profiles with a dashed line
+whereas the full 1D column model will be plotted as a solid line.
+
+```python
+fig, ax = rain_breakup_full.plot_moments_radar()
+rain_breakup_SS.plot_moments_radar(ax=ax,lstyle='--')
+``` 
+
+```{image} _static/tutorial_moments_full_SS.svg
+:width: 100%
+:align: center
+```
+
+Finally we can plot the time/height profiles of the other radar variables using
+the `var` input parameter. If `radar=True` in the **`spectral_1d()`** object then
+users can plot any of the following variables: `var=Z`, `var=ZDR`, `var=KDP`, or
+`var=RHOHV`. Users can also plot any of the bulk microphysical properties as well
+(i.e., `var='Nt`, `var=Dm`, `var=WC`, `var=R`). Let's plot differential reflecivity 
+$Z_{\mathrm{DR}}$ and specific differential phase $K_{\mathrm{dp}}$
+
+```python
+rain_breakup_full.plot_time_height(var='ZDR')
+rain_breakup_full.plot_time_height(var='KDP')
+```
+
+```{image} _static/tutorial_time_height_ZDR_full.svg
+:width: 100%
+:align: center
+```
+```{image} _static/tutorial_time_height_KDP_full.svg
+:width: 100%
+:align: center
+```
+
 
 ## Customizing the model
 
 ### Handling multiple distributions
 
-**BinMod1d** can easy use as many distributions as users want. To specify multiple 
+**BinMod1d** can easily incorporate as many distributions as users want. To specify multiple 
 distributions, users can use the `habit_list` input parameter. The `habit_list` parameter
 is a list of strings where each string dictates the type of habit that represents each
-distribution. Therefore, the length of the `habit_list` indicates the number of 
-requested distributions. Users can then 
+distribution (e.g., `['snow','fragments']`). Therefore, the length of the `habit_list` indicates the number of 
+requested distributions. The individual strings represent the dictionary that's used to determine
+the distributions properties (see the following section). Users can then specify which distribution receives coalesced
+particles by using the `cc_dest` parameter (value of 1 signifies the first distribution). 
+Similarly, the `br_dest` determines the location of breakup (fragmented) particles. 
+Here, let's keep the coalesced particles with the same distribution as the initial
+distribution but we'll put the fragmented particles in a second distribution. Let's
+use the steady-state coalescence/breakup example from before.
 
+```python
+rain_breakup_SS_2cat = spectral_1d(sbin=1,bins=40,D1=0.01,tmax=0.,dz=20.,ztop=3000.,zbot=0.,Nt0=10.,Dm0=1.25,mu0=0.,habit_list=['rain','rain'],frag_dist='LGN',cc_dest=1,br_dest=2,ptype='rain',kernel='Hydro',Ecol=1.0,Es=0.8,Eb=0.035,radar=True,dist_var='size')
+rain_breakup_SS_2cat.run()
+```
+We'll use the `plot_habits` input parameter in the plots to specify that we want to see the individual
+distributions as well as the combined distribution variables.
+
+```python
+rain_breakup_SS_2cat.plot_moments_radar(plot_habits=True)
+rain_breakup_SS_2cat.plot_dists_height(dz=1.5,plot_habits=True)
+```
+
+```{image} _static/tutorial_moments_breakup_SS_2cat.svg
+:width: 100%
+:align: center
+```
+
+
+```{image} _static/tutorial_dists_height_breakup_SS_2cat.svg
+:width: 600px
+:align: center
+```
 
 ### Using custom distribution and habit parameters
+
+By default, **BinMod1D** has three example habit distributions with predetermined
+values: `'rain'`, `'snow'`, and `'fragments'`. These dictionaries are available from the `binmod1d.habits` module.
+
+```python
+from binmod1d.habits import habits, fragments
+habit_dict = habits()
+```
+The keys of these dictionaries represent the specified habits that users
+can use to describe the properties of the distribution for each category. 
+For example, the 'snow' key shows
+```python
+  {'arho': 0.2,
+  'brho': 1.0,
+  'av': 0.8,
+  'bv': 0.14,
+  'ar': 0.6,
+  'br': 0.0,
+  'sig': 0.0,
+  'am': 0.00010471975511965977,
+  'bm': 2.0}
+```
+Here, `arho` and `brho` represent the density-size power-law relation 
+($\rho (D) = \alpha_{\rho} D^{-\beta_{\rho}}$), `av` and `bv` represent the fallspeed-size power-law relation 
+($v_{t}(D) = a_{v} D^{b_{v}}$), `ar` and `br` represent the spheroidal aspect ratio-size power-law relation 
+($\varphi (D)= a_{r} D^{br}$), `sig` is the two-dimensional Gaussian orientation standard deviation
+parameter in degrees (see Ryzhkov et al. (2011)) where `sig=0` is horizontally oriented and `sig=40` is chaotically oriented,
+and `am` and `bm` are the mass-dimensional power-law parameters ($m(D) = \alpha_{m} D^{\beta_{m}}$). Users only
+need to modify the `habit_list` input parameter to **`spectral_1d()`**. 
+
+For example, we can create a new habit dictionary for ice aggregates using the 
+"Aggregates of densely rimed radiating assemblages of dendrites or dendrites" category
+from table 1 of Locatelli and Hobbs (1974)
+
+```python
+ agg_dict = {'av': 0.79,
+   'bv': 0.27,
+   'ar': 0.6,
+   'br': 0.0,
+   'sig': 10.0,
+   'am': 3.7e-05,
+   'bm': 1.9,
+   'arho': 0.07066479473280152,
+   'brho': 1.1}
+```
+
+Then the dictionary can be passed in a list in the **`spectral_1d()`** initialization call
+
+```python
+s_agg = spectral_1d(habit_list=[agg_dict])
+```
+
+Note that users only need to specify either `am` and `bm` or `arho` and `brho`;
+the mass or density parameters will be determined by either pair.
+
 
 ### Reading and writing netcdf outputs
 
@@ -370,3 +538,11 @@ distribution for all output times and heights, any input parameters that were us
 during the initialization, and will recalculate the linear subgrid distribution parameters,
 and bulk microphysical and radar (if ```radar=True``` was specified
 during initialization) variables.
+
+## References
+
+Locatelli, J. D. and P. V. Hobbs: Fall speeds and masses of solid precipitation particles,
+*J. Geophys. Res.*, **79**, 2185--2197, 1974, https://doi.org/10.1029/JC079i015p02185.  
+
+Ryzhkov, A., Pinsky,M., Pokrovsky, A., and Khain, A.: Polarimetric radar observation operator for a cloud model with spectral microphysics,
+*J. Appl. Meteor. Climatol.*, **50**, 873–894, 2011, https://doi.org/10.1175/2010JAMC2363.1. 
