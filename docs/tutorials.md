@@ -139,21 +139,21 @@ the total number and mean sizes of the initial population of particles. Therefor
 the initial gamma distribution input is instead parameterized as 
 
 $$
-n(D) = \frac{N_{t}}{\Gamma(\mu+1)} \frac{1}{D_{m}} \left( \mu+4 \right)^{\mu+1} \left( \frac{D}{D_{m}}\right)^{\mu} \exp\left[ - (\mu+4) \frac{D}{D_{m}}\right],
+n_{0}(D) = \frac{N_{t,0}}{\Gamma(\mu_{0}+1)} \frac{1}{D_{m,0}} \left( \mu_{0}+4 \right)^{\mu_{0}+1} \left( \frac{D}{D_{m,0}}\right)^{\mu_{0}} \exp\left[ - (\mu_{0}+4) \frac{D}{D_{m,0}}\right],
 $$
 
 where
 
 $$
-N_{t} = N_{0} \Lambda^{-(\mu+1)}\, \Gamma(\mu_{0}+1)
+N_{t,0} = N_{0} \Lambda_{0}^{-(\mu_{0}+1)}\, \Gamma(\mu_{0}+1)
 
-D_{m} = \frac{\mu+4}{\Lambda}
+D_{m,0} = \frac{\mu_{0}+4}{\Lambda_{0}}
 
-\mu = \mu.
+\mu_{0} = \mu_{0}.
 
 $$
-Here, $N_{t}$ is the total number concentration of the distribution whereas $D_{m}$ is
-the mean volume diameter which is defined as 
+Here, $N_{t,0}$ is the initial total number concentration of the distribution whereas $D_{m,0}$ is
+the initial mean volume diameter which is defined as 
 
 $$
 D_{m} \equiv \frac{M_{4}}{M_{3}} = \frac{\int\limits_{D=0}^{\infty} D^{4} n(D) dD}{\int\limits_{D=0}^{\infty} D^{3} n(D) dD}.
@@ -453,15 +453,22 @@ rain_breakup_SS_2cat.plot_dists_height(dz=1.5,plot_habits=True)
 By default, **BinMod1D** has three example habit distributions with predetermined
 values: `'rain'`, `'snow'`, and `'fragments'`. These dictionaries are available from the `binmod1d.habits` module.
 
+
+
 ```python
 from binmod1d.habits import habits, fragments
-habit_dict = habits()
-```
-The keys of these dictionaries represent the specified habits that users
-can use to describe the properties of the distribution for each category. 
-For example, the 'snow' key shows
-```python
-  {'arho': 0.2,
+habits()
+
+{'rain': {'arho': 1.0,
+  'brho': 0.0,
+  'av': 3.78,
+  'bv': 0.67,
+  'ar': 1.0,
+  'br': 0.0,
+  'sig': 10.0,
+  'am': 0.0005235987755982988,
+  'bm': 3.0},
+ 'snow': {'arho': 0.2,
   'brho': 1.0,
   'av': 0.8,
   'bv': 0.14,
@@ -469,7 +476,17 @@ For example, the 'snow' key shows
   'br': 0.0,
   'sig': 0.0,
   'am': 0.00010471975511965977,
-  'bm': 2.0}
+  'bm': 2.0},
+ 'fragments': {'arho': 0.6,
+  'brho': 0.0,
+  'av': 0.8,
+  'bv': 0.14,
+  'ar': 0.8,
+  'br': 0.0,
+  'sig': 20.0,
+  'am': 0.00031415926535897925,
+  'bm': 3.0}}
+
 ```
 Here, `arho` and `brho` represent the density-size power-law relation 
 ($\rho (D) = \alpha_{\rho} D^{-\beta_{\rho}}$), `av` and `bv` represent the fallspeed-size power-law relation 
@@ -477,30 +494,39 @@ Here, `arho` and `brho` represent the density-size power-law relation
 ($\varphi (D)= a_{r} D^{br}$), `sig` is the two-dimensional Gaussian orientation standard deviation
 parameter in degrees (see Ryzhkov et al. (2011)) where `sig=0` is horizontally oriented and `sig=40` is chaotically oriented,
 and `am` and `bm` are the mass-dimensional power-law parameters ($m(D) = \alpha_{m} D^{\beta_{m}}$). Users only
-need to modify the `habit_list` input parameter to **`spectral_1d()`**. 
+need to modify the `habit_params` input parameter to **`spectral_1d()`**. 
 
 For example, we can create a new habit dictionary for ice aggregates using the 
 "Aggregates of densely rimed radiating assemblages of dendrites or dendrites" category
 from table 1 of Locatelli and Hobbs (1974)
 
 ```python
- agg_dict = {'av': 0.79,
+ agg_dict = {'agg':{'av': 0.79,
    'bv': 0.27,
    'ar': 0.6,
    'br': 0.0,
    'sig': 10.0,
    'am': 3.7e-05,
-   'bm': 1.9}
+   'bm': 1.9}}
 ```
 
-Then the dictionary can be passed in a list in the **`spectral_1d()`** initialization call
+Then the dictionary can be passed into the **`spectral_1d()`** initialization call
 
 ```python
-s_agg = spectral_1d(habit_list=[agg_dict])
+s_agg = spectral_1d(habit_params=agg_dict)
 ```
 
 Note that users only need to specify either `am` and `bm` or `arho` and `brho`;
-the mass or density parameters will be determined by either pair.
+the mass or density parameters will be determined by either pair. Users can also
+combine their own custom habit dictionaries with the preset dictionaries from
+the **`habits.py`** module. In this way, each list element will be treated as a 
+separate category.
+
+```python
+s_agg = spectral_1d(habit_params=['snow',agg_dict])
+```
+
+Users can use
 
 
 ### Reading and writing netcdf outputs

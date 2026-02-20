@@ -680,8 +680,6 @@ class Interaction():
             if (self.kernel=='Hydro') or (self.kernel=='Long'):
             
                 # Largest possible size of fragments based on grid
-               # d_frag = self.dists[self.indb].d2[self.kmid]
-            
                 if self.frag_dict['dist']=='exp':
                     IF_func = lambda n,x1,x2: gam_int(n,0.,self.frag_dict['Dmf'],x1,x2)
                 elif self.frag_dict['dist']=='gamma':
@@ -727,13 +725,11 @@ class Interaction():
                     scale_factor = (E_left+4.*E_cen+E_right)/6.
 
                 elif (self.frag_dict['dist']=='Straub'):
+                    # CURRENTLY NOT IMPLEMENTED!
                     
                     IF_func = self.setup_Straub()
                     
                     
-                    
-                   # return
-
 
                 d1 = self.dists[self.indb].d1
                 d2 = self.dists[self.indb].d2
@@ -752,7 +748,7 @@ class Interaction():
                     self.dMb_gain_frac  = np.tile(Mb_gain_vec[:,None],(1,self.bins))
                     self.dNb_gain_frac  = np.tile(Nb_gain_vec[:,None],(1,self.bins))
                 
-            else:
+            else: # If using Feingold test fragment distribution.
                 for xx in range(self.bins): # m1+m2 breakup mass
                    for kk in range(0,xx+1): # breakup gain bins
                        self.dMb_gain_frac[kk,xx] = In_int(1.,self.frag_dict['lamf'],self.xi1[kk],self.xi2[kk])
