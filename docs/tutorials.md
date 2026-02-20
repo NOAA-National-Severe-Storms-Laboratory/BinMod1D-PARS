@@ -490,9 +490,7 @@ from table 1 of Locatelli and Hobbs (1974)
    'br': 0.0,
    'sig': 10.0,
    'am': 3.7e-05,
-   'bm': 1.9,
-   'arho': 0.07066479473280152,
-   'brho': 1.1}
+   'bm': 1.9}
 ```
 
 Then the dictionary can be passed in a list in the **`spectral_1d()`** initialization call
