@@ -13,35 +13,147 @@ from .habits import habits
 
 import matplotlib.pyplot as plt
 
-# Number Distribution function class for arbitrary category
+
+import types
+
 class dist():
     
-    def __init__(self,sbin=4,bins=80,D1=0.01,x0=None,Nt0=1.,Mt0=1.,mbar=None,mu0=3,Dm0=2,gam_init=True,gam_norm=False,dist_var='mass',
-                 kernel='Hydro',habit_dict=None,ptype='rain',Tc=10.,mom_num=2,Mbins=None,Nbins=None):
+    def __init__(self, sbin=4, bins=80, D1=0.01, dist_var='mass', kernel='Hydro',
+                 habit_dict=None, ptype='rain', Tc=10., x0=None, mom_num=2):
         
         self.mom_num = mom_num
         
-        # If no habit dict, than just use ptype here.
+        # If no habit dict, then just use ptype here.
         if habit_dict is None:
-            habit_dict = habits()[ptype]
+            habit_dict = habits()[ptype] # Assuming habits() is defined elsewhere
+            
+        # 1. Setup the physical grid (empty bins)
+        self.init_dist(sbin, bins, D1, dist_var=dist_var, kernel=kernel,
+                       habit_dict=habit_dict, ptype=ptype, x0=x0, Tc=Tc, 
+                       mom_num=mom_num)
         
-        self.init_dist(sbin,bins,D1,dist_var=dist_var,kernel=kernel,habit_dict=habit_dict,ptype=ptype,x0=x0,Tc=Tc,mom_num=mom_num,gam_norm=gam_norm)
+        self.gam_norm = False
         
-        if gam_init:
+        init_method = habit_dict.get('init_method','gamma')
+        
+        # 2. Dispatcher: Populate the grid based on the chosen method
+        if init_method == 'gamma':
+             
+            Nt0 = habit_dict.get('Nt0',1.)
+            Mt0 = habit_dict.get('Mt0',1.)
+            Dm0 = habit_dict.get('Dm0',2.0)
+            mbar = habit_dict.get('mbar0',None)
+            mu0 = habit_dict.get('mu0',3.)
+            gam_norm = habit_dict.get('gam_norm',False)
+            
+            self.gam_norm = gam_norm
+            
             self.bin_gamma_dist(Nt0=Nt0,Mt0=Mt0,mbar=mbar,mu0=mu0,Dm0=Dm0,normalize=gam_norm)
             
-        if mom_num==2:
-            if (Mbins is not None) and (Nbins is not None):
-                self.Mbins = Mbins 
-                self.Nbins = Nbins
-            self.diagnose() 
+            # Add in parameters to habit_dict dictionary in case none are provided
+            habit_dict['Nt0'] = Nt0
+            habit_dict['Mt0'] = Mt0 
+            habit_dict['mu0'] = mu0
+            habit_dict['Dm0'] = Dm0
+            habit_dict['gam_norm'] = gam_norm
+
+        elif init_method == 'analytical':
             
-        elif mom_num==1:
-            if (Mbins is not None):
-                self.Mbins = Mbins 
+            if 'func_nD' not in habit_dict:
+                raise ValueError('User needs to supply func_nD as keyword argument')
+            
+            func_nD = habit_dict.get('func_nD',lambda D: 1000.*np.exp(-D/1.))
+            
+            self.bin_analytical_dist(func_nD, var=dist_var)
+            
+        elif init_method == 'empirical':
+            
+            if dist_var=='size':
+                var_edges = self.d_edges 
+            else:
+                var_edges = self.x_edges
+            
+            user_edges = habit_dict.get('edges',var_edges)
+            
+            user_nD = habit_dict.get('nD',np.zeros((self.bins,)))
+            
+            self.bin_empirical_dist(user_edges, user_nD)
+            
+        elif init_method == 'empirical_counts':
+            
+            if dist_var=='size':
+                var_edges = self.d_edges 
+            else:
+                var_edges = self.x_edges
+            
+            user_edges = habit_dict.get('edges',var_edges)
+            
+            user_N = habit_dict.get('bincounts',np.zeros((self.bins,)))
+            
+            self.bin_empirical_counts(user_edges, user_N)
+            
+        elif init_method == 'direct':
+            # User directly supplied the Mbins / Nbins arrays
+            
+            if dist_var=='size':
+                var_edges = self.d_edges 
+            else:
+                var_edges = self.x_edges
+            
+            user_edges = habit_dict.get('edges',var_edges)
+            
+            if ('Mbins' in list(habit_dict.keys())) and ('Nbins' not in list(habit_dict.keys())):
+            
+                self.Mbins = habit_dict.get('Mbins', np.zeros(self.bins))         
+                self.Nbins = self.Mbins/self.xbins
+                    
+            if ('Mbins' not in list(habit_dict.keys())) and ('Nbins' in list(habit_dict.keys())):
+            
+                self.Nbins = habit_dict.get('Nbins', np.zeros(self.bins))        
+                self.Mbins = self.Nbins*self.xbins
+                          
+        elif init_method == 'empty':
+            self.Mbins = np.zeros(self.bins)
+            self.Nbins = np.zeros(self.bins)
+             
+        else:
+            raise ValueError(f"Unknown init_method: {init_method}")
+                     
+        # 3. Diagnostics
+        if mom_num == 2:
+            self.diagnose() 
+        elif mom_num == 1:
             self.diagnose_1mom()
+
+# # Number Distribution function class for arbitrary category
+# class dist_OLD():
+    
+#     def __init__(self,sbin=4,bins=80,D1=0.01,x0=None,Nt0=1.,Mt0=1.,mbar=None,mu0=3,Dm0=2,gam_init=True,gam_norm=False,dist_var='mass',
+#                  kernel='Hydro',habit_dict=None,ptype='rain',Tc=10.,mom_num=2,Mbins=None,Nbins=None):
         
-    def init_dist(self,sbin,bins,D1,kernel='Hydro',habit_dict=None,ptype='rain',Tc=10.,dist_var='mass',x0=None,mom_num=2,gam_norm=False):
+#         self.mom_num = mom_num
+        
+#         # If no habit dict, than just use ptype here.
+#         if habit_dict is None:
+#             habit_dict = habits()[ptype]
+        
+#         self.init_dist(sbin,bins,D1,dist_var=dist_var,kernel=kernel,habit_dict=habit_dict,ptype=ptype,x0=x0,Tc=Tc,mom_num=mom_num,gam_norm=gam_norm)
+        
+#         if gam_init:
+#             self.bin_gamma_dist(Nt0=Nt0,Mt0=Mt0,mbar=mbar,mu0=mu0,Dm0=Dm0,normalize=gam_norm)
+            
+#         if mom_num==2:
+#             if (Mbins is not None) and (Nbins is not None):
+#                 self.Mbins = Mbins 
+#                 self.Nbins = Nbins
+#             self.diagnose() 
+            
+#         elif mom_num==1:
+#             if (Mbins is not None):
+#                 self.Mbins = Mbins 
+#             self.diagnose_1mom()
+        
+    def init_dist(self,sbin,bins,D1,kernel='Hydro',habit_dict=None,ptype='rain',Tc=10.,dist_var='mass',x0=None,mom_num=2):
         
         if habit_dict is None:
             habit_dict = habits()[ptype]
@@ -51,6 +163,7 @@ class dist():
         self.D1 = D1
         self.sbin = sbin 
         self.bins = bins
+        
         self.ar = habit_dict['ar'] 
         self.br = habit_dict['br'] 
         self.arho = habit_dict['arho'] 
@@ -58,9 +171,11 @@ class dist():
         self.av = habit_dict['av'] 
         self.bv = habit_dict['bv']
         self.sigma = habit_dict['sig']
-        
         self.am = habit_dict['am']    # Units: g * mm^(-(3+brho)) 
         self.bm = habit_dict['bm']
+        
+        ar_func = habit_dict.get('ar',None)
+        vt_func = habit_dict.get('vt',None)
             
         self.ptype = ptype
         self.mom_num = mom_num
@@ -108,10 +223,16 @@ class dist():
         
         if ptype=='snow':
             
-            self.ar  = self.ar*np.ones_like(self.d1)
-            self.ar1 = self.ar*np.ones_like(self.d1)
-            self.ar2 = self.ar*np.ones_like(self.d2)
+            if isinstance(ar_func,types.LambdaType):
+                self.ar = ar_func(self.d)
+                self.ar1 = ar_func(self.d1)
+                self.ar2 = ar_func(self.d2)
                 
+            else:
+                self.ar  = self.ar*np.ones_like(self.d1)
+                self.ar1 = self.ar*np.ones_like(self.d1)
+                self.ar2 = self.ar*np.ones_like(self.d2)
+             
             self.rho = self.arho*self.d**(self.bm-3.)  
             self.rho[self.rho>rhoi] = rhoi
             
@@ -121,29 +242,25 @@ class dist():
             self.rho2 = self.arho*self.d2**(self.bm-3.)
             self.rho2[self.rho2>rhoi] = rhoi
             
-            self.vt = self.av*self.d**self.bv
-            self.vt_edges = self.av*self.d_edges**self.bv
-            
-            self.vt[self.vt>10.] = 10.
-            self.vt_edges[self.vt_edges>10.]=10.
-            
-            self.vt1 = self.vt_edges[:-1].copy() 
-            self.vt2 = self.vt_edges[1:].copy()
-            
         elif ptype=='rain':
                      
-            self.ar = extended_brandes(self.d)
-            self.ar1 = extended_brandes(self.d1)
-            self.ar2 = extended_brandes(self.d2)
+            if isinstance(ar_func,types.LambdaType):
+                self.ar = ar_func(self.d)
+                self.ar1 = ar_func(self.d1)
+                self.ar2 = ar_func(self.d2)
+            else: # DEFAULT for rain
+                self.ar = extended_brandes(self.d)
+                self.ar1 = extended_brandes(self.d1)
+                self.ar2 = extended_brandes(self.d2)
                        
             self.rho = np.ones_like(self.d)  # g/cm^3
             self.rho1 = np.ones_like(self.d1) # g/cm^3
             self.rho2 = np.ones_like(self.d2) # g/cm^3
-            
-            self.vt  = rain_terminal_velocity(self.d)
-            self.vt1 = rain_terminal_velocity(self.d1)
-            self.vt2 = rain_terminal_velocity(self.d2)
-            self.vt_edges = rain_terminal_velocity(self.d_edges)
+             
+            #self.vt  = rain_terminal_velocity(self.d)
+            #self.vt1 = rain_terminal_velocity(self.d1)
+            #self.vt2 = rain_terminal_velocity(self.d2)
+            #self.vt_edges = rain_terminal_velocity(self.d_edges)
         
         # if ptype=='rain':
         #     # Use Brandes (2002) relation which is a curve fit to laboratory measurements from
@@ -171,15 +288,28 @@ class dist():
         #self.vt = np.clip(-0.1021 + 4.932*self.d-0.9551*self.d**2+0.07934*self.d**3-0.002362*self.d**4,0.01,10.)
         #self.vt_edges = np.clip(-0.1021 + 4.932*self.d_edges-0.9551*self.d_edges**2+0.07934*self.d_edges**3-0.002362*self.d_edges**4,0.01,10.)
 
-        # ORIGINAL Atlas power-law for RAIN
-        self.vt = self.av*self.d**self.bv
-        self.vt_edges = self.av*self.d_edges**self.bv
+        if isinstance(vt_func,types.LambdaType):
+            self.vt = vt_func(self.d)
+            self.vt_edges = vt_func(self.d_edges)
+        else:
+            self.vt = self.av*self.d**self.bv
+            self.vt_edges = self.av*self.d_edges**self.bv
         
         self.vt[self.vt>10.] = 10.
         self.vt_edges[self.vt_edges>10.]=10.
         
         self.vt1 = self.vt_edges[:-1].copy() 
         self.vt2 = self.vt_edges[1:].copy()
+
+        # ORIGINAL Atlas power-law for RAIN
+        # self.vt = self.av*self.d**self.bv
+        # self.vt_edges = self.av*self.d_edges**self.bv
+        
+        # self.vt[self.vt>10.] = 10.
+        # self.vt_edges[self.vt_edges>10.]=10.
+        
+        # self.vt1 = self.vt_edges[:-1].copy() 
+        # self.vt2 = self.vt_edges[1:].copy()
 
         # Midpoint Area (mm^2)
         # !!! Note, testing here
@@ -193,68 +323,6 @@ class dist():
         self.Mbins = np.zeros_like(self.xbins).astype(np.float64)
         self.Nbins = np.zeros_like(self.xbins).astype(np.float64)
         
-        # if radar: # NOTE. Almost certainly I should only update the distributions after the model runs. 
-        #             # No need to update the radar variables during runtime.
-        #     # Radar stuff
-        #     self.wavl = 110.
-        #     #self.sigma = 0.
-        #     self.ew0 = complex(81.0, 23.2)  # Dielectric constant of water at 0C
-        #     self.kw = (np.abs((self.ew0 - 1) / (self.ew0 + 2)))**2
-        #     self.cz = (4.0 * self.wavl**4)/(np.pi**4 * self.kw)
-        #     self.ckdp = (0.18 / np.pi) * self.wavl
-        #     self.rhoi = 0.92
-            
-        #     # Calculate scattering amplitudes and whatnot
-        #     if self.ptype=='rain':
-                
-        #         self.rho1 = 1.0 # g/cm^3
-        #         self.rho2 = 1.0 # g/cm^3
-                
-        #         self.eps1 = dielectric_water(Tc+273.15,self.ew0)
-        #         self.eps2 = self.eps1
-                
-        #         self.ar = 0.9951 + 0.0251*self.d-0.03644*self.d**2+0.00503*self.d**3-0.0002492*self.d**4
-        #         self.ar1 = 0.9951 + 0.0251*self.d1-0.03644*self.d1**2+0.00503*self.d1**3-0.0002492*self.d1**4
-        #         self.ar2 = 0.9951 + 0.0251*self.d2-0.03644*self.d2**2+0.00503*self.d2**3-0.0002492*self.d2**4
-    
-        #         self.ar[self.ar>1.0] = 1.0 
-        #         self.ar[self.ar<0.56] = 0.56
-                
-        #         self.ar1[self.ar1>1.0] = 1.0 
-        #         self.ar1[self.ar1<0.56] = 0.56
-                
-        #         self.ar2[self.ar2>1.0] = 1.0 
-        #         self.ar2[self.ar2<0.56] = 0.56
-                
-        #     elif self.ptype=='snow':
-                
-        #         self.ar1 = self.ar*np.ones_like(self.d1)
-        #         self.ar2 = self.ar*np.ones_like(self.d2)
-                
-        #         self.rho1 = self.arho*self.d1**(self.bm-3.)  
-        #         self.rho1[self.rho1>self.rhoi] = 0.92 
-                
-        #         self.rho2 = self.arho*self.d2**(self.bm-3.)
-        #         self.rho2[self.rho2>self.rhoi] = 0.92 
-                
-        #         epi = dielectric_ice(self.wavl,Tc+273.15)
-                
-        #         Ki = (epi-1.)/(epi+2.)
-                
-        #         self.eps1 = (1+2*(self.rho1/self.rhoi)*Ki)/(1-(self.rho1/self.rhoi)*Ki)
-        #         self.eps2 = (1+2*(self.rho2/self.rhoi)*Ki)/(1-(self.rho2/self.rhoi)*Ki)
-                
-        #         self.angs = angular_moments(self.sigma)
-                
-        #         self.la1, self.lb1 = spheroid_factors(self.ar1)
-        #         self.la2, self.lb2 = spheroid_factors(self.ar2)
-                
-        #         self.fscatt_pre1 = ((np.pi**2 * (self.d1)**3) / (6 * self.wavl**2))
-        #         self.fscatt_pre2 = ((np.pi**2 * (self.d2)**3) / (6 * self.wavl**2))                   
-                
-        #         self.eps1_factor = (1 / (self.eps1 - 1))
-        #         self.eps2_factor = (1 / (self.eps2 -1))
-    
         
     def bin_gamma_dist(self,Nt0=1.,Mt0=1.,mbar=None,mu0=3,Dm0=2,normalize=False):
         
@@ -296,6 +364,174 @@ class dist():
             
         self.Nbins = 0.5*(self.nedges[:-1]+self.nedges[1:])*(self.x2-self.x1)
         self.Mbins = (1./6.)*(self.nedges[:-1]*(2.*self.x1+self.x2)+self.nedges[1:]*(self.x1+2.*self.x2))*(self.x2-self.x1)
+
+
+    def bin_analytical_dist(self, func_nD, var='size'):
+        """
+        Populates bins using user-defined analytical functions.
+        func_N: A lambda returning number concentration (dN/dD or dN/dm)
+        func_M: (Optional) A lambda returning mass concentration
+        var: 'diameter' or 'mass' indicating what the lambda expects.
+        """
+        from scipy.integrate import quad
+        
+        self.Mbins = np.zeros(self.bins)
+        self.Nbins = np.zeros(self.bins)
+        
+        # Choose the grid the function expects
+        x1 = self.d1 if var == 'size' else self.xi1
+        x2 = self.d2 if var == 'size' else self.xi2
+        
+        if var == 'size':
+            bin_mass = lambda x: self.am*x**self.bm
+            
+        else:
+            bin_mass = lambda x: x
+                  
+        func_nD_scaled = lambda x: bin_mass(x)*func_nD(x)
+        
+        for k in range(self.bins):
+            
+            self.Mbins[k], _ = quad(func_nD_scaled, x1[k], x2[k])
+            self.Nbins[k], _ = quad(func_nD, x1[k], x2[k])
+
+    def bin_empirical_dist(self, user_edges, user_nD):
+        """
+        Conservatively regrids external PSD data (density n(D)) to the model's grid.
+        
+        Parameters:
+        -----------
+        user_edges : array
+            Array of length (K+1) defining the user's bin boundaries (diameter).
+            *Must be in the same units as the model's internal self.d1 / self.d2*
+        user_nD : array
+            Array of length K defining the number density n(D).
+            Assumed to be piecewise-constant across the bin.
+        """
+        from scipy.interpolate import interp1d
+        
+        # 1. Convert density n(D) to exact discrete Number (N) and Mass (M) per user bin
+        D_left = user_edges[:-1]
+        D_right = user_edges[1:]
+        
+        # Discrete Number: Integral of a constant n(D) is just n(D) * delta_D
+        user_N = user_nD * (D_right - D_left)
+        
+        # Discrete Mass: Exact integral of n(D) * a * D^b dD
+        # This prevents the underestimation that occurs if you just use the bin midpoint!
+        b1 = self.bm + 1.0
+        user_M = user_nD * self.am * (D_right**b1 - D_left**b1) / b1
+        
+        # 2. Create the Cumulative Distributions (CDF starts at 0 at the first edge)
+        cdf_N = np.insert(np.cumsum(user_N), 0, 0.0)
+        cdf_M = np.insert(np.cumsum(user_M), 0, 0.0)
+        
+        # 3. Create linear interpolators for the CDFs.
+        # Everything outside the user's grid bounds gets clamped to 0 or max total.
+        interp_N = interp1d(user_edges, cdf_N, kind='linear', 
+                            bounds_error=False, fill_value=(0, cdf_N[-1]))
+        
+        interp_M = interp1d(user_edges, cdf_M, kind='linear', 
+                            bounds_error=False, fill_value=(0, cdf_M[-1]))
+                            
+        # 4. Map to model grid by differencing the CDF at the model's diameter boundaries
+        self.Nbins = interp_N(self.d2) - interp_N(self.d1)
+        self.Mbins = interp_M(self.d2) - interp_M(self.d1)
+        
+        # Prevent any tiny negative interpolation artifacts
+        self.Nbins[self.Nbins < 0] = 0.0 
+        self.Mbins[self.Mbins < 0] = 0.0
+
+
+    def bin_empirical_counts(self, user_edges, user_N, user_M=None):
+        """
+        Conservatively regrids external binned data to the model's native grid.
+        user_edges: Array of length (N+1) defining the user's bin boundaries.
+        user_N: Array of length N defining total number in each bin.
+        """
+        from scipy.interpolate import interp1d
+        
+        # 1. Create the Cumulative Number Distribution
+        # Insert a 0 at the beginning so CDF starts at 0
+        cdf_N = np.insert(np.cumsum(user_N), 0, 0.0)
+        
+        # 2. Create an interpolator.
+        # Extrapolation is flat (0 on the left, max total number on the right)
+        interp_N = interp1d(user_edges, cdf_N, kind='linear', 
+                            bounds_error=False, fill_value=(0, cdf_N[-1]))
+        
+        # 3. Map to model grid by differencing the CDF at the model boundaries
+        self.Nbins = interp_N(self.d2) - interp_N(self.d1)
+        
+        # Prevent any tiny negative interpolation artifacts
+        self.Nbins[self.Nbins < 0] = 0.0 
+        
+        # 4. Handle Mass
+        if user_M is not None:
+            cdf_M = np.insert(np.cumsum(user_M), 0, 0.0)
+            interp_M = interp1d(user_edges, cdf_M, kind='linear', 
+                                bounds_error=False, fill_value=(0, cdf_M[-1]))
+            self.Mbins = interp_M(self.d2) - interp_M(self.d1)
+            self.Mbins[self.Mbins < 0] = 0.0
+        else:
+            self.Mbins = self.Nbins * self.mass
+
+
+    def bin_direct_dist(self, edges, Nbins, Mbins=None, var='size'):
+        """
+        Conservatively regrids discrete user arrays onto the model's native grid.
+        
+        Parameters:
+        -----------
+        edges : array
+            Array of length (K+1) defining the user's bin boundaries.
+        Nbins : array
+            Array of length K defining the absolute total number in each user bin.
+        Mbins : array (Optional)
+            Array of length K defining the absolute total mass in each user bin.
+        var : str
+            'diameter' or 'mass', indicating what physical property `edges` represents.
+        """
+        from scipy.interpolate import interp1d
+        
+        edges = np.array(edges, dtype=np.float64)
+        user_N = np.array(Nbins, dtype=np.float64)
+        
+        # 1. Create the Cumulative Distribution (Starts at 0)
+        cdf_N = np.insert(np.cumsum(user_N), 0, 0.0)
+        
+        # 2. Create the linear interpolator
+        # Flat extrapolation ensures no particles are "invented" outside the user's bounds
+        interp_N = interp1d(edges, cdf_N, kind='linear', 
+                            bounds_error=False, fill_value=(0, cdf_N[-1]))
+        
+        # 3. Select the correct model boundaries to map onto
+        if var == 'size':
+            model_left = self.d1
+            model_right = self.d2
+        elif var == 'mass':
+            model_left = self.xi1
+            model_right = self.xi2
+        else:
+            raise ValueError("var must be 'diameter' or 'mass'")
+            
+        # 4. Differencing the CDF onto the model grid
+        self.Nbins = interp_N(model_right) - interp_N(model_left)
+        self.Nbins[self.Nbins < 0] = 0.0
+        
+        # 5. Handle Mass identically if provided
+        if Mbins is not None:
+            user_M = np.array(Mbins, dtype=np.float64)
+            cdf_M = np.insert(np.cumsum(user_M), 0, 0.0)
+            interp_M = interp1d(edges, cdf_M, kind='linear', 
+                                bounds_error=False, fill_value=(0, cdf_M[-1]))
+                                
+            self.Mbins = interp_M(model_right) - interp_M(model_left)
+            self.Mbins[self.Mbins < 0] = 0.0
+        else:
+            # Fallback: assume mass centers align with the model's native grid
+            self.Mbins = self.Nbins * self.mass
+
 
     def moments(self,r):  # Units are g^n
         # Integrate to find arbitrary moments of subgrid distribution Mn = Int x^n *[n(x)=ak*x+ck]*dx
@@ -437,13 +673,6 @@ class dist():
         ang5 = self.angs[4]
         #ang6 = angs[5]
         ang7 = self.angs[6]
-        
-        # fhh_180_1 = fhh_0_1 = (((np.pi**2 * (self.d1)**3) / (6 * self.wavl**2)) * (1 / (self.lb1 + (1 / (self.eps1 -1)))))  
-        # fvv_180_1 = fvv_0_1 = (((np.pi**2 * (self.d1)**3) / (6 * self.wavl**2)) * (1 / (self.la1 + (1 / (self.eps1 -1)))))
-        
-        # fhh_180_2 = fhh_0_2 = (((np.pi**2 * (self.d2)**3) / (6 * self.wavl**2)) * (1 / (self.lb2 + (1 / (self.eps2 -1)))))  
-        # fvv_180_2 = fvv_0_2 = (((np.pi**2 * (self.d2)**3) / (6 * self.wavl**2)) * (1 / (self.la2 + (1 / (self.eps2 -1)))))
-        
         
         fhh_180_1 = fhh_0_1 = self.fscatt_pre1* (1 / (self.lb1 + self.eps1_factor))  
         fvv_180_1 = fvv_0_1 = self.fscatt_pre1* (1 / (self.la1 + self.eps1_factor))  
@@ -827,12 +1056,8 @@ def extended_brandes(d):
 
 def rain_terminal_velocity(d_mm):
     """
-    Calculates terminal velocity (m/s) from diameter (mm) using a Weibull fit to
-    the Gunn & Kinzer (1949) and Beard (1979) measurements.
-    Corrects the coefficients from Table 2 of Simmel (2002) to match Gunn & Kinzer (1949)
-    and ensures physical continuity.
+    Calculates terminal velocity (m/s) from diameter (mm) using a Weibull-like fit to
+    the Gunn & Kinzer (1949) measurements according to Equation 5 from Best (1950).
     """
-
-    #return 9.17*(1.-np.exp(-(1.85*d_mm)**(0.69)))
 
     return 9.43*(1.-np.exp(-(0.565*d_mm)**(1.147))) # Equation 5 from Best (1950) https://doi.org/10.1002/qj.49707632905

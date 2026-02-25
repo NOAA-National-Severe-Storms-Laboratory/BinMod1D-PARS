@@ -13,7 +13,7 @@ explicitly simulates the evolution of rain or snow particle size distributions
 coalescence and breakup processes. These calculations represent a notoriously 
 difficult numerical problem and requires special consideration. **BinMod1D** however 
 makes it easy to both simulate PSD evolution in time and in height and visualize
-results from a variety of different formats.
+results in a variety of different plotting styles.
 
 ```{image} _static/tutorial_time_height_Z_full.svg
 :width: 100%
@@ -21,7 +21,7 @@ results from a variety of different formats.
 ```
 
 ## 🛠 Model Capabilities
-BinMod1D can run in three different modes:
+**BinMod1D** can run in three different modes:
 
 ::::{grid} 3
 :gutter: 3

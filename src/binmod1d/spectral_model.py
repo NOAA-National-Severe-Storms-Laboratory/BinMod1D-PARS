@@ -58,7 +58,7 @@ from .plotting_functions import get_cmap_vars
 from .radar import spheroid_factors, angular_moments, dielectric_ice, dielectric_water
 
 import numpy as np
-import scipy.special as scip
+#import scipy.special as scip
 import matplotlib.pyplot as plt
 
 from matplotlib.colors import BoundaryNorm
@@ -82,12 +82,21 @@ else:
 # 1D Spectral Bin Model Class
 class spectral_1d:
     
+    # def __init__(self,sbin=8,bins=140,dt=2,
+    #              tmax=800.,output_freq=1,dz=10.,ztop=0.,zbot=0.,D1=0.25,x0=0.01,Nt0=1.,Mt0=1.,Dm0=2.0,
+    #              mbar0=None,mu0=3.,init_method = 'gamma', gam_norm=False,Ecol=0.001,Es=1.0,Eb=0.,moments=2,dist_var='mass',
+    #              kernel='Golovin',frag_dist='exp_mass',habit_params='rain',
+    #              ptype='rain',Tc=10.,boundary=None,dist_num=1,cc_dest=1,br_dest=1, 
+    #              radar=False,wavl=110.,rk_order=1,adv_order=1,gpu=False,load=None,progress=True,
+    #              **kwargs):
+        
     def __init__(self,sbin=8,bins=140,dt=2,
-                 tmax=800.,output_freq=1,dz=10.,ztop=0.,zbot=0.,D1=0.25,x0=0.01,Nt0=1.,Mt0=1.,Dm0=2.0,
-                 mbar0=None,mu0=3.,gam_norm=False,Ecol=0.001,Es=1.0,Eb=0.,moments=2,dist_var='mass',
-                 kernel='Golovin',frag_dist='exp',habit_list=['rain'],
-                 ptype='rain',Tc=10.,boundary=None,dist_num=1,cc_dest=1,br_dest=1, 
-                 radar=False,wavl=110.,rk_order=1,adv_order=1,gpu=False,load=None,progress=True):
+                 tmax=800.,output_freq=1,dz=10.,ztop=0.,zbot=0.,D1=0.25,x0=0.01,Ecol=0.001,Es=1.0,Eb=0.,moments=2,dist_var='mass',
+                 kernel='Golovin',frag_dist='exp_mass',habit_params='rain',
+                 ptype='rain',Tc=10.,boundary=None,cc_dest=1,br_dest=1, 
+                 radar=False,wavl=110.,rk_order=1,adv_order=1,gpu=False,load=None,progress=True,
+                 **kwargs):
+        
         '''
         
 
@@ -176,180 +185,216 @@ class spectral_1d:
 
         '''   
         
+        
         # If not loading netcdf file, then manually set up case, attributes, variables, etc.
         if load is None:
+            
+            # Get structured habit list of dictionaries for each distribution category.
+            self.setup_habits(habit_params,psd_params=kwargs)
+            
+            #print('habit_dict=',self.habit_dict)
+            #raise Exception()
+            
+            # self.setup_case(sbin=sbin,bins=bins,D1=D1,x0=x0,dt=dt,tmax=tmax,
+            #             output_freq=output_freq,dz=dz,ztop=ztop,zbot=zbot,Nt0=Nt0,Mt0=Mt0,Dm0=Dm0,mbar0=mbar0,mu0=mu0,
+            #             init_method=init_method,gam_norm=gam_norm,Ecol=Ecol,
+            #             Es=Es,Eb=Eb,moments=moments,dist_var=dist_var,kernel=kernel,frag_dist=frag_dist,
+            #             habit_params=habit_params,ptype=ptype,Tc=Tc,radar=radar,wavl=wavl,boundary=boundary,
+            #             cc_dest=cc_dest,br_dest=br_dest,rk_order=rk_order,adv_order=adv_order,gpu=gpu,
+            #             progress=progress)
+            
+            
             self.setup_case(sbin=sbin,bins=bins,D1=D1,x0=x0,dt=dt,tmax=tmax,
-                        output_freq=output_freq,dz=dz,ztop=ztop,zbot=zbot,Nt0=Nt0,Mt0=Mt0,Dm0=Dm0,mbar0=mbar0,mu0=mu0,gam_norm=gam_norm,Ecol=Ecol,
-                        Es=Es,Eb=Eb,moments=moments,dist_var=dist_var,kernel=kernel,frag_dist=frag_dist,
-                        habit_list=habit_list,ptype=ptype,Tc=Tc,radar=radar,wavl=wavl,boundary=boundary,
+                        output_freq=output_freq,dz=dz,ztop=ztop,zbot=zbot,
+                        Ecol=Ecol,Es=Es,Eb=Eb,moments=moments,dist_var=dist_var,kernel=kernel,frag_dist=frag_dist,
+                        habit_dict=self.habit_dict,ptype=ptype,Tc=Tc,radar=radar,wavl=wavl,boundary=boundary,
                         cc_dest=cc_dest,br_dest=br_dest,rk_order=rk_order,adv_order=adv_order,gpu=gpu,
                         progress=progress)
             
         else: # If load is specified then load netcdf attributes/variables as object attribute/variables
             
-            with Dataset(load,'r',format='NETCDF4') as file_nc:
-                
-                # Read spectral_1d object attributes from netcdf file
-                self.bins = file_nc.bins
-                self.sbin = file_nc.sbin
-                self.dnum = file_nc.dnum
-                self.moments = file_nc.moments
-                self.kernel = file_nc.kernel
-                self.ptype  = file_nc.ptype
-                self.Hlen = file_nc.Hlen
-                self.Tlen = file_nc.Tlen
-                self.output_freq = file_nc.output_freq
-                self.Tout_len = file_nc.Tout_len
-                self.dt = file_nc.dt 
-                self.dz = file_nc.dz 
-                self.rk_order = file_nc.rk_order
-                self.adv_order = file_nc.adv_order
-                self.int_type = file_nc.int_type
-                self.radar =  bool(file_nc.radar)
-                self.radar = file_nc.wavl
-                self.br_dest = file_nc.indb
-                self.cc_dest = file_nc.indc
-                self.dist_var = file_nc.dist_var
-                self.mu0 = file_nc.mu0
-                self.Dm0 = file_nc.Dm0
-                self.Nt0 = file_nc.Nt0
-                self.Mt0 = file_nc.Mt0
-                self.D1 = file_nc.D1
-                self.lamf = file_nc.lamf
-                self.x0 = file_nc.x0
-                self.Tc = file_nc.Tc
-                self.Ecol = file_nc.Ecol
-                self.Es = file_nc.Es
-                self.Eb = file_nc.Eb
-                self.Eagg = file_nc.Eagg
-                self.Ebr = file_nc.Ebr
-                self.Ecb = file_nc.Ecb
-                #self.n_jobs = file_nc.n_jobs
-                self.gam_norm = bool(file_nc.gam_norm)
-                if file_nc.boundary == 'None':
-                    self.boundary = None
-                else:
-                    self.boundary = file_nc.boundary
-                self.ztop = file_nc.ztop
-                self.zbot = file_nc.zbot
-                self.tmax = file_nc.tmax
-                
-                # if file_nc.parallel==0:
-                #     self.parallel = False
-                # else:
-                #     self.parallel = True
-                        
-                self.rhobins = 2**(1./self.sbin) # scaling param for mass bins 
-                # Boundary logic for Scenarios A, B, C
-                self.bound_low = (2. + self.rhobins) / 3.
-                self.bound_high = (1. + 2. * self.rhobins) / 3.
-                
-                self.frag_dist = file_nc.frag_dist
-                
-                dist_names = list(file_nc.groups.keys())
-                
-                self.habit_list = [file_nc.groups[dd].habit for dd in dist_names]
-                self.habit_dict = [habits()[habit_list[dd]] for dd in range(self.dnum)]
-                            
-                if self.frag_dist is None:
-                    frag_dict = fragments('exp')
-                else:
-                    frag_dict = fragments(self.frag_dist)
-                                
-                self.lamf = frag_dict['lamf']
-                
-                self.setup_case(sbin=self.sbin,
-                                bins=self.bins,
-                                D1=self.D1,
-                                x0=self.x0,
-                                Nt0=self.Nt0,
-                                Mt0=self.Mt0,
-                                mbar0=self.mbar0,
-                                Dm0=self.Dm0,
-                                mu0=self.mu0,
-                                gam_norm=self.gam_norm,
-                                dist_var=self.dist_var,
-                                kernel=self.kernel,
-                                Ecol=self.Ecol,
-                                Es=self.Es,
-                                Eb=self.Eb,
-                                moments=self.moments,
-                                ztop=self.ztop,
-                                zbot=self.zbot, 
-                                tmax=self.tmax,
-                                output_freq=self.output_freq,
-                                dt=self.dt,
-                                dz=self.dz,
-                                frag_dist=self.frag_dist,
-                                habit_list=self.habit_list,
-                                ptype=self.ptype,
-                                Tc=self.Tc,
-                                radar=self.radar,
-                                wavl = self.wavl,
-                                boundary=self.boundary,
-                                cc_dest=self.cc_dest,
-                                br_dest=self.br_dest,
-                                rk_order=self.rk_order,
-                                adv_order=self.adv_order,
-                                gpu=False,
-                                progress=True)     
-                     
-                # Stencils used for variable upwind advection (not currently implemented)
-                self.stencils = {1: np.array([-1, 1]) / 1,
-                                 2: np.array([1, -4, 3]) / 2,
-                                 3: np.array([-2, 9, -18, 11]) / 6,
-                                 4: np.array([3, -16, 36, -48, 25]) / 12}
-                
-                self.adv_base = self.stencils[adv_order]
-                
-                self.tout = file_nc.variables['tout'][:]
-                self.z = file_nc.variables['z'][:]
-                
-                self.xi1 = file_nc.variables['xi1'][:]
-                self.xi2 = file_nc.variables['xi2'][:]
-                
-                self.dxbins = self.xi2-self.xi1
-                
-                self.Mbins = file_nc.variables['Mbins'][:]
-                
-                if self.moments==2:
-                    self.Nbins =  file_nc.variables['Nbins'][:]
-                       
-                self.diagnose_subgrid()
-                self.calc_micro() 
-                
-                if self.radar:
-                    self.calc_radar()
-            
-        # If running in parallel
-        # if self.parallel:
-        #     self._parallel_config = Parallel(n_jobs=self.n_jobs,verbose=0)
-        #     self._context_stack = []
-        # else:
-        #     self.n_jobs=1
-        #     self._parallel_config = None
-            
-        # self.pool = None
+            self.load_case(load)
 
 
-
+    def load_case(self,filename):
+        
+        with Dataset(filename,'r',format='NETCDF4') as file_nc:
             
-    def setup_case(self,sbin=4,bins=160,D1=0.001,x0=0.01,Nt0=1.,Mt0=1.,mbar0=None,Dm0=2.0,mu0=3,gam_norm=False,dist_var='mass',kernel='Golovin',Ecol=1.53,Es=0.001,Eb=0.,
-                        moments=2,ztop=3000.0,zbot=0.,zout=None,tout=None,tmax=800.,output_freq=1,dt=10.,dz=10.,frag_dist='exp',habit_list=['rain'],ptype='rain',Tc=10.,
-                        radar=False,wavl=110.,boundary=None,cc_dest=1,br_dest=1,rk_order=1,adv_order=1,gpu=False,progress=True):
+            file_nc.set_auto_mask(False)
+            
+            # Read spectral_1d object attributes from netcdf file
+            self.bins = file_nc.bins
+            self.sbin = file_nc.sbin
+            self.dnum = file_nc.dnum
+            self.moments = file_nc.moments
+            self.kernel = file_nc.kernel
+            self.ptype  = file_nc.ptype
+            self.Hlen = file_nc.Hlen
+            self.Tlen = file_nc.Tlen
+            self.output_freq = file_nc.output_freq
+            self.Tout_len = file_nc.Tout_len
+            self.dt = file_nc.dt 
+            self.dz = file_nc.dz 
+            self.rk_order = file_nc.rk_order
+            self.adv_order = file_nc.adv_order
+            self.int_type = file_nc.int_type
+            self.radar =  bool(file_nc.radar)
+            self.wavl = file_nc.wavl
+            self.br_dest = file_nc.indb
+            self.cc_dest = file_nc.indc
+            self.dist_var = file_nc.dist_var
+            #self.mu0 = file_nc.mu0
+            #self.Dm0 = file_nc.Dm0
+            #self.Nt0 = file_nc.Nt0
+            #self.Mt0 = file_nc.Mt0
+            
+            #if file_nc.mbar0 == 0:
+            #    self.mbar0 = None
+            #else:
+            #    self.mbar0 = file_nc.mbar0
+            
+            self.D1 = file_nc.D1
+            #self.lamf = file_nc.lamf
+            self.x0 = file_nc.x0
+            self.Tc = file_nc.Tc
+            self.Ecol = file_nc.Ecol
+            self.Es = file_nc.Es
+            self.Eb = file_nc.Eb
+            self.Eagg = file_nc.Eagg
+            self.Ebr = file_nc.Ebr
+            self.Ecb = file_nc.Ecb
+            #self.n_jobs = file_nc.n_jobs
+            #self.init_method = file_nc.init_method
+            #self.gam_norm = bool(file_nc.gam_norm)
+            if file_nc.boundary == 'None':
+                self.boundary = None
+            else:
+                self.boundary = file_nc.boundary
+            self.ztop = file_nc.ztop
+            self.zbot = file_nc.zbot
+            self.tmax = file_nc.tmax
+            
+            # if file_nc.parallel==0:
+            #     self.parallel = False
+            # else:
+            #     self.parallel = True
+                    
+            self.rhobins = 2**(1./self.sbin) # scaling param for mass bins 
+            # Boundary logic for Scenarios A, B, C
+            self.bound_low = (2. + self.rhobins) / 3.
+            self.bound_high = (1. + 2. * self.rhobins) / 3.
+            
+            self.frag_dist = file_nc.frag_dist
+            
+            self.habit_names = list(file_nc.groups['Habits'].groups.keys())
+            
+            self.habit_params = {}
+            
+            for habit in self.habit_names:
+                
+                self.habit_params[habit] = file_nc.groups['Habits'].groups[habit].__dict__
+            
+                if 'gam_norm' in list(self.habit_params[habit].keys()):
+                    self.habit_params[habit]['gam_norm'] = bool(self.habit_params[habit]['gam_norm'])
+            
+                if ('mbar0' in list(self.habit_params[habit].keys())):
+                    if self.habit_params[habit]['mbar0'] == 0:
+                        self.habit_params[habit]['mbar0'] = None
+                    
+            # Get structured habit list of dictionaries for each distribution category.
+            self.setup_habits(self.habit_params)
+            
+            self.setup_case(sbin=self.sbin,
+                            bins=self.bins,
+                            D1=self.D1,
+                            x0=self.x0,
+                            dist_var=self.dist_var,
+                            kernel=self.kernel,
+                            Ecol=self.Ecol,
+                            Es=self.Es,
+                            Eb=self.Eb,
+                            moments=self.moments,
+                            ztop=self.ztop,
+                            zbot=self.zbot, 
+                            tmax=self.tmax,
+                            output_freq=self.output_freq,
+                            dt=self.dt,
+                            dz=self.dz,
+                            frag_dist=self.frag_dist,
+                            habit_dict=self.habit_params,
+                            ptype=self.ptype,
+                            Tc=self.Tc,
+                            radar=self.radar,
+                            wavl = self.wavl,
+                            boundary=self.boundary,
+                            cc_dest=self.cc_dest,
+                            br_dest=self.br_dest,
+                            rk_order=self.rk_order,
+                            adv_order=self.adv_order,
+                            gpu=False,
+                            progress=True)     
+                 
+            # Stencils used for variable upwind advection (not currently implemented)
+            self.stencils = {1: np.array([-1, 1]) / 1,
+                             2: np.array([1, -4, 3]) / 2,
+                             3: np.array([-2, 9, -18, 11]) / 6,
+                             4: np.array([3, -16, 36, -48, 25]) / 12}
+            
+            self.adv_base = self.stencils[self.adv_order]
+            
+            self.tout = file_nc.variables['tout'][:]
+            self.z = file_nc.variables['z'][:]
+            
+            self.xi1 = file_nc.variables['xi1'][:]
+            self.xi2 = file_nc.variables['xi2'][:]
+            
+            self.dxbins = self.xi2-self.xi1
+            
+            self.Mbins = file_nc.variables['Mbins'][:]
+            
+            if self.moments==2:
+                self.Nbins =  file_nc.variables['Nbins'][:]
+                   
+            self.diagnose_subgrid()
+            self.calc_micro() 
+            
+            if self.radar:
+                self.calc_radar()
+        
+    # If running in parallel
+    # if self.parallel:
+    #     self._parallel_config = Parallel(n_jobs=self.n_jobs,verbose=0)
+    #     self._context_stack = []
+    # else:
+    #     self.n_jobs=1
+    #     self._parallel_config = None
+        
+    # self.pool = None
+        
+            
+    #def setup_case(self,sbin=4,bins=160,D1=0.001,x0=0.01,Nt0=1.,Mt0=1.,mbar0=None,Dm0=2.0,mu0=3,init_method='gamma',gam_norm=False,dist_var='mass',kernel='Golovin',Ecol=1.53,Es=0.001,Eb=0.,
+    #                    moments=2,ztop=3000.0,zbot=0.,zout=None,tout=None,tmax=800.,output_freq=1,dt=10.,dz=10.,frag_dist='exp',habit_params='rain',ptype='rain',Tc=10.,
+    #                    radar=False,wavl=110.,boundary=None,cc_dest=1,br_dest=1,rk_order=1,adv_order=1,gpu=False,progress=True,**kwargs):
+     
+    def setup_case(self,sbin=4,bins=160,D1=0.001,x0=0.01,dist_var='mass',kernel='Golovin',Ecol=1.53,Es=0.001,Eb=0.,
+                        moments=2,ztop=3000.0,zbot=0.,zout=None,tout=None,tmax=800.,output_freq=1,dt=10.,dz=10.,frag_dist='exp',habit_dict=None,ptype='rain',Tc=10.,
+                        radar=False,wavl=110.,boundary=None,cc_dest=1,br_dest=1,rk_order=1,adv_order=1,gpu=False,progress=True,**kwargs):
+                
+        
         self.Tc = Tc
         self.radar = radar
         self.wavl = wavl
         self.sbin = sbin 
         self.bins = bins
         self.D1 = D1
-        self.Nt0 = Nt0 
-        self.Mt0 = Mt0
-        self.mbar0 = mbar0
-        self.Dm0 = Dm0 
-        self.mu0 = mu0 
+        #self.Nt0 = Nt0 
+        #self.Mt0 = Mt0
+        #self.mbar0 = mbar0
+        #self.Dm0 = Dm0 
+        #self.mu0 = mu0 
         self.x0 = x0
-        self.gam_norm = gam_norm
+        #self.init_method = init_method
+        #self.gam_norm = gam_norm
         self.kernel = kernel
         self.Ecol = Ecol # Collision efficiency
         self.Es = Es # Sticking efficiency
@@ -382,10 +427,21 @@ class spectral_1d:
         # else:
         #     self.n_jobs = n_jobs
         
+        self.habit_names = list(self.habit_dict.keys())
+        
         self.indc = cc_dest 
         self.indb = br_dest
         
-        self.dnum = len(habit_list)
+        # If users don't use a list for habit_params, then just put dictionary or string in a list
+        # where each element corresponds to parameters for a separate distribution.
+        
+        # if isinstance(habit_params,dict):
+        #     habit_params = [{key: value} for key, value in habit_params.items()]
+        
+        # if not isinstance(habit_params,list): # If habit_params is a single string
+        #     habit_params = [habit_params]
+            
+        #self.dnum = len(habit_params)
         
         self.moments = moments
         
@@ -445,42 +501,53 @@ class spectral_1d:
         elif dist_var=='mass':
             D1=None
         
-        # If dnum > habit list then just use first element for all habits
-        # if len(habit_list) < self.dnum:
-        #     habit_list = [habit_list[0] for dd in range(self.dnum)]
+        # # Create habit dictionary from input list.
+        # self.habit_dict = {}
         
-        # self.habit_list = habit_list
-        
-        # self.habit_dict = [habits()[habit_list[dd]] for dd in range(self.dnum)]
-        
-        # Create habit dictionaries from input list
-        self.habit_dict = [None]*self.dnum
-        
-        for hl in range(self.dnum):
+        # # Loop through each element of habit_params list
+        # for hl in range(self.dnum):
             
-            if isinstance(habit_list[hl],dict):
-                self.habit_dict[hl] = habit_list[hl]
-            elif isinstance(habit_list[hl],str):
-                try:
-                    habit_temp = habits()[habit_list[hl]]
-                except:
-                    raise RuntimeError('habit string not in habits() list')
-                    
-                self.habit_dict[hl] = habit_temp 
+        #     # If the element is a dictionary, we just add the dictionary as a key 
+        #     # in total dictionary.
+        #     if isinstance(habit_params[hl],dict):
+        #         habit_name_temp = list(habit_params[hl])[0]
+        #         habit_dict_temp = habit_params[hl][habit_name_temp]
                 
+        #     # If element of list is a string, try to add dictionary parameters
+        #     # from habits.py module.
+        #     elif isinstance(habit_params[hl],str):
+        #         try:
+        #             habit_name_temp = habit_params[hl]
+        #             habit_dict_temp = habits()[habit_params[hl]]
+        #         except:
+        #             raise RuntimeError('habit string not in habits() module')
+                    
+                    
+            # if habit_name_temp in list(self.habit_dict.keys()):
+            #     # Get number of habit already in dictionary
+                
+            #     hcount = list(self.habit_dict.keys()).count(habit_name_temp)
+                
+            #     habit_name_temp += ' {}'.format(hcount+1)    
+                
+                
+            # self.habit_dict[habit_name_temp] = habit_dict_temp 
+            
             # Make sure we have arho, brho, and am and bm. IF we have one set
             # but not the other, then just compute it. Assume that we have the
             # aspect ratio parameters
             
-            if ('arho' and 'brho' in list(self.habit_dict[hl])) and ('am' and 'bm' not in list(self.habit_dict[hl])):
-                # Note: Assume equivolume diameter for now.
-                self.habit_dict[hl]['am'] = 0.001*(np.pi/6.)*self.habit_dict[hl]['arho']
-                self.habit_dict[hl]['bm'] = 3.-self.habit_dict[hl]['brho']
+        #     if ('arho' and 'brho' in list(self.habit_dict[habit_name_temp])) and ('am' and 'bm' not in list(self.habit_dict[habit_name_temp])):
+        #         # Note: Assume equivolume diameter for now.
+        #         self.habit_dict[habit_name_temp]['am'] = 0.001*(np.pi/6.)*self.habit_dict[habit_name_temp]['arho']
+        #         self.habit_dict[habit_name_temp]['bm'] = 3.-self.habit_dict[habit_name_temp]['brho']
                 
-            if ('arho' and 'brho' not in list(self.habit_dict[hl])) and ('am' and 'bm' in list(self.habit_dict[hl])):
-                # Note: Assume equivolume diameter for now.
-                self.habit_dict[hl]['arho'] = 1000.*(6./np.pi)*self.habit_dict[hl]['am']
-                self.habit_dict[hl]['brho'] = 3.-self.habit_dict[hl]['bm']
+        #     if ('arho' and 'brho' not in list(self.habit_dict[habit_name_temp])) and ('am' and 'bm' in list(self.habit_dict[habit_name_temp])):
+        #         # Note: Assume equivolume diameter for now.
+        #         self.habit_dict[habit_name_temp]['arho'] = 1000.*(6./np.pi)*self.habit_dict[habit_name_temp]['am']
+        #         self.habit_dict[habit_name_temp]['brho'] = 3.-self.habit_dict[habit_name_temp]['bm']
+        
+        # self.habit_names = list(self.habit_dict.keys())
         
         dists = np.empty((self.dnum,),dtype=object)
         
@@ -501,18 +568,35 @@ class spectral_1d:
         ## NEW
         for dd in range(self.dnum):
             
+            
+            # dists[dd] = dist(sbin=sbin,bins=bins,D1=D1,x0=x0,
+            #                dist_var=dist_var,kernel=kernel,
+            #                habit_dict=self.habit_dict[self.habit_names[dd]],ptype=ptype,Tc=Tc,mom_num=moments)
+        
+            
             if dd==0: # Original Bin distribution
                 
-                dists[dd] = dist(sbin=sbin,bins=bins,D1=D1,x0=x0,Nt0=Nt0,Mt0=Mt0,mbar=mbar0,mu0=mu0,Dm0=Dm0,
-                               gam_init=True,gam_norm=gam_norm,dist_var=dist_var,kernel=kernel,
-                               habit_dict=self.habit_dict[0],ptype=ptype,Tc=Tc,mom_num=moments)
+                # dists[dd] = dist(sbin=sbin,bins=bins,D1=D1,x0=x0,Nt0=Nt0,Mt0=Mt0,mbar=mbar0,mu0=mu0,Dm0=Dm0,
+                #                init_method=init_method,dist_var=dist_var,kernel=kernel,
+                #                habit_dict=self.habit_dict[self.habit_names[dd]],ptype=ptype,Tc=Tc,mom_num=moments, 
+                #                normalize=gam_norm,input_dict=kwargs)
+                
+                dists[dd] = dist(sbin=sbin,bins=bins,D1=D1,x0=x0,
+                              dist_var=dist_var,kernel=kernel,
+                              habit_dict=self.habit_dict[self.habit_names[dd]],ptype=ptype,Tc=Tc,mom_num=moments)
+                
                 dist0 = dists[0]  
                 
             else:
                 # Coalesced or fragmented particles
-                dists[dd] = dist(sbin=sbin,D1=D1,bins=bins,gam_init=False,gam_norm=gam_norm,dist_var=dist_var,
-                             kernel=kernel,habit_dict=self.habit_dict[dd],ptype=ptype,x0=dist0.x0, 
-                             Tc=Tc,mom_num=moments)
+               # dists[dd] = dist(sbin=sbin,D1=D1,bins=bins,init_method='empty',dist_var=dist_var,
+               #              kernel=kernel,habit_dict=self.habit_dict[self.habit_names[dd]],ptype=ptype,x0=dist0.x0, 
+               #              Tc=Tc,mom_num=moments,normalize=gam_norm,input_dict=kwargs)
+                
+                #Coalesced or fragmented particles
+               dists[dd] = dist(sbin=sbin,D1=D1,bins=bins,dist_var=dist_var,
+                            kernel=kernel,habit_dict=self.habit_dict[self.habit_names[dd]],ptype=ptype,x0=dist0.x0, 
+                            Tc=Tc,mom_num=moments)
                     
             dists[dd].dh = self.dz/dists[dd].vt # Residence time for steady-state height calculations 
             dists[dd].dt = self.dt*np.ones_like(self.t) # Residence time for box model (i.e., equal to dt)
@@ -556,11 +640,11 @@ class spectral_1d:
             self.Nbins[0,0,:,0] = dist0.Nbins.copy()          
 
         if isinstance(frag_dist,str):
-            frag_dict = fragments(frag_dist)
-        elif isinstance(frag_dict,dict):
-            frag_dict = self.frag_dict
+            self.frag_dict = fragments(frag_dist)
+        elif isinstance(frag_dist,dict):
+            self.frag_dict = self.frag_dist
         else:
-            raise RuntimeError('frag_dict must be either a string or a dictionary object. Strings must match defaults in habits.py module.')
+            raise ValueError('frag_dict must be either a string or a dictionary. Strings must match defaults in habits.py module.')
                 
         self.xbins = dist0.xbins.copy() 
         self.xedges = dist0.xedges.copy()
@@ -574,15 +658,12 @@ class spectral_1d:
         
         # ORIGINAL
         self.Ikernel = Interaction(dists,self.Hlen,cc_dest,br_dest,self.Eagg,self.Ecb,self.Ebr, 
-                                   frag_dict,self.kernel,gpu=gpu,
+                                   self.frag_dict,self.kernel,gpu=gpu,
                                    mom_num=self.moments)
         
         self.Ikernel.rhobins = self.rhobins
         self.Ikernel.bound_low = self.bound_low 
         self.Ikernel.bound_high = self.bound_high
-        
-        
-        self.lamf = frag_dict['lamf']
         
         # Stencils used for variable upwind advection
         self.stencils = {1: np.array([-1, 1]) / 1,
@@ -595,14 +676,116 @@ class spectral_1d:
         self.dists = dists # 3D array of distribution objects (dist_num x height x time)
             
         self.dist0 = dist0
-
-        # Setup output text
-        if self.gam_norm and (self.mbar0 is None):
+        
+        #self.out_text = dist0.out_text
+        #self.gam_norm = dist0.gam_norm
+        
+        self.gam_norm = self.habit_dict[self.habit_names[0]].get('gam_norm',False)
+        mbar0 =self.habit_dict[self.habit_names[0]].get('mbar0',None)
+        
+        if self.gam_norm and (mbar0 is None):
             self.out_text = lambda M, Mf: 'Total Mass = {:.2f} g/m^3 | Total Mass Flux = {:.2f} g/(m^2*s)'.format(np.sum(M),np.sum(Mf))
         else:
             self.out_text = lambda M, Mf: 'Total Mass = {:.2f} g/m^3 | Total Mass Flux = {:.2f} g/(m^2*s)'.format(1000.*np.sum(M),1000.*np.sum(Mf))
  
+
+        # Setup output text
+        # if self.gam_norm and (self.mbar0 is None):
+        #     self.out_text = lambda M, Mf: 'Total Mass = {:.2f} g/m^3 | Total Mass Flux = {:.2f} g/(m^2*s)'.format(np.sum(M),np.sum(Mf))
+        # else:
+        #     self.out_text = lambda M, Mf: 'Total Mass = {:.2f} g/m^3 | Total Mass Flux = {:.2f} g/(m^2*s)'.format(1000.*np.sum(M),1000.*np.sum(Mf))
+ 
         
+    def setup_habits(self,habit_params,psd_params=None):
+        '''
+        
+        Parameters
+        ----------
+        habit_params : list or str or dict
+            Habit parameters for each desired distribution.
+        psd_params : dict, optional
+            PSD parameters. The default is None.
+
+        '''  
+        
+        # If user passes in dictionary, then wrap dictionary in list
+        if isinstance(habit_params,dict):
+            habit_params = [{key: value} for key, value in habit_params.items()]
+        
+        if not isinstance(habit_params,list): # If habit_params is a single string
+            habit_params = [habit_params]
+            
+        self.dnum = len(habit_params)
+        
+        
+        # Create habit dictionary from input list.
+        self.habit_dict = {}
+        
+        # Loop through each element of habit_params list
+        for hl in range(self.dnum):
+            
+            # If the element is a dictionary, we just add the dictionary as a key 
+            # in total dictionary.
+            if isinstance(habit_params[hl],dict):
+                habit_name_temp = list(habit_params[hl])[0]
+                habit_dict_temp = habit_params[hl][habit_name_temp]
+                
+            # If element of list is a string, try to add dictionary parameters
+            # from habits.py module.
+            elif isinstance(habit_params[hl],str):
+                try:
+                    habit_name_temp = habit_params[hl]
+                    habit_dict_temp = habits()[habit_params[hl]]
+                except:
+                    raise ValueError('habit string not in habits() module')
+                    
+            if habit_name_temp in list(self.habit_dict.keys()):
+                # Get number of habit already in dictionary
+                
+                hcount = list(self.habit_dict.keys()).count(habit_name_temp)
+                
+                habit_name_temp += ' {}'.format(hcount+1)  # Create new category  
+                   
+            self.habit_dict[habit_name_temp] = habit_dict_temp 
+            
+            # Make sure we have arho, brho, and am and bm. IF we have one set
+            # but not the other, then just compute it. Assume that we have the
+            # aspect ratio parameters
+            
+            if ('arho' and 'brho' in list(self.habit_dict[habit_name_temp])) and ('am' and 'bm' not in list(self.habit_dict[habit_name_temp])):
+                # Note: Assume equivolume diameter for now.
+                self.habit_dict[habit_name_temp]['am'] = 0.001*(np.pi/6.)*self.habit_dict[habit_name_temp]['arho']
+                self.habit_dict[habit_name_temp]['bm'] = 3.-self.habit_dict[habit_name_temp]['brho']
+                
+            if ('arho' and 'brho' not in list(self.habit_dict[habit_name_temp])) and ('am' and 'bm' in list(self.habit_dict[habit_name_temp])):
+                # Note: Assume equivolume diameter for now.
+                self.habit_dict[habit_name_temp]['arho'] = 1000.*(6./np.pi)*self.habit_dict[habit_name_temp]['am']
+                self.habit_dict[habit_name_temp]['brho'] = 3.-self.habit_dict[habit_name_temp]['bm']
+        
+        self.habit_names = list(self.habit_dict.keys())
+
+
+        # Add in additional psd keyword arguments in each dictionary field
+        if psd_params is not None:
+            
+            for vv in list(psd_params.keys()):
+                psd_temp = psd_params[vv]
+                if not isinstance(psd_temp,list):
+                    psd_temp = [psd_temp]
+
+                psd_len = min(len(psd_temp),self.dnum)
+
+                for hn in range(psd_len):
+                    self.habit_dict[self.habit_names[hn]][vv] = psd_temp[hn]
+        
+        for hn in range(len(self.habit_names)):
+            
+            if 'init_method' not in list(self.habit_dict[self.habit_names[hn]].keys()):
+                if hn==0:
+                    self.habit_dict[self.habit_names[hn]]['init_method'] = 'gamma'
+                else:
+                    self.habit_dict[self.habit_names[hn]]['init_method'] = 'empty'
+    
     def setup_radar(self):
         # Radar stuff
         #self.wavl = 110.
@@ -613,7 +796,9 @@ class spectral_1d:
         self.ckdp = (0.18 / np.pi) * self.wavl
         self.rhoi = 0.92
 
-        self.sigma = np.array([self.habit_dict[dd]['sig'] for dd in range(self.dnum)]) 
+        #self.sigma = np.array([self.habit_dict[dd]['sig'] for dd in range(self.dnum)]) 
+        
+        self.sigma = np.array([self.habit_dict[key]['sig'] for key in self.habit_dict]) 
         
         self.angs = np.zeros((7,self.dnum,self.bins))
                
@@ -655,8 +840,11 @@ class spectral_1d:
         M4 = np.zeros((self.dnum,self.Hlen,self.Tout_len))
 
         for dd in range(self.dnum):
-            am = self.habit_dict[dd]['am']
-            bm = self.habit_dict[dd]['bm']
+           # am = self.habit_dict[dd]['am']
+           # bm = self.habit_dict[dd]['bm']
+            
+            am = self.habit_dict[self.habit_names[dd]]['am']
+            bm = self.habit_dict[self.habit_names[dd]]['bm']
             
             M3[dd,:,:] = (am**(-3./bm)*(self.calc_moments(3./bm,self.moments)).sum(axis=2)[dd,:,:])
             M4[dd,:,:] = (am**(-4./bm)*(self.calc_moments(4./bm,self.moments)).sum(axis=2)[dd,:,:])
@@ -842,36 +1030,36 @@ class spectral_1d:
             
        # gc.collect()
 
-    def check_init_dist(self):
+    # def check_init_dist(self):
               
-        am = self.dist0.am 
-        bm = self.dist0.bm
-        av = self.dist0.av 
-        bv = self.dist0.bv
+    #     am = self.dist0.am 
+    #     bm = self.dist0.bm
+    #     av = self.dist0.av 
+    #     bv = self.dist0.bv
         
-        Dm_binned = ((am**(-4./bm)*self.dist0.moments(4./bm)).sum())/(am**(-3./bm)*self.dist0.moments(3./bm)).sum()
+    #     Dm_binned = ((am**(-4./bm)*self.dist0.moments(4./bm)).sum())/(am**(-3./bm)*self.dist0.moments(3./bm)).sum()
         
-        Nt_binned = self.dist0.moments(0.).sum()
+    #     Nt_binned = self.dist0.moments(0.).sum()
               
-        WC_full = self.Nt0*am*(self.mu0+4)**(-bm)*self.Dm0**(bm)*scip.gamma(self.mu0+bm+1.)/scip.gamma(self.mu0+1)
+    #     WC_full = self.Nt0*am*(self.mu0+4)**(-bm)*self.Dm0**(bm)*scip.gamma(self.mu0+bm+1.)/scip.gamma(self.mu0+1)
         
-        WC_binned = self.dist0.Mbins.sum()
+    #     WC_binned = self.dist0.Mbins.sum()
         
-        R_full = 3.6*self.Nt0*am*av*(self.mu0+4)**(-(bm+bv))*\
-                 self.Dm0**(bm+bv)*scip.gamma(self.mu0+bm+bv+1.)/scip.gamma(self.mu0+1)
-        R_binned = 3.6*av*(am)**(-bv/bm)*self.dist0.moments((bm+bv)/bm).sum()
+    #     R_full = 3.6*self.Nt0*am*av*(self.mu0+4)**(-(bm+bv))*\
+    #              self.Dm0**(bm+bv)*scip.gamma(self.mu0+bm+bv+1.)/scip.gamma(self.mu0+1)
+    #     R_binned = 3.6*av*(am)**(-bv/bm)*self.dist0.moments((bm+bv)/bm).sum()
         
-        print('Initial Nt full = {:.2f} 1/L'.format(self.Nt0))
-        print('Initial Nt binned = {:.2f} 1/L'.format(Nt_binned))
-        print('------')
-        print('Initial Dm full = {:.2f} mm'.format(self.Dm0))
-        print('Initial Dm binned = {:.2f} mm'.format(Dm_binned))
-        print('------')
-        print('Initial WC full = {:.2f} g/m^3'.format(1000.*WC_full))
-        print('Initial WC binned = {:.2f} g/m^3'.format(1000.*WC_binned))
-        print('------')
-        print('Initial R full = {:.2f} mm/hr'.format(1000.*R_full))
-        print('Initial R binned = {:.2f} mm/hr'.format(1000.*R_binned))
+    #     print('Initial Nt full = {:.2f} 1/L'.format(self.Nt0))
+    #     print('Initial Nt binned = {:.2f} 1/L'.format(Nt_binned))
+    #     print('------')
+    #     print('Initial Dm full = {:.2f} mm'.format(self.Dm0))
+    #     print('Initial Dm binned = {:.2f} mm'.format(Dm_binned))
+    #     print('------')
+    #     print('Initial WC full = {:.2f} g/m^3'.format(1000.*WC_full))
+    #     print('Initial WC binned = {:.2f} g/m^3'.format(1000.*WC_binned))
+    #     print('------')
+    #     print('Initial R full = {:.2f} mm/hr'.format(1000.*R_full))
+    #     print('Initial R binned = {:.2f} mm/hr'.format(1000.*R_binned))
     
     
     
@@ -909,15 +1097,19 @@ class spectral_1d:
             return self.cki*Pn(r,self.x1,self.x2)
 
 
-    def write_netcdf(self,filename):
+    def write_netcdf(self,filename,save_radar=False):
         '''
         
+
         Parameters
         ----------
         filename : STRING
             Writes spectral_1d object attributes and variables to a netcdf file.
+        save_radar : bool, optional
+            If True, then write radar variables to netcdf file. The default is False.
 
         '''
+        
         
         with Dataset(filename,'w',format='NETCDF4') as file_nc:
             
@@ -938,15 +1130,24 @@ class spectral_1d:
             file_nc.int_type = self.int_type
             file_nc.kernel = self.kernel
             file_nc.radar = 1*self.radar
+            file_nc.wavl = self.wavl
             file_nc.indb = self.indb 
             file_nc.indc = self.indc
             file_nc.dist_var = self.dist_var
-            file_nc.mu0 = self.mu0
-            file_nc.Dm0 = self.Dm0
-            file_nc.Nt0 = self.Nt0
-            file_nc.Mt0 = self.Mt0
+            
+            
+            #file_nc.mu0 = self.mu0
+            #file_nc.Dm0 = self.Dm0
+            #file_nc.Nt0 = self.Nt0
+            #file_nc.Mt0 = self.Mt0
+            
+            #if self.mbar0 is None:
+           #     file_nc.mbar0 = 0 
+           # else:
+           #     file_nc.mbar0 = self.mbar0
+            
             file_nc.D1 = self.D1 
-            file_nc.lamf = self.lamf
+            #file_nc.lamf = self.lamf
             file_nc.x0 = self.dist0.x0
             file_nc.Tc = self.Tc
             file_nc.Ecol = self.Ecol
@@ -955,7 +1156,7 @@ class spectral_1d:
             file_nc.Eagg = self.Eagg 
             file_nc.Ebr = self.Ebr 
             file_nc.Ecb = self.Ecb
-            file_nc.gam_norm = 1*self.gam_norm
+            #file_nc.gam_norm = 1*self.gam_norm
             if self.boundary is None:
                 file_nc.boundary = 'None'
             else:
@@ -1000,20 +1201,20 @@ class spectral_1d:
             xbins.description = 'Mass grid midpoint'
             xi1.description = 'Mass grid left bin edge'
             xi2.description = 'Mass grid right bin edge'
+            
+            habit_group = file_nc.createGroup('Habits')
                 
             # Put distributions into 4D arrays
             for dd in range(self.dnum):
                 # Create group
-                dist_dd = file_nc.createGroup('dist{}'.format(dd+1))
+                dist_dd = habit_group.createGroup(self.habit_names[dd])
                 
-                # Add attributes
-                dist_dd.habit = self.habit_list[dd]
-                dist_dd.am = self.dists[dd].am
-                dist_dd.bm = self.dists[dd].bm
-                dist_dd.av = self.dists[dd].av
-                dist_dd.bv = self.dists[dd].bv
-                dist_dd.arho = self.dists[dd].arho
-                dist_dd.brho = self.dists[dd].brho
+                for key, value in self.habit_dict[self.habit_names[dd]].items():  
+
+                    if (value is None):
+                        setattr(dist_dd,key,0)
+                    if isinstance(value,bool):
+                        setattr(dist_dd,key,1*value)
     
             # Create Array Variables
             Mbins = file_nc.createVariable('Mbins','f8',('dists','height','bins','time_out',))
@@ -1169,8 +1370,11 @@ class spectral_1d:
             if plot_habits:
                 
                 for d1 in range(dist_num):
+                    
+                    flabel = self.habit_names[d1]
                                      
-                    ax[0,0].plot(self.tout,N[d1,:],linestyle=lstyle,label='dist {}'.format(d1+1))
+                    #ax[0,0].plot(self.tout,N[d1,:],linestyle=lstyle,label='dist {}'.format(d1+1))
+                    ax[0,0].plot(self.tout,N[d1,:],linestyle=lstyle,label=flabel)
                     ax[0,1].plot(self.tout,Dm[d1,:],linestyle=lstyle)
                     ax[0,2].plot(self.tout,M[d1,:],linestyle=lstyle)
                     ax[0,3].plot(self.tout,Rm[d1,:],linestyle=lstyle)
@@ -1231,7 +1435,9 @@ class spectral_1d:
             if plot_habits:
                 
                 for d1 in range(dist_num):
-                    ax[0,0].plot(N[d1,:],self.z/1000.,linestyle=lstyle,label='dist {}'.format(d1+1))
+                    flabel = self.habit_names[d1]
+                    #ax[0,0].plot(N[d1,:],self.z/1000.,linestyle=lstyle,label='dist {}'.format(d1+1))
+                    ax[0,0].plot(N[d1,:],self.z/1000.,linestyle=lstyle,label=flabel)
                     ax[0,1].plot(Dm[d1,:],self.z/1000.,linestyle=lstyle)
                     ax[0,2].plot(M[d1,:],self.z/1000.,linestyle=lstyle)
                     ax[0,3].plot(Rm[d1,:],self.z/1000.,linestyle=lstyle)
@@ -1320,6 +1526,10 @@ class spectral_1d:
         else:
             ax_switch = False
         
+        if (scott_solution) or (feingold_solution):
+            mu0 = self.habit_dict[self.habit_names[0]].get('mu0',None)
+            
+        
         # NOTE: probably need to figure out how to deal with x_axis='size' when
         # am and bm parameters are different for each habit.
         
@@ -1368,8 +1578,11 @@ class spectral_1d:
         
         for d1 in range(self.dnum):
             
-            bm[d1] = self.habit_dict[d1]['bm']
-            am[d1] = self.habit_dict[d1]['am']
+            #bm[d1] = self.habit_dict[d1]['bm']
+            #am[d1] = self.habit_dict[d1]['am']
+            
+            bm[d1] = self.habit_dict[self.habit_names[d1]]['bm']
+            am[d1] = self.habit_dict[self.habit_names[d1]]['am']
 
         if self.int_type==0:
             f_label = '{:.1f} km | {:.2f} min.'.format(self.z[hind]/1000.,self.tout[tind]/60.)
@@ -1525,7 +1738,9 @@ class spectral_1d:
         ax[0].plot(x,np.nansum(nN_final,axis=0),linestyle=lstyle,color=lcolor,linewidth=2,label=f_label)
         if plot_habits:
             for d1 in range(self.dnum):
-                ax[0].plot(x,nN_final[d1,:],linewidth=2,label='dist {}'.format(d1+1))
+                dlabel = self.habit_names[d1]
+                #ax[0].plot(x,nN_final[d1,:],linewidth=2,label='dist {}'.format(d1+1))
+                ax[0].plot(x,nN_final[d1,:],linewidth=2,label=dlabel)
             
         # Factor of 1000 comes from converting g to g/m^3
         if ax_switch:
@@ -1533,7 +1748,9 @@ class spectral_1d:
         ax[1].plot(x,1000.*np.nansum(nM_final,axis=0),linestyle=lstyle,color=lcolor,linewidth=2,label=f_label)
         if plot_habits:
             for d1 in range(self.dnum):
-                ax[1].plot(x,1000.*nM_final[d1,:],linewidth=2,label='dist {}'.format(d1+1))
+                dlabel = self.habit_names[d1]
+                #ax[1].plot(x,1000.*nM_final[d1,:],linewidth=2,label='dist {}'.format(d1+1))
+                ax[1].plot(x,1000.*nM_final[d1,:],linewidth=2,label=dlabel)
 
         ax[0].set_ylabel(ylabel_num,fontsize=26)
         ax[1].set_ylabel(ylabel_mass,fontsize=26)
@@ -1556,8 +1773,9 @@ class spectral_1d:
             
             kernel_type = self.kernel
             
-            #if not (hasattr(self,'n_scott')):
-            self.n_scott = Scott_dists(self.xbins,self.Eagg,self.mu0+1,self.t,kernel_type=kernel_type)
+            #self.n_scott = Scott_dists(self.xbins,self.Eagg,self.mu0+1,self.t,kernel_type=kernel_type)
+            
+            self.n_scott = Scott_dists(self.xbins,self.Eagg,mu0+1,self.t,kernel_type=kernel_type)
         
             n_scott_new = prefN[0,:]*self.n_scott[:,tind]
             nm_scott_new = prefM[0,:]*self.n_scott[:,tind]
@@ -1592,7 +1810,12 @@ class spectral_1d:
                     kernel_type = 'SCE/SBE'
                     
                 #if not (hasattr(self,'n_fein')):
-                self.n_fein = Feingold_dists(self.xbins,self.t,self.mu0+1,self.Eagg,self.Ebr,self.lamf,kernel_type=kernel_type)
+                #if (hasattr(self,'lamf')):
+                if 'lamf' in self.frag_dict:
+                    lamf = self.frag_dict['lamf']
+                    #self.n_fein = Feingold_dists(self.xbins,self.t,self.mu0+1,self.Eagg,self.Ebr,lamf,kernel_type=kernel_type)
+
+                    self.n_fein = Feingold_dists(self.xbins,self.t,mu0+1,self.Eagg,self.Ebr,lamf,kernel_type=kernel_type)
 
 
                 if kernel_type=='SBE':
@@ -1636,7 +1859,13 @@ class spectral_1d:
             return fig, ax    
     
 
-    def plot_dists_height(self,tind=-1,dz=1.,plot_habits=False):
+    #def plot_dists_height(self,tind=-1,dz=1.,plot_habits=False,ax=None,lstyle='-',**kwargs):
+        
+    def plot_dists_height(self,tind=-1,dz=1.,plot_habits=False,**kwargs):
+        
+        ax     = kwargs.get('ax',None)
+        lstyle = kwargs.get('lstyle','-')
+        lcolor = kwargs.get('lcolor','k')
         
         if latex_check():
             plt.rc('text', usetex=True)
@@ -1648,7 +1877,11 @@ class spectral_1d:
         
         z_lvls = np.arange(np.max(z),np.min(z)-dz,-dz)
         
-        fig, ax = plt.subplots(len(z_lvls),1,figsize=(6,10),sharey=True,sharex=True)
+        if ax is None:
+            ax_switch=True
+            fig, ax = plt.subplots(len(z_lvls),1,figsize=(6,10),sharey=True,sharex=True)
+        else:
+            ax_switch=False
         
         mbins = self.dist0.xbins.copy() 
         
@@ -1693,8 +1926,11 @@ class spectral_1d:
             
             for d1 in range(self.dnum):
                 
-                am = self.habit_dict[d1]['am']
-                bm = self.habit_dict[d1]['bm']
+                #am = self.habit_dict[d1]['am']
+                #bm = self.habit_dict[d1]['bm']
+                
+                am = self.habit_dict[self.habit_names[d1]]['am']
+                bm = self.habit_dict[self.habit_names[d1]]['bm']
                 
                 #!!! NOTE: PICK UP HERE. NEED TO FIGURE OUT WHAT TO DO ABOUT OUTFREQ!
                 #print('zind=',zind)
@@ -1709,12 +1945,14 @@ class spectral_1d:
                 nN_final[d1,:] = prefN*np.heaviside(mbins-xp1_final,1)*np.heaviside(xp2_final-mbins,1)*(ap_final*mbins+cp_final)
 
                 if plot_habits:
-                    ax[hh].plot(xbins,nN_final[d1,:],label='dist {}'.format(d1+1))
+                    dlabel = self.habit_names[d1]
+                    #ax[hh].plot(xbins,nN_final[d1,:],label='dist {}'.format(d1+1))
+                    ax[hh].plot(xbins,nN_final[d1,:],linestyle=lstyle,color=lcolor,label=dlabel)
 
             if plot_habits:
-                ax[hh].plot(xbins,np.nansum(nN_final,axis=0),color='k')
+                ax[hh].plot(xbins,np.nansum(nN_final,axis=0),linestyle=lstyle,color=lcolor)
             else:
-                ax[hh].plot(xbins,np.nansum(nN_final,axis=0),color='k',label='total')
+                ax[hh].plot(xbins,np.nansum(nN_final,axis=0),linestyle=lstyle,color=lcolor,label='total')
                 
             ax[hh].set_yscale('log')
             ax[hh].set_xscale('linear')
@@ -1733,9 +1971,15 @@ class spectral_1d:
         if plot_habits:
             ax[-1].legend()
         
-        plt.tight_layout()
+        if ax_switch:
+            
+            fig.tight_layout()  
+            
+            return fig, ax  
         
-        return fig, ax        
+       # plt.tight_layout()
+        
+        #return fig, ax        
  
  
     def run_steady_state_1mom(self, pbar=None):
