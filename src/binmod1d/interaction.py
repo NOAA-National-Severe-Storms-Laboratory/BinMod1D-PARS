@@ -62,10 +62,6 @@ class Interaction():
         self.kernel = kernel
         self.indc = cc_dest-1
         self.indb = br_dest-1
-        #self.Eagg = Eagg 
-        #self.Ebr = Ebr 
-        #self.Ecb = Ecb
-    
         
         # self.parallel = parallel
         # self.n_jobs = n_jobs
@@ -163,11 +159,19 @@ class Interaction():
 
         self.pnum = int((self.dnum*(self.dnum+1))/2)
         
+        dd = 0 
         
-        #self.Eagg = Eagg 
-        #self.Ebr  = Ebr
-        #self.Ecb  = Eagg + Ebr
+        self.d1_indices = np.zeros((self.pnum,),dtype=int)
+        self.d2_indices = np.zeros((self.pnum,),dtype=int)
         
+        for d1 in range(self.dnum):
+            for d2 in range(d1,self.dnum):
+                
+                self.d1_indices[dd] = d1
+                self.d2_indices[dd] = d2
+        
+                dd += 1
+           
         self.Eagg = Eagg*np.ones((self.pnum,Hlen,self.bins,self.bins),dtype=np.float64)
         self.Ebr  = Ebr*np.ones((self.pnum,Hlen,self.bins,self.bins),dtype=np.float64)
 
@@ -207,15 +211,18 @@ class Interaction():
         
         # Combine cond_2 with self_col?    
         
-        self.dMb_gain_frac = np.zeros((self.bins,self.bins))
-        self.dNb_gain_frac = np.zeros((self.bins,self.bins))
+        #self.dMb_gain_frac = np.zeros((self.bins,self.bins))
+        #self.dNb_gain_frac = np.zeros((self.bins,self.bins))
         
         if Ebr>0.: # Setup fragment distribution if Ebr>0.     
             self.setup_fragments()
+        else:
+            self.dMb_gain_kernel = np.zeros((self.pnum,self.bins,self.bins,self.bins))
+            self.dNb_gain_kernel = np.zeros((self.pnum,self.bins,self.bins,self.bins))
           
         # Only consider breakup if the breakup distribution is complete.
-        censor_Ebr = np.broadcast_to((self.dMb_gain_frac.sum(axis=0)<0.5),self.Ebr.shape)    
-        self.Ebr[censor_Ebr] = 0.
+        # censor_Ebr = np.broadcast_to((self.dMb_gain_frac.sum(axis=0)<0.5),self.Ebr.shape)    
+        # self.Ebr[censor_Ebr] = 0.
           
 
         # NOTE: Before, I was (stupidly?) using the actual limits from the SBE. 
@@ -227,12 +234,12 @@ class Interaction():
         # particles! In order to compare results with Feingold et al. (1988), the
         # kmin limit is used. For realistic kernels, the maximum index of the interacting
         # species is used instead.
-        if (self.kernel=='Constant') | (self.kernel=='Golovin') | (self.kernel=='Product'):
-            self.dMb_gain_kernel = self.dMb_gain_frac[:,self.kmin]
-            self.dNb_gain_kernel = self.dNb_gain_frac[:,self.kmin]
-        else:
-            self.dMb_gain_kernel = self.dMb_gain_frac[:,self.k_lim]
-            self.dNb_gain_kernel = self.dNb_gain_frac[:,self.k_lim]
+        # if (self.kernel=='Constant') | (self.kernel=='Golovin') | (self.kernel=='Product'):
+        #     self.dMb_gain_kernel = self.dMb_gain_frac[:,self.kmin]
+        #     self.dNb_gain_kernel = self.dNb_gain_frac[:,self.kmin]
+        # else:
+        #     self.dMb_gain_kernel = self.dMb_gain_frac[:,self.k_lim]
+        #     self.dNb_gain_kernel = self.dNb_gain_frac[:,self.k_lim]
                
         self.PK = self.create_kernels(dists)
         
@@ -241,19 +248,6 @@ class Interaction():
         
         self.xk_min_p = self.xi2[self.kmin_p]
         
-        dd = 0 
-        
-        self.d1_indices = np.zeros((self.pnum,),dtype=int)
-        self.d2_indices = np.zeros((self.pnum,),dtype=int)
-        
-        for d1 in range(self.dnum):
-            for d2 in range(d1,self.dnum):
-                
-                self.d1_indices[dd] = d1
-                self.d2_indices[dd] = d2
-        
-                dd += 1
-            
         if self.mom_num==1:
             self.setup_1mom()
             
@@ -269,6 +263,9 @@ class Interaction():
         self.dMj_loss = np.zeros((self.pnum,self.bins,self.bins))
         self.dM_loss = np.zeros((self.pnum,self.bins,self.bins))
         self.dM_gain = np.zeros((self.pnum,self.bins,self.bins,2))
+        
+        self.dMb_gain_frac = np.zeros((self.pnum,self.bins,self.bins))
+        self.dNb_gain_frac = np.zeros((self.pnum,self.bins,self.bins))
         
         self.M_loss_tot_buffer = np.zeros_like(self.Mbins)
         self.M_gain_tot_buffer = np.zeros_like(self.Mbins)
@@ -473,6 +470,7 @@ class Interaction():
         kmin_4d = np.broadcast_to(self.kmin_p[:, None, :, :], target_shape) 
         kmid_4d = np.broadcast_to(self.kmid_p[:, None, :, :], target_shape)
         
+        p_4d = np.broadcast_to(np.arange(self.pnum)[:, None, None, None], target_shape)
         d1_4d = np.broadcast_to(p1[:, None, None, None],target_shape)
         d2_4d = np.broadcast_to(p2[:, None, None, None],target_shape)
         h_4d = np.broadcast_to(np.arange(self.Hlen)[None, :, None, None],target_shape) 
@@ -502,6 +500,7 @@ class Interaction():
             'Ebr':self.Ebr.ravel()[sort_inds],
             'd1_ind':d1_4d.ravel()[sort_inds],
             'd2_ind':d2_4d.ravel()[sort_inds],
+            'p_ind':p_4d.ravel()[sort_inds].astype(np.int32),
             'hind':h_4d.ravel()[sort_inds],
             'bi_ind':bi_4d.ravel()[sort_inds],
             'bj_ind':bj_4d.ravel()[sort_inds],
@@ -542,8 +541,6 @@ class Interaction():
         self.shm_bounds[7] = params['y_rig']
  
 
-    
-    
     def update_1mom_subgrid(self):
         
         self.cki = update_1mom(self.Mbins,self.dxi[None,None,:])
@@ -671,10 +668,494 @@ class Interaction():
         scale[mask_full] = 1.0
         
         return scale
-   
+ 
+    
 
     def setup_fragments(self):
         
+        if np.isin(self.kernel, ['Constant', 'Golovin', 'Product']):
+            targ_broad = self.kmin
+        else:
+            targ_broad = self.k_lim
+            
+        # ---------------------------------------------------------
+        # 1. SETUP 4D BROADCASTING NODES
+        # ---------------------------------------------------------
+        # Child fragment destination is homogeneous across pnum
+        child_indices = np.full(self.pnum, self.indb)
+        
+        # target_axes defines where the data sits in (pnum, child_k, parent_i, parent_j)
+        child = BroadcastNode4D(self.dists, child_indices,   target_axes=(0, 1))
+        p_i   = BroadcastNode4D(self.dists, self.d1_indices, target_axes=(0, 2))
+        p_j   = BroadcastNode4D(self.dists, self.d2_indices, target_axes=(0, 3))
+        
+        IF_func = self.frag_dict['func']   
+        var_name = self.frag_dict['var']
+        #par_cut  = self.frag_dict.get('parent_cutoff',0.)
+        pbounds = self.frag_dict.get('pbounds',None)
+        
+        frag_list = list(self.frag_dict)
+        
+        if ('d_start' in frag_list) and ('d_end' in frag_list):
+            d_start = self.frag_dict['d_start']
+            d_end   = self.frag_dict['d_end']
+        else:
+            d_start = None 
+            d_end = None
+              
+        # ---------------------------------------------------------
+        # 2. EVALUATE RAMP / SCALE FACTOR 
+        # ---------------------------------------------------------
+        # targ_broad is (pnum, bins, bins). 
+        # Indexing child.d (a 1D array) with targ_broad yields exactly (pnum, bins, bins)!
+        d_cen = self.dists[self.indb].d[targ_broad] 
+        d_left = self.dists[self.indb].d1[targ_broad] 
+        d_right = self.dists[self.indb].d2[targ_broad]
+        
+        dD = d_right - d_left
+            
+        if (d_start is not None) and (d_end is not None):
+            narrow_mask = (d_end - d_start) < dD
+            midpoint = (d_start + d_end) / 2.
+            
+            half_min_width = (1.5 * dD) / 2.
+            
+            d_start = np.where(narrow_mask, midpoint - half_min_width, d_start)
+            d_end   = np.where(narrow_mask, midpoint + half_min_width, d_end) 
+
+            E_left = self.calc_smootherstep(d_left, d_start, d_end)
+            E_cen = self.calc_smootherstep(d_cen, d_start, d_end)
+            E_right = self.calc_smootherstep(d_right, d_start, d_end)
+
+            scale_factor = (E_left + 4.*E_cen + E_right) / 6.
+        else:
+            scale_factor = np.ones_like(targ_broad, dtype=np.float64) 
+        
+        # ---------------------------------------------------------
+        # 3. EVALUATE DISTRIBUTION (Outputs: pnum, bins, bins, bins)
+        # ---------------------------------------------------------
+        if var_name == 'mass':
+            Mb_raw = IF_func(1, child, p_i, p_j)
+            Nb_raw = IF_func(0, child, p_i, p_j)
+        else:
+            Mb_raw = child.am * IF_func(child.bm, child, p_i, p_j)
+            Nb_raw = IF_func(0., child, p_i, p_j)
+
+        # Broadcast the raw output to guarantee the full 4D shape
+        target_shape = (self.pnum, self.bins, self.bins, self.bins)
+        Mb_kernel = np.broadcast_to(Mb_raw, target_shape).copy()
+        Nb_kernel = np.broadcast_to(Nb_raw, target_shape).copy()
+     
+        # Parent cutoff
+        max_parent_d = np.maximum(p_i.d,p_j.d)
+        
+        if pbounds is not None:
+            parent_ramp = np.broadcast_to(self.calc_smootherstep(max_parent_d, pbounds[0]*np.ones_like(max_parent_d), pbounds[1]*np.ones_like(max_parent_d)),Mb_kernel.shape)
+        
+            Mb_kernel *= parent_ramp 
+            Nb_kernel *= parent_ramp
+            
+            self.Ebr = self.Ebr * parent_ramp[:,0,:,:]
+        
+        #small_parent_mask = np.broadcast_to((max_parent_d < par_cut),Mb_kernel.shape)
+        
+        # Mb_kernel[small_parent_mask] = 0. 
+        # Nb_kernel[small_parent_mask] = 0.
+        
+        # mask_2D = small_parent_mask[:,0,:,:]
+        # self.Ebr = np.where(mask_2D, 0., self.Ebr)
+     
+        # ---------------------------------------------------------
+        # 4. KINEMATIC TRUNCATION (Using Axis 1 for Fragments)
+        # ---------------------------------------------------------
+        # k_idx is (1, bins, 1, 1). targ_broad is (1, 1, bins, bins).
+        k_idx = np.arange(self.bins)[None, :, None, None]
+        
+ 
+        # 1. Calculate the base mask (1, bins, bins, bins)
+        base_mask = k_idx > targ_broad[None, None, :, :]
+        
+        # 2. Explicitly broadcast the mask to match the (pnum, bins, bins, bins) kernel shape
+        # This creates a zero-memory-footprint view of the correct size!
+        invalid_mask = np.broadcast_to(base_mask, Mb_kernel.shape)
+        
+        Mb_kernel[invalid_mask] = 0.0 
+        Nb_kernel[invalid_mask] = 0.0
+
+        Mb_kernel[Mb_kernel < 0.0] = 0.0
+        Nb_kernel[Nb_kernel < 0.0] = 0.0
+
+        # ---------------------------------------------------------
+        # PASS 1: Normalization (Using np.where for safe N-D math)
+        # ---------------------------------------------------------
+        # Sum across Fragment Axis (1). keepdims preserves the (pnum, 1, bins, bins) geometry
+        dMb_tot = np.sum(Mb_kernel, axis=1, keepdims=True)
+        valid_pairs = dMb_tot > 1e-100 
+        
+        safe_tot_1 = np.where(valid_pairs, dMb_tot, 1.0)
+        
+        # Safely divide. Where invalid, forces the kernel to 0.0
+        #Mb_kernel = np.where(valid_pairs, Mb_kernel / dMb_tot, 0.0)
+        #Nb_kernel = np.where(valid_pairs, Nb_kernel / dMb_tot, 0.0)
+        
+        Mb_kernel = np.where(valid_pairs, Mb_kernel / safe_tot_1, 0.0)
+        Nb_kernel = np.where(valid_pairs, Nb_kernel / safe_tot_1, 0.0)
+        
+        # ---------------------------------------------------------
+        # PASS 2: Censor the Noise & Re-normalize
+        # ---------------------------------------------------------
+        fit_threshold = 1e-12
+        censor_mask = (Mb_kernel < fit_threshold) | (Nb_kernel < fit_threshold)
+        
+        Mb_kernel[censor_mask] = 0.0
+        Nb_kernel[censor_mask] = 0.0
+        
+        dMb_tot_2 = np.sum(Mb_kernel, axis=1, keepdims=True)
+        surv_pairs = dMb_tot_2 > 0.0
+        
+        safe_tot_2 = np.where(surv_pairs, dMb_tot_2, 1.0)
+        
+        #Mb_kernel = np.where(surv_pairs, Mb_kernel / dMb_tot_2, 0.0)
+        #Nb_kernel = np.where(surv_pairs, Nb_kernel / dMb_tot_2, 0.0)
+        
+        Mb_kernel = np.where(surv_pairs, Mb_kernel / safe_tot_2, 0.0)
+        Nb_kernel = np.where(surv_pairs, Nb_kernel / safe_tot_2, 0.0)
+
+        # ---------------------------------------------------------
+        # 5. FINAL ASSIGNMENTS
+        # ---------------------------------------------------------
+        # Squeeze surv_pairs to (pnum, bins, bins) to match scale_factor
+        surv_2D = surv_pairs.squeeze(axis=1)
+        scale_factor = np.where(surv_2D, scale_factor, 0.0)
+        
+        # Assuming Ebr is aligned with the pnum logic, expand scale_factor to mask it
+        # You may need to adjust the [:, None, :, :] depending on Ebr's exact shape definition!
+        self.Ebr = scale_factor[:, None, :, :] * self.Ebr
+        self.scale_factor = scale_factor
+  
+        # Mask out Ebr where the parent combinations don't result in valid fragments
+        # Using ~surv_pairs (which is pnum, 1, bins, bins) will broadcast cleanly against Ebr.
+        censor_Ebr = np.broadcast_to(~surv_pairs, self.Ebr.shape)    
+        self.Ebr[censor_Ebr] = 0.
+          
+        self.dMb_gain_kernel = Mb_kernel
+        self.dNb_gain_kernel = Nb_kernel
+    
+
+    def setup_fragments_3D(self):
+        
+        if np.isin(self.kernel, ['Constant', 'Golovin', 'Product']):
+            targ_broad = self.kmin
+        else:
+            targ_broad = self.k_lim
+            
+        # ---------------------------------------------------------
+        # 1. SETUP 3D BROADCASTING NODES
+        # ---------------------------------------------------------
+        dist = self.dists[self.indb] # Your base grid object
+        
+        # Create the three nodes for the lambda function
+        child = BroadcastNode(dist, axis=0)
+        p_i   = BroadcastNode(dist, axis=1)
+        p_j   = BroadcastNode(dist, axis=2)
+        
+        IF_func = self.frag_dict['func']   
+        dist_name = self.frag_dict['dist']
+        frag_list = list(self.frag_dict)
+        
+        if ('d_start' in frag_list) and ('d_end' in frag_list):
+            d_start = self.frag_dict['d_start']
+            d_end   = self.frag_dict['d_end']
+        else:
+            d_start = None 
+            d_end = None
+              
+        # ---------------------------------------------------------
+        # 2. EVALUATE RAMP / SCALE FACTOR (2D: i, j pairs)
+        # ---------------------------------------------------------
+        # use max(i,j) for upper limit of truncated fragment distribution
+        d_cen = self.dists[self.indb].d[targ_broad] 
+        d_left = self.dists[self.indb].d1[targ_broad] 
+        d_right = self.dists[self.indb].d2[targ_broad]
+        
+        dD = d_right - d_left
+            
+        if (d_start is not None) and (d_end is not None):
+            narrow_mask = (d_end - d_start) < dD
+            midpoint = (d_start + d_end) / 2.
+            
+            min_ramp_width = 1.5 * dD
+            half_min_width = min_ramp_width / 2.
+            
+            d_start = np.where(narrow_mask, midpoint - half_min_width, d_start)
+            d_end   = np.where(narrow_mask, midpoint + half_min_width, d_end) 
+
+            E_left = self.calc_smootherstep(d_left, d_start, d_end)
+            E_cen = self.calc_smootherstep(d_cen, d_start, d_end)
+            E_right = self.calc_smootherstep(d_right, d_start, d_end)
+
+            scale_factor = (E_left + 4.*E_cen + E_right) / 6.
+        else:
+            scale_factor = np.ones_like(targ_broad, dtype=np.float64) 
+        
+        # ---------------------------------------------------------
+        # 3. EVALUATE CONDITIONAL DISTRIBUTION (3D: k, i, j)
+        # ---------------------------------------------------------
+        if dist_name == 'exp_mass':
+            Mb_gain_kernel = IF_func(1, child, p_i, p_j)
+            Nb_gain_kernel = IF_func(0, child, p_i, p_j)
+        else:
+            bm = dist.bm
+            am = dist.am
+            Mb_gain_kernel = am * IF_func(bm, child, p_i, p_j)
+            Nb_gain_kernel = IF_func(0., child, p_i, p_j)
+
+        # FIX: The lambda might return a 1D array (bins,) OR a degenerate 
+        # 3D array (bins, 1, 1) if it ignores the parent nodes. 
+        # We must align and force it to fully expand into (bins, bins, bins).
+        
+        if Mb_gain_kernel.ndim == 1:
+            Mb_gain_kernel = Mb_gain_kernel[:, None, None]
+            Nb_gain_kernel = Nb_gain_kernel[:, None, None]
+            
+        target_shape = (self.bins, self.bins, self.bins)
+        
+        # broadcast_to tiles the array dynamically, .copy() allocates it in memory
+        Mb_gain_kernel = np.broadcast_to(Mb_gain_kernel, target_shape).copy()
+        Nb_gain_kernel = np.broadcast_to(Nb_gain_kernel, target_shape).copy()
+        # ---------------------------------------------------------
+        # 4. KINEMATIC TRUNCATION
+        # ---------------------------------------------------------
+        # Clean up negative noise and invalid bounds
+        # Instead of np.tri, we create a 3D mask comparing child index (k) to max parent index (targ_broad)
+        k_idx = np.arange(self.bins)[:, None, None]
+        invalid_mask = k_idx > targ_broad[None, :, :]
+        
+        Mb_gain_kernel[invalid_mask] = 0.0 
+        Nb_gain_kernel[invalid_mask] = 0.0
+
+        Mb_gain_kernel[Mb_gain_kernel < 0.0] = 0.0
+        Nb_gain_kernel[Nb_gain_kernel < 0.0] = 0.0
+
+        # ---------------------------------------------------------
+        # PASS 1: Initial Normalization
+        # ---------------------------------------------------------
+        # Summing a 3D array over axis=0 yields a 2D array of (i,j) pairs
+        dMb_gain_tot = np.sum(Mb_gain_kernel, axis=0)
+        
+        valid_pairs = dMb_gain_tot > 1e-100 
+        
+        Mb_gain_kernel[:, valid_pairs] /= dMb_gain_tot[None, valid_pairs]
+        Nb_gain_kernel[:, valid_pairs] /= dMb_gain_tot[None, valid_pairs]
+        
+        # ---------------------------------------------------------
+        # PASS 2: Censor the Noise & Re-normalize
+        # ---------------------------------------------------------
+        fit_threshold = 1e-12
+        
+        censor_mask_M = Mb_gain_kernel < fit_threshold
+        censor_mask_N = Nb_gain_kernel < fit_threshold
+        censor_mask = censor_mask_M | censor_mask_N
+        
+        Mb_gain_kernel[censor_mask] = 0.0
+        Nb_gain_kernel[censor_mask] = 0.0
+        
+        dMb_gain_tot_2 = np.sum(Mb_gain_kernel, axis=0)
+        surviving_pairs = dMb_gain_tot_2 > 0.0
+        
+        Mb_gain_kernel[:, surviving_pairs] /= dMb_gain_tot_2[None, surviving_pairs]
+        Nb_gain_kernel[:, surviving_pairs] /= dMb_gain_tot_2[None, surviving_pairs]
+        
+        # Clean up the dead columns
+        Mb_gain_kernel[:, ~surviving_pairs] = 0.0
+        Nb_gain_kernel[:, ~surviving_pairs] = 0.0
+
+        # ---------------------------------------------------------
+        # 5. FINAL ASSIGNMENTS
+        # ---------------------------------------------------------
+        # Apply scale factor only to surviving pairs
+        scale_factor[~surviving_pairs] = 0.0
+        
+        # Broadcast and Assign
+        self.Ebr = scale_factor[None, None, :, :] * self.Ebr
+        self.scale_factor = scale_factor
+  
+        # Only consider breakup if the breakup distribution is complete.
+        # surviving_pairs is already a 2D boolean mask of viable i,j combinations
+        censor_Ebr = np.broadcast_to(~surviving_pairs, self.Ebr.shape)    
+        self.Ebr[censor_Ebr] = 0.
+          
+        # Assign directly (No need to index with targ_broad because it's already 3D)
+        self.dMb_gain_kernel = Mb_gain_kernel
+        self.dNb_gain_kernel = Nb_gain_kernel
+    
+    def setup_fragments_NEW(self):
+        
+            if np.isin(self.kernel,['Constant','Golovin','Product']):
+                targ_broad = self.kmin
+            else:
+                targ_broad = self.k_lim
+                
+            IF_func = self.frag_dict['func']   
+            dist_name = self.frag_dict['dist']
+            
+            frag_list = list(self.frag_dict)
+            
+            if ('d_start' in frag_list) and ('d_end' in frag_list):
+                d_start = self.frag_dict['d_start']
+                d_end   = self.frag_dict['d_end']
+            else:
+                d_start = None 
+                d_end = None
+                  
+            # use max(i,j) for upper limit of truncated fragment distribution
+            d_cen = self.dists[self.indb].d[self.k_lim] 
+            d_left = self.dists[self.indb].d1[self.k_lim] 
+            d_right = self.dists[self.indb].d2[self.k_lim]
+            
+            dD = d_right-d_left
+                
+            # If d_start and d_end are provided then do a smooth ramp where
+            # breakup shuts off for sizes below d_start and is equal to Eb
+            # above d_end.
+            if (d_start is not None) and (d_end is not None):
+
+                # Create a boolean mask of where the ramp is currently too narrow
+                narrow_mask = (d_end - d_start) < dD
+
+                midpoint = (d_start+d_end)/2.
+                
+                min_ramp_width = 1.5 * dD
+                
+                half_min_width = min_ramp_width/2.
+                
+                d_start = np.where(narrow_mask, midpoint - half_min_width, d_start)
+                d_end   = np.where(narrow_mask, midpoint + half_min_width, d_end) 
+
+                E_left = self.calc_smootherstep(d_left,d_start,d_end)
+                E_cen = self.calc_smootherstep(d_cen,d_start,d_end)
+                E_right = self.calc_smootherstep(d_right,d_start,d_end)
+
+                # Simpson's rule for averaging out the smoothsteps.
+                scale_factor = (E_left+4.*E_cen+E_right)/6.
+                
+            else:
+
+                scale_factor = np.ones_like(self.kmin,dtype=np.float64) 
+            
+            # scale factor for modifying conditional fragment distribution
+            # if parent particles are not large enough. This is important
+            # because fragmentation of really small particles is not necessarily
+            # realistic and the adaptive stepping takes forever in these cases.
+        
+            if dist_name=='exp_mass':
+                Mb_gain_vec = IF_func(1,self.xi1,self.xi2)
+                Nb_gain_vec = IF_func(0,self.xi1,self.xi2)
+                
+            else:
+                d1 = self.dists[self.indb].d1
+                d2 = self.dists[self.indb].d2
+    
+                Mb_gain_vec = self.dists[self.indb].am*IF_func(self.dists[self.indb].bm,d1,d2)
+                Nb_gain_vec = IF_func(0.,d1,d2)
+                
+                #Mb_gain_vec = self.dists[self.indb].am*IF_func(self.dists[self.indb].bm,d_left,d_right)
+                #Nb_gain_vec = IF_func(0.,d_left,d_right)
+            
+            # NOTE: Try Mb_gain_vec = self.dists[self.indb].am*IF_func(self.dists[self.indb].bm,d_left,d_right)
+            
+            if Mb_gain_vec.ndim==1:
+                #print('Mb_gain_vec=',Mb_gain_vec.sum())
+                #raise Exception()
+                self.dMb_gain_frac  = np.tile(Mb_gain_vec[:,None],(1,self.bins))
+                self.dNb_gain_frac  = np.tile(Nb_gain_vec[:,None],(1,self.bins))
+            
+            # If needed, convert self.dMb_gain_frac (p(m)) into conditional distribution (p(m|x,y))
+
+            # 1. Clean up negative noise and invalid bounds
+            invalid_mask = np.tri(self.bins, self.bins, k=-1, dtype=bool)
+            self.dMb_gain_frac[invalid_mask] = 0.0 
+            self.dNb_gain_frac[invalid_mask] = 0.0
+
+            self.dMb_gain_frac[self.dMb_gain_frac < 0.0] = 0.0
+            self.dNb_gain_frac[self.dNb_gain_frac < 0.0] = 0.0
+
+            # ---------------------------------------------------------
+            # PASS 1: Initial Normalization
+            # ---------------------------------------------------------
+            dMb_gain_tot = np.sum(self.dMb_gain_frac, axis=0)
+            
+            # Avoid divide-by-zero for empty columns
+            valid_cols = dMb_gain_tot > 1e-100 
+            
+            self.dMb_gain_frac[:, valid_cols] /= dMb_gain_tot[None, valid_cols]
+            self.dNb_gain_frac[:, valid_cols] /= dMb_gain_tot[None, valid_cols]
+            
+            # ---------------------------------------------------------
+            # PASS 2: Censor the Noise & Re-normalize
+            # ---------------------------------------------------------
+            fit_threshold = 1e-12
+            
+            # Find bins that receive a physically meaningless fraction of the mass/number
+            censor_mask_M = self.dMb_gain_frac < fit_threshold
+            censor_mask_N = self.dNb_gain_frac < fit_threshold
+            
+            # Combine masks: If a bin is killed for M, it must be killed for N
+            censor_mask = censor_mask_M | censor_mask_N
+            
+            self.dMb_gain_frac[censor_mask] = 0.0
+            self.dNb_gain_frac[censor_mask] = 0.0
+            
+            # Re-sum the columns after trimming the tails
+            dMb_gain_tot_2 = np.sum(self.dMb_gain_frac, axis=0)
+            
+            # Find columns that survived the censoring
+            surviving_cols = dMb_gain_tot_2 > 0.0
+            
+            # Re-normalize so the trimmed distributions perfectly sum to 1.0 again
+            self.dMb_gain_frac[:, surviving_cols] /= dMb_gain_tot_2[None, surviving_cols]
+            self.dNb_gain_frac[:, surviving_cols] /= dMb_gain_tot_2[None, surviving_cols]
+            
+            # Clean up the dead columns
+            self.dMb_gain_frac[:, ~surviving_cols] = 0.0
+            self.dNb_gain_frac[:, ~surviving_cols] = 0.0
+
+            # ---------------------------------------------------------
+            # Finally: Apply scale factor only to surviving columns
+            # ---------------------------------------------------------
+            valid_matrix = surviving_cols[self.k_lim]
+            scale_factor[~valid_matrix] = 0.0
+            
+            # Broadcast and Assign
+            self.Ebr = scale_factor[None, None, :, :] * self.Ebr
+            self.scale_factor = scale_factor
+      
+            # # # Only consider breakup if the breakup distribution is complete.
+            censor_Ebr = np.broadcast_to((self.dMb_gain_frac.sum(axis=0)<0.5),self.Ebr.shape)    
+            self.Ebr[censor_Ebr] = 0.
+              
+            # # NOTE: Before, I was (stupidly?) using the actual limits from the SBE. 
+            # # HOWEVER, this isn't physically realistic when coalescence and breakup
+            # # are considered (and calculated) as mutually exclusive scenarios. 
+            # # This presents a big problem because realistic fragment distributions
+            # # like the lognormal distribution has a fat tail and thus the presence of breakup
+            # # can actually generates particles much larger than either of the colliding
+            # # particles! In order to compare results with Feingold et al. (1988), the
+            # # kmin limit is used. For realistic kernels, the maximum index of the interacting
+            # # species is used instead.
+            self.dMb_gain_kernel = self.dMb_gain_frac[:,targ_broad]
+            self.dNb_gain_kernel = self.dNb_gain_frac[:,targ_broad]
+            
+            #print('sum=',self.dMb_gain_frac)
+           # raise Exception()
+            
+
+    def setup_fragments_ORIG(self):
+        
+            # scale factor for modifying conditional fragment distribution
+            # if parent particles are not large enough. This is important
+            # because fragmentation of really small particles is not necessarily
+            # realistic and the adaptive stepping takes forever in these cases.
             scale_factor = np.ones_like(self.kmin,dtype=np.float64)    
             
             if (self.kernel=='Hydro') or (self.kernel=='Long'):
@@ -728,8 +1209,6 @@ class Interaction():
                     # CURRENTLY NOT IMPLEMENTED!
                     
                     IF_func = self.setup_Straub()
-                    
-                    
 
                 d1 = self.dists[self.indb].d1
                 d2 = self.dists[self.indb].d2
@@ -815,7 +1294,7 @@ class Interaction():
             self.Ebr = scale_factor[None, None, :, :] * self.Ebr
             self.scale_factor = scale_factor
       
-            # # Only consider breakup if the breakup distribution is complete.
+            # # # Only consider breakup if the breakup distribution is complete.
             # censor_Ebr = np.broadcast_to((self.dMb_gain_frac.sum(axis=0)<0.5),self.Ebr.shape)    
             # self.Ebr[censor_Ebr] = 0.
               
@@ -1904,7 +2383,67 @@ class Interaction():
         return M_net, N_net
 
 
-    
+class BroadcastNode4D:
+    """
+    Wraps an array of distributions. Intercepts property requests, 
+    stacks them across the pnum axis, and broadcasts them into 4D space:
+    (pnum, fragment_bins, i_bins, j_bins).
+    """
+    def __init__(self, dist_list, indices, target_axes):
+        self.dist_list = dist_list
+        self.indices = np.atleast_1d(indices)
+        
+        # Slicer for arrays (like .mass, .d1, .vt)
+        slicer_list = [None, None, None, None]
+        for ax in target_axes:
+            slicer_list[ax] = slice(None)
+        self.slicer = tuple(slicer_list) # Converted to tuple
+        
+        # Slicer for scalars (like .am, .bm)
+        # FIX: Changed from list [] to tuple () so NumPy treats it as a standard slice
+        self.scalar_slicer = (slice(None), None, None, None) 
+
+    def __getattr__(self, name):
+        # Fetch attribute from all parent distributions mapped to this node
+        arrays = [getattr(self.dist_list[idx], name) for idx in self.indices]
+        stacked = np.stack(arrays, axis=0)
+        
+        # Broadcast based on the original property's dimensions
+        if stacked.ndim == 1:
+            # It was a scalar per distribution -> (pnum, 1, 1, 1)
+            return stacked[self.scalar_slicer]
+        elif stacked.ndim == 2:
+            # It was an array per distribution -> e.g. (pnum, 1, bins, 1)
+            return stacked[self.slicer]
+        else:
+            return stacked
+
+class BroadcastNode:
+    """
+    Wraps a distribution object. Automatically intercepts requests for 1D arrays 
+    (like .d, .vt, .mass) and broadcasts them into the target 3D axis.
+    """
+    def __init__(self, dist_obj, axis):
+        self._dist = dist_obj
+        
+        # Create slicing tuple based on target axis
+        # Axis 0 -> (slice(None), None, None)
+        # Axis 1 -> (None, slice(None), None)
+        # Axis 2 -> (None, None, slice(None))
+        idx = [None, None, None]
+        idx[axis] = slice(None)
+        self._slice = tuple(idx)
+        
+    def __getattr__(self, name):
+        # Dynamically fetch the requested attribute from the real grid object
+        val = getattr(self._dist, name)
+        
+        # If it's a 1D grid array, broadcast it to 3D instantly
+        if isinstance(val, np.ndarray) and val.ndim == 1:
+            return val[self._slice]
+        
+        # If it's a scalar (like .am or .bm), return it as-is
+        return val    
 
 
 

@@ -77,7 +77,10 @@ def kernel_1mom(M_loss, M_gain,
             dm_br = r_br * tot_mass_loss
             
             for b in range(n_bins):
-                prob = dMb_kernel[b, i, j]
+                #prob = dMb_kernel[b, i, j]
+                
+                prob = dMb_kernel[p, b, i, j]
+                
                 if prob > 0:
                     B_temp[tid, h, b] += prob * dm_br
 
@@ -219,7 +222,7 @@ def tri_kernel_numba(dN_out, dM_out,
 @nb.jit(nopython=True, parallel=True, cache=False, fastmath=False)
 def breakup_kernel(M_gain, N_gain, M_loss, 
                    dMb_kernel, dNb_kernel,Ebr, 
-                   i_idx, j_idx, h_idx, k_limit_idx, 
+                   p_idx, i_idx, j_idx, h_idx, k_limit_idx, 
                    indb):
     """
     Apply breakup redistribution.
@@ -246,6 +249,7 @@ def breakup_kernel(M_gain, N_gain, M_loss,
         
         tid = nb.get_thread_id()
         
+        p = p_idx[k]
         i = i_idx[k]
         j = j_idx[k]
         h = h_idx[k]
@@ -258,11 +262,15 @@ def breakup_kernel(M_gain, N_gain, M_loss,
         # This prevents cutting off the "upper tail" of the interpolation.
         for b in range(n_bins): 
             
-            prob_m = dMb_kernel[b, i, j]
+            #prob_m = dMb_kernel[b, i, j]
+            
+            prob_m = dMb_kernel[p, b, i, j] 
             
             # Sparse check (High Speed)
             if prob_m > 0:
-                prob_n = dNb_kernel[b, i, j]
+                #prob_n = dNb_kernel[b, i, j]
+                
+                prob_n = dNb_kernel[p, b, i, j]
                 
                 # Write to thread-local buffer
                 M_temp[tid, h, b] += prob_m * dm_eff
@@ -705,7 +713,7 @@ def vectorized_2mom(params, w, L, dMb_kernel, dNb_kernel,
             breakup_kernel(
             M_gain, N_gain, dM_loss.ravel(), 
             dMb_kernel, dNb_kernel, Ebr,
-            params['bi_ind'], params['bj_ind'], params['hind'], 
+            params['p_ind'],params['bi_ind'], params['bj_ind'], params['hind'], 
             params['kmin'],  # Pass the limit array here
             indb)
     
@@ -2104,6 +2112,7 @@ def LGN_int(n, mu, sig2, x1, x2):
     Ultimate High-Precision Log-Normal integral.
     Handles both Left Tail (z < -26) and Right Tail (z > 26) using erfcx scaling.
     Calculates Integral(x^n * PDF(x) dx) from x1 to x2.
+    
     """
     # 1. Moment parameters
     shift = n * (sig2)
@@ -2169,7 +2178,7 @@ def _calc_tail_interval(out_array, mask, z_small, z_large):
     out_array[mask] = 0.5 * np.exp(-zs**2) * term_bracket
 
 
-def LGN_int_ORIGINAL(n,muf,sig2f,x1,x2):
+def LGN_int_OLD(n,muf,sig2f,x1,x2):
     # 
 
     #I = 0.5*np.exp(0.5*n*(n-1)*sig2f)*\
@@ -2205,7 +2214,67 @@ def LGN_int_PB07(n,muf,sig2f,x1,x2):
 
     return I 
 
+
 def GAU_int(n, mu, sig2, x1, x2):
+    """
+    Integrates x^n * Normal(mu, sigma^2) from x1 to x2.
+    Uses a 3rd-order central moment expansion that is EXACT for integer 
+    moments (n=0, 1, 2, 3) and highly accurate for fractional moments.
+    """
+    # Force n to be a broadcastable array
+    n = np.asarray(n)
+    
+    # Guard against zero/negative means for fractional exponents
+    # (Prevents 0^-1 or NaNs when n is a fraction)
+    mu_safe = np.maximum(mu, 1e-16)
+    
+    sigma = np.sqrt(sig2)
+    sqrt2 = np.sqrt(2.0)
+    
+    # Standardize bounds
+    z1 = (x1 - mu_safe) / sigma
+    z2 = (x2 - mu_safe) / sigma
+    
+    # PDF and CDF at bounds
+    prefactor = 1.0 / (sigma * np.sqrt(2.0 * np.pi))
+    pdf1 = prefactor * np.exp(-0.5 * z1**2)
+    pdf2 = prefactor * np.exp(-0.5 * z2**2)
+    
+    cdf1 = 0.5 * (1.0 + scip.erf(z1 / sqrt2))
+    cdf2 = 0.5 * (1.0 + scip.erf(z2 / sqrt2))
+    
+    # ---------------------------------------------------------
+    # 1. Calculate Bounded Central Moments 
+    # I_k = integral of (x - mu)^k * P(x)
+    # ---------------------------------------------------------
+    # I_0: Area (0th central moment)
+    I0 = cdf2 - cdf1
+    
+    # I_1: 1st central moment
+    I1 = sig2 * (pdf1 - pdf2)
+    
+    # I_2: 2nd central moment
+    dx1 = x1 - mu_safe
+    dx2 = x2 - mu_safe
+    I2 = sig2 * (I0 + dx1 * pdf1 - dx2 * pdf2)
+    
+    # I_3: 3rd central moment
+    I3 = 2.0 * sig2 * I1 + sig2 * (dx1**2 * pdf1 - dx2**2 * pdf2)
+    
+    # ---------------------------------------------------------
+    # 2. Taylor Series Expansion for x^n around mu
+    # ---------------------------------------------------------
+    # For n=0, 1, 2, 3, this algebraically simplifies to the exact exact equations!
+    # For fractional n, it acts as a highly stable 3rd-order approximation.
+    
+    term0 = (mu_safe ** n) * I0
+    term1 = n * (mu_safe ** (n - 1.0)) * I1
+    term2 = 0.5 * n * (n - 1.0) * (mu_safe ** (n - 2.0)) * I2
+    term3 = (1.0 / 6.0) * n * (n - 1.0) * (n - 2.0) * (mu_safe ** (n - 3.0)) * I3
+    
+    return term0 + term1 + term2 + term3
+
+def GAU_int_ORIG(n, mu, sig2, x1, x2):
     """
     Integrates x^n * Normal(mu, sigma^2) from x1 to x2.
     Safe and stable using error functions.
@@ -2237,6 +2306,8 @@ def GAU_int(n, mu, sig2, x1, x2):
         return normal_moment_3(x2) - normal_moment_3(x1)
     
     return 0.0 # Extend if other moments are needed
+
+
 
 def gam_int(n,mu,Dm,x1,x2):
     # integral of x^n *x^mu * exp(-c*x) from x1 to x2
