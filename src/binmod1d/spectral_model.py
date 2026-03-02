@@ -9,46 +9,13 @@ Description:
     
     This code can be used to generate model objects representing collision-coalescence 
     and collisional breakup based on the Wang et al. (2007) source-based solution
-    to the Kinetic Collection Equation (KCE). This version, unlike Wang et al. (2007),
-    analytically integrates all terms explicitly rather than using Gaussian-quadrature.
-    Note, that if one uses enough quadrature points in Wang's approach then the integrals
-    can be exact as well.
+    to the Kinetic Collection Equation (KCE).
     
-    Version 0.0: 
-        
-        ELD NOTE 01/09/2026: Try to maybe implement cupy replacement for numpy
-        for gpu numpy array operations.
-        
-    LIST OF THINGS TO DO:
-        
-        SHORT TERM:
-            1.) Complete Ikernel.interact_2mom_SS() and Ikernel.interact_1mom_SS() for
-                utilizing parallel processing and using GPU for box and SS models.
-            2.) Modify write_netcdf() method to only save necessary 1 moment variables (e.g., Mbins)
-            3.) Create timing tests for box model, steady-state model, and full 1D model (see tests/ directory)
-            4.) Incorporate stencils for different order advection schemes.
-            5.) Incorporate output_freq for box model (and possibly something similar for SS model)
-            6.) Fix issue when output_freq is incompatible with dt.
-            7.) Fix Ipython_launcher bug when using Jupyter notebook (seems like the progress bar
-                is messed up when it first launches but then works ok afterward.)
-            8.) Fix PSD issue for multiple categories and am/bm are different.
-            9.) Modify run_steady_state_1mom() and run_steady_state_2mom() to incorporate RK steps.
-    
-        MEDIUM TERM:
-            1.) Incorporate more detailed CC/BC methods:
-                a.) Phillips et al. 2015/2016 aggregation/breakup parameterizations
-                b.) McFarquhar et al. rain breakup distributions
-            2.) Add class/method that can be used to define limits of plots and/or
-                compare different spectral_1d objects.
-            
-        LONG TERM: 
-            1.) Add in additional microphysical processes (vapor deposition, riming, melting, etc.)
-            2.) Utilize T-Matrix calculations (either explicitly or using some kind of NN)
+    Version 0.0.1
     
 """
 
 ## Import stuff
-
 from .distribution import dist,update_2mom
 from .interaction import Interaction
 from .bin_integrals import init_rk, Pn
@@ -58,7 +25,6 @@ from .plotting_functions import get_cmap_vars
 from .radar import spheroid_factors, angular_moments, dielectric_ice, dielectric_water
 
 import numpy as np
-#import scipy.special as scip
 import matplotlib.pyplot as plt
 
 from matplotlib.colors import BoundaryNorm
@@ -69,9 +35,13 @@ from datetime import datetime
 
 from netCDF4 import Dataset
 
-import sys
+import cloudpickle
 
-#from joblib import Parallel
+import codecs
+
+import types
+
+import sys
 
 if 'ipykernel_launcher.py' in sys.argv[0]:
     from tqdm.auto import tqdm
@@ -82,16 +52,9 @@ else:
 # 1D Spectral Bin Model Class
 class spectral_1d:
     
-    # def __init__(self,sbin=8,bins=140,dt=2,
-    #              tmax=800.,output_freq=1,dz=10.,ztop=0.,zbot=0.,D1=0.25,x0=0.01,Nt0=1.,Mt0=1.,Dm0=2.0,
-    #              mbar0=None,mu0=3.,init_method = 'gamma', gam_norm=False,Ecol=0.001,Es=1.0,Eb=0.,moments=2,dist_var='mass',
-    #              kernel='Golovin',frag_dist='exp_mass',habit_params='rain',
-    #              ptype='rain',Tc=10.,boundary=None,dist_num=1,cc_dest=1,br_dest=1, 
-    #              radar=False,wavl=110.,rk_order=1,adv_order=1,gpu=False,load=None,progress=True,
-    #              **kwargs):
         
-    def __init__(self,sbin=8,bins=140,dt=2,
-                 tmax=800.,output_freq=1,dz=10.,ztop=0.,zbot=0.,D1=0.25,x0=0.01,Ecol=0.001,Es=1.0,Eb=0.,moments=2,dist_var='mass',
+    def __init__(self,sbin=4,bins=56,dt=1,
+                 tmax=800.,output_freq=1,dz=10.,ztop=0.,zbot=0.,D1=0.25,x0=0.05,Ecol=1.0,Es=1.0,Eb=0.,moments=2,dist_var='mass',
                  kernel='Golovin',frag_dist='exp_mass',habit_params='rain',
                  ptype='rain',Tc=10.,boundary=None,cc_dest=1,br_dest=1, 
                  radar=False,wavl=110.,rk_order=1,adv_order=1,gpu=False,load=None,progress=True,
@@ -103,11 +66,11 @@ class spectral_1d:
         Parameters
         ----------
         sbin : int
-            Spectral bin mass grid resolution. The default is 8.
+            Spectral bin mass grid resolution. The default is 4.
         bins : int
-            Number of bins used for each distribution. The default is 140.
+            Number of bins used for each distribution. The default is 56.
         dt : float, optional
-            Model time step in seconds. The default is 2.
+            Model time step in seconds. The default is 1.
         tmax : float, optional
             Maximum time in seconds the model is run. The default is 800.
         output_freq : int, optional
@@ -121,19 +84,9 @@ class spectral_1d:
         D1 : float, optional
             Minimum equivolume diameter bin size in mm when the 'dist_var' parameter is 'size'. The default is 0.25.
         x0 : float, optional
-            Minimum bin mass in grams when the 'dist_var' parameter is 'mass'.. The default is 0.01.
-        Nt0 : float, optional
-            Initial gamma distribution full number concentration in 1/L. The default is 1.
-        Mt0 : float, optional
-            Initial gamma distribution full mass concentration in g/m^3. The default is 1.
-        Dm0 : float, optional
-            Initial gamma distribution full mean volume diameter in mm. The default is 2.0.
-        mu0 : float, optional
-            Initial gamma distribution shape parameter. The default is 3..
-        gam_norm : bool, optional
-            Specify whether initial gamma distribution is normalized by mass (True). The default is False.
+            Minimum bin mass in grams when the 'dist_var' parameter is 'mass'.. The default is 0.05.
         Ecol : float, optional
-            Collision efficiency. The default is 0.001.
+            Collision efficiency. The default is 1.0.
         Es : float, optional
             Sticking efficiency. The default is 1.0.
         Eb : float, optional
@@ -146,8 +99,8 @@ class spectral_1d:
             Type of collision kernel in collection_kernels.py to use for coalescence/breakup. The default is 'Golovin'.
         frag_dist : str, optional
             Type of fragment distribution. The default is 'exp'.
-        habit_list : list, optional
-            List of distribution parameters for each category (total number determined by len(habit_lists)). 
+        habit_params : list, optional
+            List of distribution parameters for each category (total distribution number determined by len(habit_lists)). 
             elements of list can be either strings where each string defines a default habit type from the
             habits() function in the habits module or a dictionary with the necessary parameters. The default is ['rain'].
         ptype : str, optional
@@ -182,6 +135,9 @@ class spectral_1d:
             If loading spectral_1d() object from netcdf file, this is the path string to the netcdf file.
             None means no loading.
             The default is None.
+        progress: bool, optional 
+            If using a progressbar when using run() method.
+            The default is None.
 
         '''   
         
@@ -192,18 +148,7 @@ class spectral_1d:
             # Get structured habit list of dictionaries for each distribution category.
             self.setup_habits(habit_params,psd_params=kwargs)
             
-            #print('habit_dict=',self.habit_dict)
-            #raise Exception()
-            
-            # self.setup_case(sbin=sbin,bins=bins,D1=D1,x0=x0,dt=dt,tmax=tmax,
-            #             output_freq=output_freq,dz=dz,ztop=ztop,zbot=zbot,Nt0=Nt0,Mt0=Mt0,Dm0=Dm0,mbar0=mbar0,mu0=mu0,
-            #             init_method=init_method,gam_norm=gam_norm,Ecol=Ecol,
-            #             Es=Es,Eb=Eb,moments=moments,dist_var=dist_var,kernel=kernel,frag_dist=frag_dist,
-            #             habit_params=habit_params,ptype=ptype,Tc=Tc,radar=radar,wavl=wavl,boundary=boundary,
-            #             cc_dest=cc_dest,br_dest=br_dest,rk_order=rk_order,adv_order=adv_order,gpu=gpu,
-            #             progress=progress)
-            
-            
+                      
             self.setup_case(sbin=sbin,bins=bins,D1=D1,x0=x0,dt=dt,tmax=tmax,
                         output_freq=output_freq,dz=dz,ztop=ztop,zbot=zbot,
                         Ecol=Ecol,Es=Es,Eb=Eb,moments=moments,dist_var=dist_var,kernel=kernel,frag_dist=frag_dist,
@@ -217,12 +162,22 @@ class spectral_1d:
 
 
     def load_case(self,filename):
+        '''
+        Loads netcdf file variables and attributes into spectral_1d object.
+
+        Parameters
+        ----------
+        filename : str
+            Filename of netcdf file.
+
+        '''
         
         with Dataset(filename,'r',format='NETCDF4') as file_nc:
             
             file_nc.set_auto_mask(False)
             
             # Read spectral_1d object attributes from netcdf file
+            #save_radar = file_nc.save_radar
             self.bins = file_nc.bins
             self.sbin = file_nc.sbin
             self.dnum = file_nc.dnum
@@ -243,18 +198,8 @@ class spectral_1d:
             self.br_dest = file_nc.indb
             self.cc_dest = file_nc.indc
             self.dist_var = file_nc.dist_var
-            #self.mu0 = file_nc.mu0
-            #self.Dm0 = file_nc.Dm0
-            #self.Nt0 = file_nc.Nt0
-            #self.Mt0 = file_nc.Mt0
-            
-            #if file_nc.mbar0 == 0:
-            #    self.mbar0 = None
-            #else:
-            #    self.mbar0 = file_nc.mbar0
             
             self.D1 = file_nc.D1
-            #self.lamf = file_nc.lamf
             self.x0 = file_nc.x0
             self.Tc = file_nc.Tc
             self.Ecol = file_nc.Ecol
@@ -263,9 +208,7 @@ class spectral_1d:
             self.Eagg = file_nc.Eagg
             self.Ebr = file_nc.Ebr
             self.Ecb = file_nc.Ecb
-            #self.n_jobs = file_nc.n_jobs
-            #self.init_method = file_nc.init_method
-            #self.gam_norm = bool(file_nc.gam_norm)
+            
             if file_nc.boundary == 'None':
                 self.boundary = None
             else:
@@ -273,11 +216,6 @@ class spectral_1d:
             self.ztop = file_nc.ztop
             self.zbot = file_nc.zbot
             self.tmax = file_nc.tmax
-            
-            # if file_nc.parallel==0:
-            #     self.parallel = False
-            # else:
-            #     self.parallel = True
                     
             self.rhobins = 2**(1./self.sbin) # scaling param for mass bins 
             # Boundary logic for Scenarios A, B, C
@@ -290,14 +228,32 @@ class spectral_1d:
             
             self.habit_params = {}
             
+
             for habit in self.habit_names:
                 
                 self.habit_params[habit] = file_nc.groups['Habits'].groups[habit].__dict__
             
-                if 'gam_norm' in list(self.habit_params[habit].keys()):
+                habit_vars = list(self.habit_params[habit].keys())
+            
+                if 'vt' in habit_vars:
+                    vt_hex = self.habit_params[habit]['vt']
+                    vt_str = codecs.decode(vt_hex.encode('utf-8'),'hex')
+                    self.habit_params[habit]['vt'] = cloudpickle.loads(vt_str)
+                    
+                if 'aspect_ratio' in habit_vars:
+                    ar_hex = self.habit_params[habit]['aspect_ratio']
+                    ar_str = codecs.decode(ar_hex.encode('utf-8'),'hex')
+                    self.habit_params[habit]['aspect_ratio'] = cloudpickle.loads(ar_str)
+                    
+                if 'func_nD' in habit_vars:
+                    nD_hex = self.habit_params[habit]['func_nD']
+                    nD_str = codecs.decode(nD_hex.encode('utf-8'),'hex')
+                    self.habit_params[habit]['func_nD'] = cloudpickle.loads(nD_str)
+            
+                if 'gam_norm' in habit_vars:
                     self.habit_params[habit]['gam_norm'] = bool(self.habit_params[habit]['gam_norm'])
             
-                if ('mbar0' in list(self.habit_params[habit].keys())):
+                if 'mbar0' in habit_vars:
                     if self.habit_params[habit]['mbar0'] == 0:
                         self.habit_params[habit]['mbar0'] = None
                     
@@ -360,26 +316,83 @@ class spectral_1d:
             
             if self.radar:
                 self.calc_radar()
-        
-    # If running in parallel
-    # if self.parallel:
-    #     self._parallel_config = Parallel(n_jobs=self.n_jobs,verbose=0)
-    #     self._context_stack = []
-    # else:
-    #     self.n_jobs=1
-    #     self._parallel_config = None
-        
-    # self.pool = None
-        
+             
             
-    #def setup_case(self,sbin=4,bins=160,D1=0.001,x0=0.01,Nt0=1.,Mt0=1.,mbar0=None,Dm0=2.0,mu0=3,init_method='gamma',gam_norm=False,dist_var='mass',kernel='Golovin',Ecol=1.53,Es=0.001,Eb=0.,
-    #                    moments=2,ztop=3000.0,zbot=0.,zout=None,tout=None,tmax=800.,output_freq=1,dt=10.,dz=10.,frag_dist='exp',habit_params='rain',ptype='rain',Tc=10.,
-    #                    radar=False,wavl=110.,boundary=None,cc_dest=1,br_dest=1,rk_order=1,adv_order=1,gpu=False,progress=True,**kwargs):
-     
     def setup_case(self,sbin=4,bins=160,D1=0.001,x0=0.01,dist_var='mass',kernel='Golovin',Ecol=1.53,Es=0.001,Eb=0.,
                         moments=2,ztop=3000.0,zbot=0.,zout=None,tout=None,tmax=800.,output_freq=1,dt=10.,dz=10.,frag_dist='exp',habit_dict=None,ptype='rain',Tc=10.,
                         radar=False,wavl=110.,boundary=None,cc_dest=1,br_dest=1,rk_order=1,adv_order=1,gpu=False,progress=True,**kwargs):
-                
+        '''
+        Set's up BinMod1D model for solving the SCE/SBE equation for user-prescribed parameters.
+
+        Parameters
+        ----------
+        sbin : TYPE, optional
+            DESCRIPTION. The default is 4.
+        bins : TYPE, optional
+            DESCRIPTION. The default is 160.
+        D1 : TYPE, optional
+            DESCRIPTION. The default is 0.001.
+        x0 : TYPE, optional
+            DESCRIPTION. The default is 0.01.
+        dist_var : TYPE, optional
+            DESCRIPTION. The default is 'mass'.
+        kernel : TYPE, optional
+            DESCRIPTION. The default is 'Golovin'.
+        Ecol : TYPE, optional
+            DESCRIPTION. The default is 1.53.
+        Es : TYPE, optional
+            DESCRIPTION. The default is 0.001.
+        Eb : TYPE, optional
+            DESCRIPTION. The default is 0..
+        moments : TYPE, optional
+            DESCRIPTION. The default is 2.
+        ztop : TYPE, optional
+            DESCRIPTION. The default is 3000.0.
+        zbot : TYPE, optional
+            DESCRIPTION. The default is 0..
+        zout : TYPE, optional
+            DESCRIPTION. The default is None.
+        tout : TYPE, optional
+            DESCRIPTION. The default is None.
+        tmax : TYPE, optional
+            DESCRIPTION. The default is 800..
+        output_freq : TYPE, optional
+            DESCRIPTION. The default is 1.
+        dt : TYPE, optional
+            DESCRIPTION. The default is 10..
+        dz : TYPE, optional
+            DESCRIPTION. The default is 10..
+        frag_dist : TYPE, optional
+            DESCRIPTION. The default is 'exp'.
+        habit_dict : TYPE, optional
+            DESCRIPTION. The default is None.
+        ptype : TYPE, optional
+            DESCRIPTION. The default is 'rain'.
+        Tc : TYPE, optional
+            DESCRIPTION. The default is 10..
+        radar : TYPE, optional
+            DESCRIPTION. The default is False.
+        wavl : TYPE, optional
+            DESCRIPTION. The default is 110..
+        boundary : TYPE, optional
+            DESCRIPTION. The default is None.
+        cc_dest : TYPE, optional
+            DESCRIPTION. The default is 1.
+        br_dest : TYPE, optional
+            DESCRIPTION. The default is 1.
+        rk_order : TYPE, optional
+            DESCRIPTION. The default is 1.
+        adv_order : TYPE, optional
+            DESCRIPTION. The default is 1.
+        gpu : TYPE, optional
+            DESCRIPTION. The default is False.
+        progress : TYPE, optional
+            DESCRIPTION. The default is True.
+        **kwargs : TYPE
+            DESCRIPTION.
+
+        '''        
+        
         
         self.Tc = Tc
         self.radar = radar
@@ -387,14 +400,7 @@ class spectral_1d:
         self.sbin = sbin 
         self.bins = bins
         self.D1 = D1
-        #self.Nt0 = Nt0 
-        #self.Mt0 = Mt0
-        #self.mbar0 = mbar0
-        #self.Dm0 = Dm0 
-        #self.mu0 = mu0 
         self.x0 = x0
-        #self.init_method = init_method
-        #self.gam_norm = gam_norm
         self.kernel = kernel
         self.Ecol = Ecol # Collision efficiency
         self.Es = Es # Sticking efficiency
@@ -419,29 +425,13 @@ class spectral_1d:
         self.adv_order = adv_order
         self.boundary = boundary
         self.gpu = gpu
-        #self.parallel = parallel
         self.frag_dist = frag_dist
-        
-        # if n_jobs == -1:
-        #     self.n_jobs = os.cpu_count()
-        # else:
-        #     self.n_jobs = n_jobs
         
         self.habit_names = list(self.habit_dict.keys())
         
         self.indc = cc_dest 
         self.indb = br_dest
         
-        # If users don't use a list for habit_params, then just put dictionary or string in a list
-        # where each element corresponds to parameters for a separate distribution.
-        
-        # if isinstance(habit_params,dict):
-        #     habit_params = [{key: value} for key, value in habit_params.items()]
-        
-        # if not isinstance(habit_params,list): # If habit_params is a single string
-        #     habit_params = [habit_params]
-            
-        #self.dnum = len(habit_params)
         
         self.moments = moments
         
@@ -681,12 +671,14 @@ class spectral_1d:
         #self.gam_norm = dist0.gam_norm
         
         self.gam_norm = self.habit_dict[self.habit_names[0]].get('gam_norm',False)
-        mbar0 =self.habit_dict[self.habit_names[0]].get('mbar0',None)
+        #mbar0 =self.habit_dict[self.habit_names[0]].get('mbar0',None)
         
-        if self.gam_norm and (mbar0 is None):
-            self.out_text = lambda M, Mf: 'Total Mass = {:.2f} g/m^3 | Total Mass Flux = {:.2f} g/(m^2*s)'.format(np.sum(M),np.sum(Mf))
-        else:
-            self.out_text = lambda M, Mf: 'Total Mass = {:.2f} g/m^3 | Total Mass Flux = {:.2f} g/(m^2*s)'.format(1000.*np.sum(M),1000.*np.sum(Mf))
+        self.out_text = lambda M, Mf: 'Total Mass = {:.2f} g/m^3 | Total Mass Flux = {:.2f} g/(m^2*s)'.format(np.sum(M),np.sum(Mf))
+        
+        #if self.gam_norm and (mbar0 is None):
+        #    self.out_text = lambda M, Mf: 'Total Mass = {:.2f} g/m^3 | Total Mass Flux = {:.2f} g/(m^2*s)'.format(np.sum(M),np.sum(Mf))
+        #else:
+        #    self.out_text = lambda M, Mf: 'Total Mass = {:.2f} g/m^3 | Total Mass Flux = {:.2f} g/(m^2*s)'.format(1000.*np.sum(M),1000.*np.sum(Mf))
  
 
         # Setup output text
@@ -698,6 +690,7 @@ class spectral_1d:
         
     def setup_habits(self,habit_params,psd_params=None):
         '''
+        Set's up habits based on habit_params list.
         
         Parameters
         ----------
@@ -790,6 +783,8 @@ class spectral_1d:
         # Radar stuff
         #self.wavl = 110.
         #self.sigma = 0.
+        
+        
         self.ew0 = complex(81.0, 23.2)  # Dielectric constant of water at 0C
         self.kw = (np.abs((self.ew0 - 1) / (self.ew0 + 2)))**2
         self.cz = (4.0 * self.wavl**4)/(np.pi**4 * self.kw)
@@ -858,16 +853,26 @@ class spectral_1d:
         self.Dmtot = np.full_like(M3tot,np.nan)
         self.Dmtot[M3tot>0.] = M4tot[M3tot>0.]/M3tot[M3tot>0.]
         
-        self.N = self.Nbins.sum(axis=2)
+        self.N = 0.001*self.Nbins.sum(axis=2) # Convert back to #/L
+        #self.N = self.Nbins.sum(axis=2)
         #self.M = self.Mbins.sum(axis=2)
         #self.Rm = 3.6*(self.Mbins*self.vt[:,None,:,None]).sum(axis=2)
         
-        self.M = 1000.*self.Mbins.sum(axis=2)
-        self.Rm = 1000.*3.6*(self.Mbins*self.vt[:,None,:,None]).sum(axis=2)
+        self.M = self.Mbins.sum(axis=2)
+        #self.M = 1000.*self.Mbins.sum(axis=2)
+        #self.Rm = 1000.*3.6*(self.Mbins*self.vt[:,None,:,None]).sum(axis=2)
         
-        #if not self.gam_norm:
-        #    self.M *= 1000.
-        #    self.Rm *= 1000.
+        # Liquid equivalent precipitation rate
+        self.Rm = (3.6)*(self.Mbins*self.vt[:,None,:,None]).sum(axis=2)
+        
+        # if self.ptype=='rain':
+        #    # self.Rm = 1000.*(0.6*np.pi)*(self.Mbins*self.vt[:,None,:,None]).sum(axis=2)
+        #     #self.Rm = (0.6*np.pi)*(self.Mbins*self.vt[:,None,:,None]).sum(axis=2)
+        #     self.Rm = (3.6)*(self.Mbins*self.vt[:,None,:,None]).sum(axis=2)
+        # elif self.ptype=='snow':
+        #     #self.Rm = 1000.*(3.6)*(self.Mbins*self.vt[:,None,:,None]).sum(axis=2)
+            
+        #     self.Rm = (3.6)*(self.Mbins*self.vt[:,None,:,None]).sum(axis=2)
         
         self.Ntot = self.N.sum(axis=0)
         self.Mtot = self.M.sum(axis=0)
@@ -883,98 +888,201 @@ class spectral_1d:
         self.Rmtot[self.Rmtot==0.] = np.nan
 
     def calc_radar(self):
+        ''' 
+        Calculates radar variables from Mbins and Nbins.
+        '''
         
         self.setup_radar()
         
+        dx = self.x2-self.x1
+        
+        xmid = 0.5*(self.x1+self.x2)
+        
+        offset = dx / (2.*np.sqrt(3.))
+        
+        xA = xmid - offset 
+        xB = xmid + offset
+        
+        weight = dx / 2.0
+        
         angs = self.angs
         
-        ang1 = angs[0,:,:]
-        ang2 = angs[1,:,:]
-        ang3 = angs[2,:,:]
-        ang4 = angs[3,:,:]
-        ang5 = angs[4,:,:]
+        ang1 = angs[0,:,:][:,None,:,None]
+        ang2 = angs[1,:,:][:,None,:,None]
+        ang3 = angs[2,:,:][:,None,:,None]
+        ang4 = angs[3,:,:][:,None,:,None]
+        ang5 = angs[4,:,:][:,None,:,None]
         #ang6 = angs[5,:,:]
-        ang7 = angs[6,:,:]
+        ang7 = angs[6,:,:][:,None,:,None]
         
-        fhh_180_1 = fhh_0_1 = self.fscatt_pre1* (1 / (self.lb1 + self.eps1_factor))  
-        fvv_180_1 = fvv_0_1 = self.fscatt_pre1* (1 / (self.la1 + self.eps1_factor))  
+        fhh_180_1 = self.fscatt_pre1* (1 / (self.lb1 + self.eps1_factor))  
+        fvv_180_1 = self.fscatt_pre1* (1 / (self.la1 + self.eps1_factor))  
         
-        fhh_180_2 = fhh_0_2 = self.fscatt_pre2* (1 / (self.lb2 + self.eps2_factor))  
-        fvv_180_2 = fvv_0_2 = self.fscatt_pre2* (1 / (self.la2 + self.eps2_factor))
+        fhh_180_2 = self.fscatt_pre2* (1 / (self.lb2 + self.eps2_factor))  
+        fvv_180_2 = self.fscatt_pre2* (1 / (self.la2 + self.eps2_factor))
         
-        #print('fhh_180_1=',fhh_180_1.shape)
+        # fhh_180_1 = fhh_0_1 = self.fscatt_pre1* (1 / (self.lb1 + self.eps1_factor))  
+        # fvv_180_1 = fvv_0_1 = self.fscatt_pre1* (1 / (self.la1 + self.eps1_factor))  
+        
+        # fhh_180_2 = fhh_0_2 = self.fscatt_pre2* (1 / (self.lb2 + self.eps2_factor))  
+        # fvv_180_2 = fvv_0_2 = self.fscatt_pre2* (1 / (self.la2 + self.eps2_factor))
+        
+        ak_fhh = (fhh_180_2-fhh_180_1)/self.dxbins 
+        ck_fhh = fhh_180_1 - ak_fhh*self.xi1 
+        
+        ak_fvv = (fvv_180_2-fvv_180_1)/self.dxbins 
+        ck_fvv = fvv_180_1 - ak_fvv*self.xi1 
+        
+        fhh_1 = ak_fhh[:,None,:,None]*xA+ck_fhh[:,None,:,None]
+        fhh_2 = ak_fhh[:,None,:,None]*xB+ck_fhh[:,None,:,None]
+        
+        fvv_1 = ak_fvv[:,None,:,None]*xA+ck_fvv[:,None,:,None]
+        fvv_2 = ak_fvv[:,None,:,None]*xB+ck_fvv[:,None,:,None]
+        
+        #print('ang2=',ang2.shape)
+        #print('fhh_1=',fhh_1.shape)
         #raise Exception()
         
-        fZh1 = self.cz * ((np.abs(fhh_180_1))**2 -
-                   2.0 * ang2 * np.real(np.conj(fhh_180_1) * (fhh_180_1 - fvv_180_1)) +
-                   ang4 * (np.abs(fhh_180_1 - fvv_180_1))**2)
+        fZh1 = self.cz * ((np.abs(fhh_1))**2 -
+                   2.0 * ang2 * np.real(np.conj(fhh_1) * (fhh_1 - fvv_1)) +
+                   ang4 * (np.abs(fhh_1 - fvv_1))**2)
         
-        fZv1 = self.cz * ((np.abs(fhh_180_1))**2 -
-                   2.0 * ang1 * np.real(np.conj(fhh_180_1) * (fhh_180_1 - fvv_180_1)) +
-                   ang3 * (np.abs(fhh_180_1 - fvv_180_1))**2)
+        fZv1 = self.cz * ((np.abs(fhh_1))**2 -
+                   2.0 * ang1 * np.real(np.conj(fhh_1) * (fhh_1 - fvv_1)) +
+                   ang3 * (np.abs(fhh_1 - fvv_1))**2)
         
-        fKdp1 = self.ckdp * ang7 * np.real(fhh_0_1 - fvv_0_1)
+        fKdp1 = self.ckdp * ang7 * np.real(fhh_1 - fvv_1)
         
-        fZhhvv1 = self.cz * ((np.abs(fhh_180_1))**2 +
-                      ang5 * (np.abs(fhh_180_1 - fvv_180_1))**2 -
-                      ang1 * (np.conj(fhh_180_1) * (fhh_180_1 - fvv_180_1)) -
-                      ang2 * fhh_180_1 * np.conj(fhh_180_1 - fvv_180_1))
+        fZhhvv1 = self.cz * ((np.abs(fhh_1))**2 +
+                      ang5 * (np.abs(fhh_1 - fvv_1))**2 -
+                      ang1 * (np.conj(fhh_1) * (fhh_1 - fvv_1)) -
+                      ang2 * fhh_1 * np.conj(fhh_1 - fvv_1))
         
-        fZh2 = self.cz * ((np.abs(fhh_180_2))**2 -
-                   2.0 * ang2 * np.real(np.conj(fhh_180_2) * (fhh_180_2 - fvv_180_2)) +
-                   ang4 * (np.abs(fhh_180_2 - fvv_180_2))**2)
+        fZh2 = self.cz * ((np.abs(fhh_2))**2 -
+                   2.0 * ang2 * np.real(np.conj(fhh_2) * (fhh_2 - fvv_2)) +
+                   ang4 * (np.abs(fhh_2 - fvv_2))**2)
         
-        fZv2 = self.cz * ((np.abs(fhh_180_2))**2 -
-                   2.0 * ang1 * np.real(np.conj(fhh_180_2) * (fhh_180_2 - fvv_180_2)) +
-                   ang3 * (np.abs(fhh_180_2 - fvv_180_2))**2)
+        fZv2 = self.cz * ((np.abs(fhh_2))**2 -
+                   2.0 * ang1 * np.real(np.conj(fhh_2) * (fhh_2 - fvv_2)) +
+                   ang3 * (np.abs(fhh_2 - fvv_2))**2)
         
-        fKdp2 = self.ckdp * ang7 * np.real(fhh_0_2 - fvv_0_2)
+        fKdp2 = self.ckdp * ang7 * np.real(fhh_2 - fvv_2)
         
-        fZhhvv2 = self.cz * ((np.abs(fhh_180_2))**2 +
-                      ang5 * (np.abs(fhh_180_2 - fvv_180_2))**2 -
-                      ang1 * (np.conj(fhh_180_2) * (fhh_180_2 - fvv_180_2)) -
-                      ang2 * fhh_180_2 * np.conj(fhh_180_2 - fvv_180_2))
+        fZhhvv2 = self.cz * ((np.abs(fhh_2))**2 +
+                      ang5 * (np.abs(fhh_2 - fvv_2))**2 -
+                      ang1 * (np.conj(fhh_2) * (fhh_2 - fvv_2)) -
+                      ang2 * fhh_2 * np.conj(fhh_2 - fvv_2))
+        
+        
+        # fZh1 = self.cz * ((np.abs(fhh_180_1))**2 -
+        #            2.0 * ang2 * np.real(np.conj(fhh_180_1) * (fhh_180_1 - fvv_180_1)) +
+        #            ang4 * (np.abs(fhh_180_1 - fvv_180_1))**2)
+        
+        # fZv1 = self.cz * ((np.abs(fhh_180_1))**2 -
+        #            2.0 * ang1 * np.real(np.conj(fhh_180_1) * (fhh_180_1 - fvv_180_1)) +
+        #            ang3 * (np.abs(fhh_180_1 - fvv_180_1))**2)
+        
+        # fKdp1 = self.ckdp * ang7 * np.real(fhh_0_1 - fvv_0_1)
+        
+        # fZhhvv1 = self.cz * ((np.abs(fhh_180_1))**2 +
+        #               ang5 * (np.abs(fhh_180_1 - fvv_180_1))**2 -
+        #               ang1 * (np.conj(fhh_180_1) * (fhh_180_1 - fvv_180_1)) -
+        #               ang2 * fhh_180_1 * np.conj(fhh_180_1 - fvv_180_1))
+        
+        # fZh2 = self.cz * ((np.abs(fhh_180_2))**2 -
+        #            2.0 * ang2 * np.real(np.conj(fhh_180_2) * (fhh_180_2 - fvv_180_2)) +
+        #            ang4 * (np.abs(fhh_180_2 - fvv_180_2))**2)
+        
+        # fZv2 = self.cz * ((np.abs(fhh_180_2))**2 -
+        #            2.0 * ang1 * np.real(np.conj(fhh_180_2) * (fhh_180_2 - fvv_180_2)) +
+        #            ang3 * (np.abs(fhh_180_2 - fvv_180_2))**2)
+        
+        # fKdp2 = self.ckdp * ang7 * np.real(fhh_0_2 - fvv_0_2)
+        
+        # fZhhvv2 = self.cz * ((np.abs(fhh_180_2))**2 +
+        #               ang5 * (np.abs(fhh_180_2 - fvv_180_2))**2 -
+        #               ang1 * (np.conj(fhh_180_2) * (fhh_180_2 - fvv_180_2)) -
+        #               ang2 * fhh_180_2 * np.conj(fhh_180_2 - fvv_180_2))
         
         # Find slopes/intercepts for linear interpolation formulas.
         # 
-        ak_zh = (fZh2-fZh1)/self.dxbins
-        ck_zh = fZh1-ak_zh*self.xi1
         
-        ak_zv = (fZv2-fZv1)/self.dxbins
-        ck_zv = fZv1-ak_zv*self.xi1
+        # ORIGINAL
+        # ak_zh = (fZh2-fZh1)/self.dxbins
+        # ck_zh = fZh1-ak_zh*self.xi1
         
-        ak_kdp = (fKdp2-fKdp1)/self.dxbins
-        ck_kdp = fKdp1-ak_kdp*self.xi1
+        # ak_zv = (fZv2-fZv1)/self.dxbins
+        # ck_zv = fZv1-ak_zv*self.xi1
         
-        ak_zhhvv = (fZhhvv2-fZhhvv1)/self.dxbins
-        ck_zhhvv = fZhhvv1-ak_zhhvv*self.xi1
+        # ak_kdp = (fKdp2-fKdp1)/self.dxbins
+        # ck_kdp = fKdp1-ak_kdp*self.xi1
+        
+        # ak_zhhvv = (fZhhvv2-fZhhvv1)/self.dxbins
+        # ck_zhhvv = fZhhvv1-ak_zhhvv*self.xi1
+        # ORIGINAL
         
         # Linearly interpolate scattering amplitudes across each bin
         # and then integrate each term to find radar values
         # Integrations are: 1000 * int g(x) * n(x) dx = 1000 * int (ak_v * x + ck_v) * (aki*x +cki) 
         # Shape = (dnum,Hlen,bins,Tout_len)
-        self.zh = 1000.*(ak_zh[:,None,:,None]*self.Mbins+ck_zh[:,None,:,None]*self.Nbins)
-        self.zv = 1000.*(ak_zv[:,None,:,None]*self.Mbins+ck_zv[:,None,:,None]*self.Nbins)
-        self.kdp = 1000.*(ak_kdp[:,None,:,None]*self.Mbins+ck_kdp[:,None,:,None]*self.Nbins)
-        self.zhhvv = 1000.*(ak_zhhvv[:,None,:,None]*self.Mbins+ck_zhhvv[:,None,:,None]*self.Nbins)
+        
+        
+        nA = self.aki*xA+self.cki
+        nB = self.aki*xB+self.cki
+        
+
+       # print('nA=',nA.shape)
+       # print('weight=',weight.shape)
+       # print('fZh1=',fZh1.shape)
+       # raise Exception()
+        
+        
+        #self.zh = 1000.*weight*(fZh1*nA+fZh2*nB)
+        #self.zv = 1000.*weight*(fZv1*nA+fZv2*nB)
+        #self.kdp = 1000.*weight*(fKdp1*nA+fKdp2*nB)
+        #self.zhhvv = 1000.*weight*(fZhhvv1*nA+fZhhvv2*nB)
+        
+        self.zh = weight*(fZh1*nA+fZh2*nB)
+        self.zv = weight*(fZv1*nA+fZv2*nB)
+        self.kdp = weight*(fKdp1*nA+fKdp2*nB)
+        self.zhhvv = weight*(fZhhvv1*nA+fZhhvv2*nB)
+        
+
+        # ORIGINAL
+        #self.zh = 1000.*(ak_zh[:,None,:,None]*self.Mbins+ck_zh[:,None,:,None]*self.Nbins)
+        #self.zv = 1000.*(ak_zv[:,None,:,None]*self.Mbins+ck_zv[:,None,:,None]*self.Nbins)
+        #self.kdp = 1000.*(ak_kdp[:,None,:,None]*self.Mbins+ck_kdp[:,None,:,None]*self.Nbins)
+        #self.zhhvv = 1000.*(ak_zhhvv[:,None,:,None]*self.Mbins+ck_zhhvv[:,None,:,None]*self.Nbins)
+        
+        #self.zh = (1000.*ak_zh[:,None,:,None]*self.Mbins+ck_zh[:,None,:,None]*self.Nbins)
+        #self.zv = (1000.*ak_zv[:,None,:,None]*self.Mbins+ck_zv[:,None,:,None]*self.Nbins)
+        #self.kdp = (1000.*ak_kdp[:,None,:,None]*self.Mbins+ck_kdp[:,None,:,None]*self.Nbins)
+        #self.zhhvv = (1000.*ak_zhhvv[:,None,:,None]*self.Mbins+ck_zhhvv[:,None,:,None]*self.Nbins)
         
         # Prevents sqrt error if zh, zv, or zhhvv are slightly negative
         self.zh = np.maximum(self.zh,1e-10)
         self.zv = np.maximum(self.zv,1e-10)
-        self.zhhvv = np.maximum(self.zhhvv,1e-10)
+        #self.zhhvv = np.maximum(self.zhhvv,1e-10)
         
         # Radar variables for each habit, linear units 
         zh_tot = np.nansum(self.zh,axis=2)
         zv_tot = np.nansum(self.zv,axis=2)
         kdp_tot = np.nansum(self.kdp,axis=2)
-        zhhvv_tot = np.abs(np.nansum(self.zhhvv,axis=2))
+       # zhhvv_tot = np.abs(np.nansum(self.zhhvv,axis=2))
         rhohv_denom = np.sqrt(zh_tot*zv_tot)
+        
+        zhhvv_tot_complex = np.nansum(self.zhhvv,axis=2)
         
         zh_full = np.nansum(zh_tot,axis=0)
         zv_full = np.nansum(zv_tot,axis=0)
         kdp_full = np.nansum(kdp_tot,axis=0)
-        zhhvv_full = np.abs(np.nansum(zhhvv_tot,axis=0))
+        #zhhvv_full = np.abs(np.nansum(zhhvv_tot,axis=0))
         rhohv_denom_full = np.sqrt(zh_full*zv_full)
+        
+        zhhvv_full_complex = np.nansum(zhhvv_tot_complex,axis=0)
+        
+        zhhvv_tot = np.abs(zhhvv_tot_complex)
+        zhhvv_full = np.abs(zhhvv_full_complex)
         
         ref_min = 10.**(-3.5)
         
@@ -1017,6 +1125,9 @@ class spectral_1d:
     #         self.Ikernel.pool = self.pool
 
     def clean_up(self):
+        ''' 
+        Method for cleaning up spectral_1d object after model runs.
+        '''
         
         sys.stdout.flush()
         
@@ -1064,6 +1175,9 @@ class spectral_1d:
     
     
     def diagnose_subgrid(self):
+        '''
+        Diagnoses 2-moment and 1-moment subgrid distribution parameters.
+        '''
         
         xi1_4D = np.swapaxes(np.tile(self.xi1,(self.dnum,self.Hlen,self.Tout_len,1)),2,3)
         xi2_4D = np.swapaxes(np.tile(self.xi2,(self.dnum,self.Hlen,self.Tout_len,1)),2,3)
@@ -1090,6 +1204,23 @@ class spectral_1d:
             self.x2 = xi2_4D
 
     def calc_moments(self,r,moments=2):  # Units are g^n
+        '''
+        Calculates bin-wise moments using subgrid distributions.
+
+        Parameters
+        ----------
+        r : int
+            Moment order.
+        moments : int, optional
+            Whether 2-moment or 1-moment subgrid distribution. The default is 2.
+
+        Returns
+        -------
+        float array
+            Bin-wise moments.
+
+        '''    
+    
         # Integrate to find arbitrary moments of subgrid distribution Mn = Int x^n *[n(x)=ak*x+ck]*dx
         if moments == 2:
             return self.aki*Pn(r+1,self.x1,self.x2)+self.cki*Pn(r,self.x1,self.x2)
@@ -1099,21 +1230,22 @@ class spectral_1d:
 
     def write_netcdf(self,filename,save_radar=False):
         '''
-        
+        Writes netcdf file for spectral_1d object.
 
         Parameters
         ----------
-        filename : STRING
-            Writes spectral_1d object attributes and variables to a netcdf file.
+        filename : str
+            Path and filename of netcdf file.
         save_radar : bool, optional
-            If True, then write radar variables to netcdf file. The default is False.
+            Whether to save total radar variables to netcdf file. The default is False.
+
 
         '''
-        
         
         with Dataset(filename,'w',format='NETCDF4') as file_nc:
             
             # Write attributes
+            file_nc.save_radar = 1*save_radar
             file_nc.bins = self.bins
             file_nc.sbin = self.sbin
             file_nc.dnum = self.dnum
@@ -1134,20 +1266,7 @@ class spectral_1d:
             file_nc.indb = self.indb 
             file_nc.indc = self.indc
             file_nc.dist_var = self.dist_var
-            
-            
-            #file_nc.mu0 = self.mu0
-            #file_nc.Dm0 = self.Dm0
-            #file_nc.Nt0 = self.Nt0
-            #file_nc.Mt0 = self.Mt0
-            
-            #if self.mbar0 is None:
-           #     file_nc.mbar0 = 0 
-           # else:
-           #     file_nc.mbar0 = self.mbar0
-            
             file_nc.D1 = self.D1 
-            #file_nc.lamf = self.lamf
             file_nc.x0 = self.dist0.x0
             file_nc.Tc = self.Tc
             file_nc.Ecol = self.Ecol
@@ -1156,7 +1275,6 @@ class spectral_1d:
             file_nc.Eagg = self.Eagg 
             file_nc.Ebr = self.Ebr 
             file_nc.Ecb = self.Ecb
-            #file_nc.gam_norm = 1*self.gam_norm
             if self.boundary is None:
                 file_nc.boundary = 'None'
             else:
@@ -1165,8 +1283,6 @@ class spectral_1d:
             file_nc.zbot = self.zbot
             file_nc.tmax = self.tmax
             file_nc.t = self.t
-            #file_nc.parallel = 1*self.parallel
-            #file_nc.n_jobs = self.n_jobs
                 
             file_nc.frag_dist = self.frag_dist
             
@@ -1209,13 +1325,19 @@ class spectral_1d:
                 # Create group
                 dist_dd = habit_group.createGroup(self.habit_names[dd])
                 
-                for key, value in self.habit_dict[self.habit_names[dd]].items():  
+                for key, value in self.habit_dict[self.habit_names[dd]].items():                   
 
                     if (value is None):
                         setattr(dist_dd,key,0)
-                    if isinstance(value,bool):
+                    elif isinstance(value,bool):
                         setattr(dist_dd,key,1*value)
-    
+                    elif isinstance(value, types.LambdaType):
+                        func_bytes = cloudpickle.dumps(value)
+                        func_str = codecs.encode(func_bytes,'hex').decode('utf-8')
+                        setattr(dist_dd,key,func_str)
+                    else:
+                        setattr(dist_dd,key,value)
+                        
             # Create Array Variables
             Mbins = file_nc.createVariable('Mbins','f8',('dists','height','bins','time_out',))
             Mbins.units = 'g'
@@ -1229,11 +1351,59 @@ class spectral_1d:
                 Nbins.description = 'Total Bin Number'
                 
                 Nbins[:] = self.Nbins
+                
+                
+            if save_radar:
             
-
+                if not hasattr(self,'ZH'):
+                    self.calc_radar()
+                
+                # Create Array Variable
+                ZH = file_nc.createVariable('ZH','f8',('dists','height','time_out',))
+                ZH.units = 'dBZ'
+                ZH.description = 'Reflectivity'
+                  
+                ZH[:] = self.ZH
+                
+                # Create Array Variable
+                ZDR = file_nc.createVariable('ZDR','f8',('dists','height','time_out',))
+                ZDR.units = 'dB'
+                ZDR.description = 'Differential Reflectivity'
+                
+                ZDR[:] = self.ZDR
+            
+                # Create Array Variables
+                KDP = file_nc.createVariable('KDP','f8',('dists','height','time_out',))
+                KDP.units = 'deg/km'
+                KDP.description = 'Specific Differential Phase'
+                
+                KDP[:] = self.KDP 
+                
+                # Create Array Variables
+                RHOHV = file_nc.createVariable('RHOHV','f8',('dists','height','time_out',))
+                RHOHV.units = ''
+                RHOHV.description = 'Cross-correlation coefficient'
+                
+                RHOHV[:] = self.RHOHV
+        
+            
     def plot_time_height(self,var='Z'):
         '''
-        For full 1D model runs, plots a time/height pcolor plot for specified input variable.
+        Plots time/height profile of microphysical or radar variables from
+        full 1D column model spectral_1d run.
+
+        Parameters
+        ----------
+        var : TYPE, optional
+            DESCRIPTION. The default is 'Z'.
+
+        Returns
+        -------
+        fig : object
+           Matplotlib pyplot figure object.
+        ax : objects
+            Matplotlib pyplot axes object.
+
         '''
         
         if latex_check():
@@ -1292,13 +1462,42 @@ class spectral_1d:
         
         return fig, ax
 
-    def plot_moments_radar(self,ax=None,tind=-1,plot_habits=False,lstyle='-'):
+    def plot_moments_radar(self,ax=None,tind=-1,plot_habits=False,**kwargs):
+        '''
+        Plots timeseries or height profiles of bulk microphysical parameters and radar parameters
+        from spectral_1d model run.
+
+        Parameters
+        ----------
+        ax : object, optional
+            Matplotlib pyplot axes object. If none, then create new figure and axes. The default is None.
+        tind : int, optional
+            Time index for plotting moments if steady-state or full 1D model run. The default is -1.
+        plot_habits : bool, optional
+            Plots individual habit variables. The default is False.
+        **kwargs : dict
+            Keyword arguments to be passed into axes and/or plots.
+
+        Returns
+        -------
+        fig : object
+           Matplotlib pyplot figure object.
+        ax : objects
+            Numpy array of Matplotlib pyplot axes objects.
+
+        '''
+        
+        kw_fig, kw_ax, kw_pl = get_kwargs(kwargs)
+        
+        kw_pl_tot = kw_pl.copy()
+        
+        if 'color' not in kw_pl_tot:
+            kw_pl_tot['color'] = 'k'
+            
         
         # If we don't have radar variables, the just calculate them here.
         if not hasattr(self,'ZH'):
             self.calc_radar()
-        
-        #lstyle = '-'
         
         if ax is None:
             ax_switch = True 
@@ -1334,15 +1533,26 @@ class spectral_1d:
             if ax is None:
                 fig, ax = plt.subplots(2,4,figsize=(14,8),sharex=True)
             
-            ax[0,0].plot(self.tout,N_tot,'k',linestyle=lstyle,label='total')
-            ax[0,1].plot(self.tout,Dm_tot,'k',linestyle=lstyle)
-            ax[0,2].plot(self.tout,M_tot,'k',linestyle=lstyle)
-            ax[0,3].plot(self.tout,Rm_tot,'k',linestyle=lstyle)
             
-            ax[1,0].plot(self.tout,ZH,color='k',linestyle=lstyle)
-            ax[1,1].plot(self.tout,ZDR,color='k',linestyle=lstyle)
-            ax[1,2].plot(self.tout,KDP,color='k',linestyle=lstyle)
-            ax[1,3].plot(self.tout,RHOHV,color='k',linestyle=lstyle)
+            ax[0,0].plot(self.tout,N_tot,label='total',**kw_pl_tot)
+            ax[0,1].plot(self.tout,Dm_tot,**kw_pl_tot)
+            ax[0,2].plot(self.tout,M_tot,**kw_pl_tot)
+            ax[0,3].plot(self.tout,Rm_tot,**kw_pl_tot)
+            
+            ax[1,0].plot(self.tout,ZH,**kw_pl_tot)
+            ax[1,1].plot(self.tout,ZDR,**kw_pl_tot)
+            ax[1,2].plot(self.tout,KDP,**kw_pl_tot)
+            ax[1,3].plot(self.tout,RHOHV,**kw_pl_tot)
+            
+            # ax[0,0].plot(self.tout,N_tot,'k',linestyle=lstyle,label='total')
+            # ax[0,1].plot(self.tout,Dm_tot,'k',linestyle=lstyle)
+            # ax[0,2].plot(self.tout,M_tot,'k',linestyle=lstyle)
+            # ax[0,3].plot(self.tout,Rm_tot,'k',linestyle=lstyle)
+            
+            # ax[1,0].plot(self.tout,ZH,color='k',linestyle=lstyle)
+            # ax[1,1].plot(self.tout,ZDR,color='k',linestyle=lstyle)
+            # ax[1,2].plot(self.tout,KDP,color='k',linestyle=lstyle)
+            # ax[1,3].plot(self.tout,RHOHV,color='k',linestyle=lstyle)
             
             ax[0,0].set_ylabel('Nt (1/L)',usetex=True,fontsize=18)
             ax[0,1].set_ylabel('Dm (mm)',usetex=True,fontsize=18)
@@ -1372,12 +1582,16 @@ class spectral_1d:
                 for d1 in range(dist_num):
                     
                     flabel = self.habit_names[d1]
-                                     
-                    #ax[0,0].plot(self.tout,N[d1,:],linestyle=lstyle,label='dist {}'.format(d1+1))
-                    ax[0,0].plot(self.tout,N[d1,:],linestyle=lstyle,label=flabel)
-                    ax[0,1].plot(self.tout,Dm[d1,:],linestyle=lstyle)
-                    ax[0,2].plot(self.tout,M[d1,:],linestyle=lstyle)
-                    ax[0,3].plot(self.tout,Rm[d1,:],linestyle=lstyle)
+                                            
+                    ax[0,0].plot(self.tout,N[d1,:],label=flabel,**kw_pl)
+                    ax[0,1].plot(self.tout,Dm[d1,:],**kw_pl)
+                    ax[0,2].plot(self.tout,M[d1,:],**kw_pl)
+                    ax[0,3].plot(self.tout,Rm[d1,:],**kw_pl)
+                    
+                    # ax[0,0].plot(self.tout,N[d1,:],linestyle=lstyle,label=flabel)
+                    # ax[0,1].plot(self.tout,Dm[d1,:],linestyle=lstyle)
+                    # ax[0,2].plot(self.tout,M[d1,:],linestyle=lstyle)
+                    # ax[0,3].plot(self.tout,Rm[d1,:],linestyle=lstyle)
    
         else:
             
@@ -1400,16 +1614,27 @@ class spectral_1d:
             
             if ax is None:
                 fig, ax = plt.subplots(2,4,figsize=(14,8),sharey=True)
+                
+                
+            ax[0,0].plot(N_tot,self.z/1000.,label='total',**kw_pl_tot)
+            ax[0,1].plot(Dm_tot,self.z/1000.,**kw_pl_tot)
+            ax[0,2].plot(M_tot,self.z/1000.,**kw_pl_tot)
+            ax[0,3].plot(Rm_tot,self.z/1000.,**kw_pl_tot)
             
-            ax[0,0].plot(N_tot,self.z/1000.,'k',linestyle=lstyle,label='total')
-            ax[0,1].plot(Dm_tot,self.z/1000.,'k',linestyle=lstyle)
-            ax[0,2].plot(M_tot,self.z/1000.,'k',linestyle=lstyle)
-            ax[0,3].plot(Rm_tot,self.z/1000.,'k',linestyle=lstyle)
+            ax[1,0].plot(ZH,self.z/1000.,**kw_pl_tot)
+            ax[1,1].plot(ZDR,self.z/1000.,**kw_pl_tot)
+            ax[1,2].plot(KDP,self.z/1000.,**kw_pl_tot)
+            ax[1,3].plot(RHOHV,self.z/1000.,**kw_pl_tot)
             
-            ax[1,0].plot(ZH,self.z/1000.,color='k',linestyle=lstyle)
-            ax[1,1].plot(ZDR,self.z/1000.,color='k',linestyle=lstyle)
-            ax[1,2].plot(KDP,self.z/1000.,color='k',linestyle=lstyle)
-            ax[1,3].plot(RHOHV,self.z/1000.,color='k',linestyle=lstyle)
+            # ax[0,0].plot(N_tot,self.z/1000.,'k',linestyle=lstyle,label='total')
+            # ax[0,1].plot(Dm_tot,self.z/1000.,'k',linestyle=lstyle)
+            # ax[0,2].plot(M_tot,self.z/1000.,'k',linestyle=lstyle)
+            # ax[0,3].plot(Rm_tot,self.z/1000.,'k',linestyle=lstyle)
+            
+            # ax[1,0].plot(ZH,self.z/1000.,color='k',linestyle=lstyle)
+            # ax[1,1].plot(ZDR,self.z/1000.,color='k',linestyle=lstyle)
+            # ax[1,2].plot(KDP,self.z/1000.,color='k',linestyle=lstyle)
+            # ax[1,3].plot(RHOHV,self.z/1000.,color='k',linestyle=lstyle)
             
             ax[0,0].set_xlabel('Nt (1/L)',usetex=True,fontsize=18)
             ax[0,1].set_xlabel('Dm (mm)',usetex=True,fontsize=18)
@@ -1436,84 +1661,184 @@ class spectral_1d:
                 
                 for d1 in range(dist_num):
                     flabel = self.habit_names[d1]
-                    #ax[0,0].plot(N[d1,:],self.z/1000.,linestyle=lstyle,label='dist {}'.format(d1+1))
-                    ax[0,0].plot(N[d1,:],self.z/1000.,linestyle=lstyle,label=flabel)
-                    ax[0,1].plot(Dm[d1,:],self.z/1000.,linestyle=lstyle)
-                    ax[0,2].plot(M[d1,:],self.z/1000.,linestyle=lstyle)
-                    ax[0,3].plot(Rm[d1,:],self.z/1000.,linestyle=lstyle)
+                    
+                    ax[0,0].plot(N[d1,:],self.z/1000.,label=flabel,**kw_pl)
+                    ax[0,1].plot(Dm[d1,:],self.z/1000.,**kw_pl)
+                    ax[0,2].plot(M[d1,:],self.z/1000.,**kw_pl)
+                    ax[0,3].plot(Rm[d1,:],self.z/1000.,**kw_pl)
+
+                    # ax[0,0].plot(N[d1,:],self.z/1000.,linestyle=lstyle,label=flabel)
+                    # ax[0,1].plot(Dm[d1,:],self.z/1000.,linestyle=lstyle)
+                    # ax[0,2].plot(M[d1,:],self.z/1000.,linestyle=lstyle)
+                    # ax[0,3].plot(Rm[d1,:],self.z/1000.,linestyle=lstyle)
+
+        ax[0,0].legend(loc='upper center')
 
         if ax_switch:
-            ax[0,0].legend(loc='upper center')
     
             fig.tight_layout()  
         
             return fig, ax       
  
  
-    def plot_init(self,log_switch=True,x_axis='mass'):
-
-        if latex_check():
-            plt.rc('text', usetex=True)
-        plt.rc('font', family='serif')
-        plt.rc('xtick', labelsize=22) 
-        plt.rc('ytick', labelsize=22)         
-
-        mbins = self.dist0.xbins
-       # medges = self.dist0.xedges.copy() 
-        xp1 = self.dist0.x1
-        xp2 = self.dist0.x2
-        ap = self.dist0.aki
-        cp = self.dist0.cki
+    #def plot_init(self,log_switch=True,x_axis='mass',**kwargs):
         
-        bm = self.dist0.bm
-        am = self.dist0.am
+    def plot_init(self,x_axis='mass',xscale='log',yscale='linear',distscale='log',normbin=False,plot_habits=False,**kwargs):
+        '''
+        
 
-        if x_axis=='size':
-            prefactor = bm*np.log(10)
-            xbins = (mbins/am)**(1./bm)
+        Parameters
+        ----------
+        x_axis : str, optional
+            x axis variable. Either 'size' or 'mass'. The default is 'mass'.
+        xscale : TYPE, optional
+            Whether to plot x axis with linear ('linear') or log ('log') scaling. The default is 'log'.
+        yscale : str, optional
+            Whether to plot y axis with linear ('linear') or log ('log') scaling. The default is 'linear'.
+        distscale : str, optional
+            Whether to plot distribution functions in a log-scaled way (e.g., dN/dlog(m)). The default is 'log'.
+        normbin : bool, optional
+            Normalize number (mass) distribution function by total number (mass). The default is False.
+        plot_habits : bool, optional
+            Plots individual habit variables. The default is False.
+        **kwargs : dict
+            Keyword arguments to be passed into axes and/or plots.
+
+        Returns
+        -------
+        fig : object
+           Matplotlib pyplot figure object.
+        ax : objects
+            Numpy array of Matplotlib pyplot axes objects.
+
+        '''
+        
+        
+        if not hasattr(self,'cki'):
+            self.diagnose_subgrid()
             
-            ylabel_num = r'dN/dlog(D)'
-            ylabel_mass = r'dM/dlog(D)'
+        fig, ax = self.plot_dists(0,0,x_axis=x_axis,xscale=xscale,yscale=yscale,distscale=distscale,
+                                  normbin=normbin,plot_habits=plot_habits,**kwargs)
+        
+        return fig, ax
+        
+        # if 'color' not in kw_pl_tot:
+        #     kw_pl_tot['color'] = 'k'
+
+        # if latex_check():
+        #     plt.rc('text', usetex=True)
+        # plt.rc('font', family='serif')
+        # plt.rc('xtick', labelsize=22) 
+        # plt.rc('ytick', labelsize=22)         
+
+        # mbins = self.dist0.xbins
+        # xp1 = self.dist0.x1
+        # xp2 = self.dist0.x2
+        # ap = self.dist0.aki
+        # cp = self.dist0.cki
+        
+        # bm = self.dist0.bm
+        # am = self.dist0.am
+
+        # if x_axis=='size':
+        #     prefactor = bm*np.log(10)
+        #     xbins = (mbins/am)**(1./bm)
             
-            xlabel = r'log(D) [log(mm)]'
+        #     ylabel_num = r'dN/dlog(D)'
+        #     ylabel_mass = r'dM/dlog(D)'
             
-        elif x_axis=='mass':
-            prefactor = np.log(10)
-            xbins = mbins
+        #     xlabel = r'log(D) [log(mm)]'
             
-            ylabel_num = r'dN/dlog(m)'
-            ylabel_mass = r'dM/dlog(m)'
+        # elif x_axis=='mass':
+        #     prefactor = np.log(10)
+        #     xbins = mbins
             
-            xlabel = r'log(m) [log(g)]'
+        #     ylabel_num = r'dN/dlog(m)'
+        #     ylabel_mass = r'dM/dlog(m)'
+            
+        #     xlabel = r'log(m) [log(g)]'
                  
-        n_init = prefactor*np.heaviside(mbins-xp1,1)*np.heaviside(xp2-mbins,1)*(ap*mbins+cp)
+        # n_init = prefactor*np.heaviside(mbins-xp1,1)*np.heaviside(xp2-mbins,1)*(ap*mbins+cp)
 
-        fig, ax = plt.subplots(2,1,figsize=((8,10)),sharex=True)
+        # fig, ax = plt.subplots(2,1,figsize=((8,10)),sharex=True)
         
-        # Plot m*n(m) for number (N=int m*n(m)*dln(m)) | g_n(ln(r)) = bm*m*n(m), N = int g_n(ln(r))*dln(r)
-        # Plot m^2*n(m) for mass (M=int m^2*n(m)*dln(m)) | g_m(ln(r)) = bm*m^2*n(m), M = int g_m(ln(r))*dln(r) 
+        # # Plot m*n(m) for number (N=int m*n(m)*dln(m)) | g_n(ln(r)) = bm*m*n(m), N = int g_n(ln(r))*dln(r)
+        # # Plot m^2*n(m) for mass (M=int m^2*n(m)*dln(m)) | g_m(ln(r)) = bm*m^2*n(m), M = int g_m(ln(r))*dln(r) 
         
-        # Initial
-        ax[0].plot(np.log10(xbins),mbins*n_init,'k')
-        if self.gam_norm:
-            ax[1].plot(np.log10(xbins),mbins**2*n_init,'k')
-        else:
-            ax[1].plot(np.log10(xbins),1000.*mbins**2*n_init,'k')
-        ax[0].set_ylabel(ylabel_num)
-        ax[1].set_ylabel(ylabel_mass)
-        ax[1].set_xlabel(xlabel)
+        # # Initial
+        # ax[0].plot(np.log10(xbins),mbins*n_init,'k')
+        # if self.gam_norm:
+        #     ax[1].plot(np.log10(xbins),mbins**2*n_init,'k')
+        # else:
+        #     ax[1].plot(np.log10(xbins),1000.*mbins**2*n_init,'k')
+        # ax[0].set_ylabel(ylabel_num)
+        # ax[1].set_ylabel(ylabel_mass)
+        # ax[1].set_xlabel(xlabel)
         
-        #print('Initial Number = {:.2f} #/L'.format(np.nansum(mbins*n_init*(np.log10(medges[1:])-np.log10(medges[:-1])))))
-        #print('Initial Mass = {:.2f} g/cm^3'.format(np.nansum(1000.*mbins**2*n_init*(np.log10(medges[1:])-np.log10(medges[:-1])))))
+        # #print('Initial Number = {:.2f} #/L'.format(np.nansum(mbins*n_init*(np.log10(medges[1:])-np.log10(medges[:-1])))))
+        # #print('Initial Mass = {:.2f} g/cm^3'.format(np.nansum(1000.*mbins**2*n_init*(np.log10(medges[1:])-np.log10(medges[:-1])))))
         
-        #print('number test size=',np.nansum(mbins*n_init*(np.log10(dedges[1:])-np.log10(dedges[:-1]))))
-        #print('mass test size=',np.nansum(1000.*mbins**2*n_init*(np.log10(dedges[1:])-np.log10(dedges[:-1]))))
+        # #print('number test size=',np.nansum(mbins*n_init*(np.log10(dedges[1:])-np.log10(dedges[:-1]))))
+        # #print('mass test size=',np.nansum(1000.*mbins**2*n_init*(np.log10(dedges[1:])-np.log10(dedges[:-1]))))
         
  
-        return fig, ax
+        # return fig, ax
 
 
-    def plot_dists(self,tind=-1,hind=-1,x_axis='mass',y_axis='mass',xscale='log',yscale='linear',distscale='log',normbin=False,scott_solution=False,feingold_solution=False,plot_habits=False,ax=None,lstyle='-',lcolor='k'):
+    def plot_dists(self,tind=-1,hind=-1,x_axis='mass',xscale='log',yscale='linear',distscale='log',normbin=False,scott_solution=False,feingold_solution=False,plot_habits=False,plot_init=True,ax=None,**kwargs):
+        '''
+    
+        Parameters
+        ----------
+        tind : int, optional
+            Time index for plotting moments if steady-state or full 1D model run. The default is -1.
+        hind : int, optional
+            Height index for plotting moments if steady-state or full 1D model run. The default is -1 (i.e., bottom level).
+        x_axis : str, optional
+            x axis variable. Either 'size' or 'mass'. The default is 'mass'.
+        xscale : TYPE, optional
+            Whether to plot x axis with linear ('linear') or log ('log') scaling. The default is 'log'.
+        yscale : str, optional
+            Whether to plot y axis with linear ('linear') or log ('log') scaling. The default is 'linear'.
+        distscale : str, optional
+            Whether to plot distribution functions in a log-scaled way (e.g., dN/dlog(m)). The default is 'log'.
+        normbin : bool, optional
+            Normalize number (mass) distribution function by total number (mass). The default is False.
+        scott_solution : bool, optional
+            Plots Scott (1968) analytical solutions for Golovin, Product, or Constant kernels. The default is False.
+        feingold_solution : bool, optional
+            Whether to plot Feingold et al. (1988) analytical solutions to SBE or SCE/SBE steady-state. The default is False.
+        plot_habits : bool, optional
+            Plots individual habit variables. The default is False.
+        plot_init : bool, optional
+            Whether to plot initial distribution functions. The default is True.
+        ax : array of objects, optional
+            Array of Matplotlib pyplot axes objects for each subplot. If None, then create new figure and axes. The default is None.
+        **kwargs : dict
+            Keyword arguments to be passed into axes and/or plots.
+
+        Returns
+        -------
+        fig : object
+           Matplotlib pyplot figure object.
+        ax : objects
+            Numpy array of Matplotlib pyplot axes objects.
+
+        '''
+        
+
+        kw_fig, kw_ax, kw_pl = get_kwargs(kwargs)    
+        
+        if 'linewidth' not in kw_pl:
+            kw_pl['linewidth'] = 2.
+        
+        kw_pl_tot = kw_pl.copy()
+        
+        if 'color' not in kw_pl_tot:
+            kw_pl_tot['color'] = 'k'
+            
+
+        #xmax = kwargs.get('xmax',5.)        
 
         if latex_check():
             plt.rc('text', usetex=True)
@@ -1537,9 +1862,6 @@ class spectral_1d:
             fig, ax = plt.subplots(2,1,figsize=((8,10)),sharex=True)
         
 
-        print('Plotting distributions...')
-        
-        
         mbins = self.xbins.copy()
         
         if normbin:
@@ -1656,8 +1978,8 @@ class spectral_1d:
                     ylabel_mass = r'd$P_{M}$/dm'
                     
                 else:
-                    ylabel_num = r'dN/dm'
-                    ylabel_mass = r'dM/dm'
+                    ylabel_num = r'dN/dm (1/m$^{3}$ 1/g)'
+                    ylabel_mass = r'dM/dm (1/m$^{3}$)'
                 
                 xlabel = r'log(m) [log(g)]'
                 
@@ -1675,8 +1997,8 @@ class spectral_1d:
                     ylabel_num = r'd$P_{N}$/dD'
                     ylabel_mass = r'd$P_{M}$/dD'
                 else:
-                    ylabel_num = r'dN/dD'
-                    ylabel_mass = r'dM/dD'
+                    ylabel_num = r'dN/dD (1/m$^{3}$ 1/mm)'
+                    ylabel_mass = r'dM/dD (g/m$^{3}$ 1/mm)'
          
         if normbin:
             #Nbins_init[Nbins_init<1e-6] = np.nan
@@ -1710,9 +2032,9 @@ class spectral_1d:
         nM_final = prefM_final*np.heaviside(mbins[None,:]-x1_final,1)*np.heaviside(x2_final-mbins[None,:],1)*(ak_final*mbins[None,:]+ck_final)
 
 
-        if self.gam_norm:
-            nM_init /= 1000. 
-            nM_final /= 1000.
+        #if self.gam_norm:
+        #    nM_init /= 1000. 
+         #   nM_final /= 1000.
             
 
         if xscale=='log':
@@ -1725,7 +2047,7 @@ class spectral_1d:
             
         elif xscale=='linear':
             x = xbins.copy()
-            ax[0].set_xlim((0.,10.))
+            #ax[0].set_xlim((0.,10.))
            # ax[1].set_ylim((0.,10.))
              
             if (x_axis=='size'):
@@ -1733,24 +2055,39 @@ class spectral_1d:
             elif (x_axis=='mass'):
                 xlabel = r'm (g)'
         
-        if ax_switch:
+        if ax_switch and plot_init:
             ax[0].plot(x,nN_init,':k',linewidth=2,label='initial')
-        ax[0].plot(x,np.nansum(nN_final,axis=0),linestyle=lstyle,color=lcolor,linewidth=2,label=f_label)
+                
+        ax[0].plot(x,np.nansum(nN_final,axis=0),label=f_label,**kw_pl_tot)
+        
+        #ax[0].plot(x,np.nansum(nN_final,axis=0),linestyle=lstyle,color=lcolor,linewidth=2,label=f_label)
+        
         if plot_habits:
             for d1 in range(self.dnum):
                 dlabel = self.habit_names[d1]
-                #ax[0].plot(x,nN_final[d1,:],linewidth=2,label='dist {}'.format(d1+1))
-                ax[0].plot(x,nN_final[d1,:],linewidth=2,label=dlabel)
+
+                ax[0].plot(x,nN_final[d1,:],label=dlabel,**kw_pl)
+                #ax[0].plot(x,nN_final[d1,:],linewidth=2,label=dlabel)
             
         # Factor of 1000 comes from converting g to g/m^3
-        if ax_switch:
-            ax[1].plot(x,1000.*nM_init,':k',linewidth=2,label='initial')
-        ax[1].plot(x,1000.*np.nansum(nM_final,axis=0),linestyle=lstyle,color=lcolor,linewidth=2,label=f_label)
+        if ax_switch and plot_init:
+            #ax[1].plot(x,1000.*nM_init,':k',linewidth=2,label='initial')
+            
+            ax[1].plot(x,nM_init,':k',linewidth=2,label='initial')
+            
+            
+        ax[1].plot(x,np.nansum(nM_final,axis=0),label=f_label,**kw_pl_tot)
+        #ax[1].plot(x,1000.*np.nansum(nM_final,axis=0),label=f_label,**kw_pl_tot)
+        #ax[1].plot(x,1000.*np.nansum(nM_final,axis=0),linestyle=lstyle,color=lcolor,linewidth=2,label=f_label)
+        
+        
         if plot_habits:
             for d1 in range(self.dnum):
                 dlabel = self.habit_names[d1]
-                #ax[1].plot(x,1000.*nM_final[d1,:],linewidth=2,label='dist {}'.format(d1+1))
-                ax[1].plot(x,1000.*nM_final[d1,:],linewidth=2,label=dlabel)
+
+                #[1].plot(x,1000.*nM_final[d1,:],label=dlabel,**kw_pl)
+                ax[1].plot(x,nM_final[d1,:],label=dlabel,**kw_pl)
+                #ax[1].plot(x,1000.*nM_final[d1,:],linewidth=2,label=dlabel)
 
         ax[0].set_ylabel(ylabel_num,fontsize=26)
         ax[1].set_ylabel(ylabel_mass,fontsize=26)
@@ -1775,7 +2112,7 @@ class spectral_1d:
             
             #self.n_scott = Scott_dists(self.xbins,self.Eagg,self.mu0+1,self.t,kernel_type=kernel_type)
             
-            self.n_scott = Scott_dists(self.xbins,self.Eagg,mu0+1,self.t,kernel_type=kernel_type)
+            self.n_scott = Scott_dists(self.xbins,0.001*self.Eagg,mu0+1,self.t,kernel_type=kernel_type)
         
             n_scott_new = prefN[0,:]*self.n_scott[:,tind]
             nm_scott_new = prefM[0,:]*self.n_scott[:,tind]
@@ -1799,8 +2136,12 @@ class spectral_1d:
             
             kernel_type = self.kernel
             
-            C = self.Eagg 
-            B = self.Ebr 
+            # Rescale because distribution
+            C = 0.001*self.Eagg 
+            B = 0.001*self.Ebr 
+            
+            #C = self.Eagg 
+            #B = self.Ebr
             
             if B>0.:
                 if (C==0.):
@@ -1815,7 +2156,8 @@ class spectral_1d:
                     lamf = self.frag_dict['lamf']
                     #self.n_fein = Feingold_dists(self.xbins,self.t,self.mu0+1,self.Eagg,self.Ebr,lamf,kernel_type=kernel_type)
 
-                    self.n_fein = Feingold_dists(self.xbins,self.t,mu0+1,self.Eagg,self.Ebr,lamf,kernel_type=kernel_type)
+                    self.n_fein = Feingold_dists(self.xbins,self.t,mu0+1,C,B,lamf,kernel_type=kernel_type)
+                    #self.n_fein = Feingold_dists(self.xbins,self.t,mu0+1,self.Eagg,self.Ebr,lamf,kernel_type=kernel_type)
 
 
                 if kernel_type=='SBE':
@@ -1849,8 +2191,12 @@ class spectral_1d:
                     ax[1].plot(x,nm_fein_new,':r',linewidth=2,label=f_label+ " analytical")
                     
         ax[0].legend() 
-            
-        #plt.tight_layout()
+        
+        #if xscale=='linear':
+        #    ax[1].set_xlim((0.,xmax))
+          
+        ax[0].set(**{key: value for key, value in kw_ax.items()})   
+        ax[1].set(**{key: value for key, value in kw_ax.items()})  
         
         if ax_switch:
             
@@ -1858,14 +2204,55 @@ class spectral_1d:
             
             return fig, ax    
     
-
-    #def plot_dists_height(self,tind=-1,dz=1.,plot_habits=False,ax=None,lstyle='-',**kwargs):
-        
+     
     def plot_dists_height(self,tind=-1,dz=1.,plot_habits=False,**kwargs):
+        '''
+        Plots number distribution function at various height levels. Note,
+        only works for steady-state or full 1D time/height modes.
+
+        Parameters
+        ----------
+        tind : int, optional
+            Time index for plotting moments if steady-state or full 1D model run. The default is -1.
+        dz : float, optional
+            Height difference (in km) between each subplot (starting with topmost height level, ztop). The default is 1..
+        plot_habits : bool, optional
+            Plots individual habit variables. The default is False.
+        **kwargs : dict
+            Keyword arguments to be passed into axes and/or plots.
+
+        Returns
+        -------
+        fig : object
+           Matplotlib pyplot figure object.
+        ax : objects
+            Numpy array of Matplotlib pyplot axes objects.
+
+        '''
+        
+        kw_fig, kw_ax, kw_pl = get_kwargs(kwargs)
+        
+        if 'linewidth' not in kw_pl:
+            kw_pl['linewidth'] = 2.
+        
+        kw_pl_tot = kw_pl.copy()
+        
+        if 'color' not in kw_pl_tot:
+            kw_pl_tot['color'] = 'k'
+            
+        if 'xlim' not in kw_ax:
+            kw_ax['xlim'] = (0,5)
+            
+        if 'ylim' not in kw_ax:
+            kw_ax['ylim'] = (1e-5,None)
+            
+        #xmax = kw_pl.get('xmax',5.)
         
         ax     = kwargs.get('ax',None)
-        lstyle = kwargs.get('lstyle','-')
-        lcolor = kwargs.get('lcolor','k')
+        #lstyle = kwargs.get('lstyle','-')
+        #lcolor = kwargs.get('lcolor','k')
+        
+        #xlim   = kwargs.get('xmax',5.)
         
         if latex_check():
             plt.rc('text', usetex=True)
@@ -1885,13 +2272,6 @@ class spectral_1d:
         
         mbins = self.dist0.xbins.copy() 
         
-        # if self.int_type==0:
-        #     primary_init  = self.full[0,0,tind]
-        # else:
-        #     primary_init = self.full[0,0]
-        
-       # primary_init  = self.full[0,0]
-        
         xp1 = self.dist0.x1
         xp2 = self.dist0.x2
         ap = self.dist0.aki
@@ -1904,18 +2284,18 @@ class spectral_1d:
         
         nN_init = prefN_p*np.heaviside(mbins-xp1,1)*np.heaviside(xp2-mbins,1)*(ap*mbins+cp)
         
-        ax[0].plot(xbins,nN_init,'k')
+        ax[0].plot(xbins,nN_init,**kw_pl_tot)
 
         ax[0].set_yscale('log')
         ax[0].set_xscale('linear')
-        ax[0].set_ylim(bottom=0.001)
+        #ax[0].set_ylim(bottom=0.001)
         
         ax[0].set_title('Height = {} km'.format(z_lvls[0]),fontsize=26)
         #ax[0].set_ylabel(r'Number Density (1/cm$^{3}$ 1/mm)',fontsize=16)
-        ax[0].set_ylabel(r'n(D) (1/cm$^{3}$ 1/mm)',fontsize=16)
+        ax[0].set_ylabel(r'n(D) (1/m$^{3}$ 1/mm)',fontsize=16)
         
         ax[0].axes.tick_params(labelsize=20)
-        ax[0].set_xlim((0.,5.))
+       # ax[0].set_xlim((0.,xmax))
         
         for hh in range(1,len(z_lvls)):
         
@@ -1947,30 +2327,36 @@ class spectral_1d:
                 if plot_habits:
                     dlabel = self.habit_names[d1]
                     #ax[hh].plot(xbins,nN_final[d1,:],label='dist {}'.format(d1+1))
-                    ax[hh].plot(xbins,nN_final[d1,:],linestyle=lstyle,color=lcolor,label=dlabel)
+                    #ax[hh].plot(xbins,nN_final[d1,:],linestyle=lstyle,label=dlabel)
+                    ax[hh].plot(xbins,nN_final[d1,:],label=dlabel)
 
-            if plot_habits:
-                ax[hh].plot(xbins,np.nansum(nN_final,axis=0),linestyle=lstyle,color=lcolor)
-            else:
-                ax[hh].plot(xbins,np.nansum(nN_final,axis=0),linestyle=lstyle,color=lcolor,label='total')
+            ax[hh].plot(xbins,np.nansum(nN_final,axis=0),label='total',**kw_pl_tot)
+
+            # if plot_habits:
+            #     #ax[hh].plot(xbins,np.nansum(nN_final,axis=0),linestyle=lstyle,color=lcolor,label='total')
+            #     ax[hh].plot(xbins,np.nansum(nN_final,axis=0),label='total',**kw_pl_tot)
+            # else:
+            #    # ax[hh].plot(xbins,np.nansum(nN_final,axis=0),linestyle=lstyle,color=lcolor,label='total')
+            #     ax[hh].plot(xbins,np.nansum(nN_final,axis=0),label='total',**kw_pl_tot)
                 
             ax[hh].set_yscale('log')
             ax[hh].set_xscale('linear')
-            ax[hh].set_ylim(bottom=0.001)
+            #ax[hh].set_ylim(bottom=0.001)
             
             ax[hh].set_title('Height = {} km'.format(z_lvls[hh]),fontsize=26)
             #ax[hh].set_ylabel(r'Number Density (1/cm$^{3}$ 1/mm)',fontsize=16)
-            ax[hh].set_ylabel(r'n(D) (1/cm$^{3}$ 1/mm)',fontsize=16)
+            ax[hh].set_ylabel(r'n(D) (1/m$^{3}$ 1/mm)',fontsize=16)
             
             ax[hh].axes.tick_params(labelsize=20)
-            ax[hh].set_xlim((0.,5.))
-
+           # ax[hh].set_xlim((0.,5.))
+           
+            ax[hh].set(**{key: value for key, value in kw_ax.items()})  
         
-        ax[0].set_ylim((1e-5,1e5))
+        #ax[0].set_ylim((1e-5,1e5))
         ax[-1].set_xlabel('Equivolume Diameter (mm)',fontsize=22)
         if plot_habits:
             ax[-1].legend()
-        
+            
         if ax_switch:
             
             fig.tight_layout()  
@@ -2122,7 +2508,8 @@ class spectral_1d:
         # 2. Calculate Rates
         # Passing 1.0 means we get the rate per unit step (mass/sec * 1.0)
         # or in this context (mass/height_step)
-        M_net = self.Ikernel.interact_1mom_SS_Final(1.0)
+        #M_net = self.Ikernel.interact_1mom_SS_Final(1.0)
+        M_net = self.Ikernel.interact_1mom(1.0)
         
         return M_net 
  
@@ -2171,7 +2558,9 @@ class spectral_1d:
             self.Ikernel.Mbins = M_current
             self.Ikernel.update_1mom_subgrid() 
             
-            M_delta_phys = self.Ikernel.interact_1mom_SS_Final(dt_target)
+            #M_delta_phys = self.Ikernel.interact_1mom_SS_Final(dt_target)
+            M_delta_phys = self.Ikernel.interact_1mom(dt_target)
+            
             rate_phys_frozen = M_delta_phys / dt_target
             
             # -----------------------------------------------------------------
@@ -2264,7 +2653,7 @@ class spectral_1d:
         ''' 
         Run steady-state bin model using Explicit Runge-Kutta integration.
         Uses ADAPTIVE SUB-STEPPING based on "Fraction of Residence Time".
-        '''
+        '''   
         
         # 1. Initialize Runge-Kutta Coefficients
         RK = init_rk(self.rk_order)
@@ -2314,16 +2703,15 @@ class spectral_1d:
                 # Ensure get_steady_rates calls interact_2mom... correctly
                 dM_dt, dN_dt = self.get_steady_rates(M_current, N_current)
                 
-                # 2. Calculate Timescale for every bin
-                # timescale = Mass / Rate
-                # We want step_size < timescale
-                # i.e., (d_prog * total_residence_time) < timescale
-                # So, d_prog < timescale / total_residence_time
-                
+                             
+                ### WORKING ##
                 safe_mask_M = (M_current > 1e-15) & (np.abs(dM_dt) > 1e-20)
                 if np.any(safe_mask_M):
                     # How much 'time' until this bin changes significantly (e.g. 50%)
+                    
+                    # WORKING
                     t_scale_M = 0.5 * M_current[safe_mask_M] / np.abs(dM_dt[safe_mask_M])
+                    
                     # Convert 'time' to 'fraction of residence time'
                     # We divide by the residence time for those specific bins
                     # Note: We must broadcast total_residence_time to match the mask if needed,
@@ -2341,11 +2729,20 @@ class spectral_1d:
                         max_frac_M = 1.0
                 else:
                     max_frac_M = 1.0
+                               
+                    
+                ## WORKING ##
 
                 # Same for Number
+                
+                ## WORKING ##
                 safe_mask_N = (N_current > 1e-15) & (np.abs(dN_dt) > 1e-20)
                 if np.any(safe_mask_N):
+                    
+                    
+                    # WORKING
                     t_scale_N = 0.5 * N_current[safe_mask_N] / np.abs(dN_dt[safe_mask_N])
+                    
                     res_time_masked = np.broadcast_to(total_residence_time, N_current.shape)[safe_mask_N]
                     valid_res = res_time_masked > 1e-10
                     if np.any(valid_res):
@@ -2355,6 +2752,8 @@ class spectral_1d:
                         max_frac_N = 1.0
                 else:
                     max_frac_N = 1.0
+                     
+                ## WORKING ##
                 
                 # 3. Determine Step Fraction
                 d_prog_safe = min(max_frac_M, max_frac_N)
@@ -2441,7 +2840,8 @@ class spectral_1d:
         
         # 2. Calculate Rates
         # Passing 1.0 means we get the rate per unit step (mass/sec * 1.0)
-        M_net, N_net = self.Ikernel.interact_2mom_SS_Final(1.0)
+        #M_net, N_net = self.Ikernel.interact_2mom_SS_Final(1.0)
+        M_net, N_net = self.Ikernel.interact_2mom(1.0)
         
         return M_net, N_net
     
@@ -2499,7 +2899,8 @@ class spectral_1d:
             self.Ikernel.update_2mom_subgrid() 
             
             # Calculate physics delta over full dt
-            M_delta_phys, N_delta_phys = self.Ikernel.interact_2mom_SS_Final(dt_target)
+            #M_delta_phys, N_delta_phys = self.Ikernel.interact_2mom_SS_Final(dt_target)
+            M_delta_phys, N_delta_phys = self.Ikernel.interact_2mom(dt_target)
             
             # Convert to constant rates for the sub-steps
             rate_phys_M = M_delta_phys / dt_target
@@ -2624,9 +3025,11 @@ class spectral_1d:
         
         return rate_sed_M, rate_sed_N
     
-
                 
     def _run_core(self,pbar):  
+        ''' 
+        Wrapper method for running BinMod1D model using various run methods. 
+        '''
         
         # If running one moment (mass) only
         if self.moments == 1:
@@ -2649,7 +3052,7 @@ class spectral_1d:
     
     def run(self):
         ''' 
-        Run bin model
+        Runs bin model for user-prescribed parameters.
         '''
         time_start = datetime.now()
 
@@ -2715,6 +3118,46 @@ def latex_check():
     
     return has_latex and has_dvipng
 
+
+def get_kwargs(kwargs):
+    '''
+    Get kwargs for figure, axis, and plot.
+    '''
+    
+    # 1. Define Valid Figure Kwargs
+    # Sources: matplotlib.figure.Figure and plt.figure()
+    valid_fig = {
+        'figsize', 'dpi', 'facecolor', 'edgecolor', 'linewidth', 
+        'frameon', 'tight_layout', 'constrained_layout', 'num', 'clear'
+    }
+
+    # 2. Define Valid Axis Kwargs (for ax.set())
+    # This covers the bulk of ax.set() properties
+    valid_ax = {
+        'title', 'xlabel', 'ylabel', 'xlim', 'ylim', 'xticks', 'yticks',
+        'xticklabels', 'yticklabels', 'xscale', 'yscale', 'aspect',
+        'facecolor', 'visible', 'zorder', 'prop_cycle', 'anchor', 'position'
+    }
+
+    # 3. Define Valid Line/Plot Kwargs
+    # We use matplotlib.lines.Line2D.set to find valid line properties
+    # This is more robust than a manual list.
+    valid_plot = {
+        'alpha', 'antialiased', 'color', 'c', 'dash_capstyle', 'dash_joinstyle',
+        'dashes', 'drawstyle', 'fillstyle', 'gid', 'label', 'linestyle', 'ls',
+        'linewidth', 'lw', 'marker', 'markeredgecolor', 'mec', 'markeredgewidth',
+        'mew', 'markerfacecolor', 'mfc', 'markerfacecoloralt', 'markersize',
+        'ms', 'markevery', 'path_effects', 'picker', 'pickradius', 'rasterized',
+        'sketch_params', 'snap', 'solid_capstyle', 'solid_joinstyle', 'url',
+        'visible', 'xdata', 'ydata', 'zorder'
+    }
+
+    # Filtering Logic
+    fig_kwargs = {k: v for k, v in kwargs.items() if k in valid_fig}
+    ax_kwargs = {k: v for k, v in kwargs.items() if k in valid_ax}
+    plot_kwargs = {k: v for k, v in kwargs.items() if k in valid_plot}
+
+    return fig_kwargs, ax_kwargs, plot_kwargs
 
 
 

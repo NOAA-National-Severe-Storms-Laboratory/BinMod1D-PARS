@@ -13,22 +13,36 @@ from .collection_kernels import Straub_params
 from scipy.special import erfinv
 from scipy.stats import gamma
 
+#from .distribution import extended_brandes, rain_terminal_velocity
+
 def habits():
+    '''
+    Sample habit dictionary parameters that can be used in 'habit_params' input
+    for spectral_1d class.
+
+    Returns
+    -------
+    habits : Dict
+        DESCRIPTION.
+
+    '''
     
     habits = {}
     
-    habits['rain'] = {'arho':1.0, # g/cm^3 * 1/mm
+    habits['rain'] = {'arho':1.0, # g/cm^3
                       'brho':0., 
                       'av':3.78, # Atlas and Ulbrich (1977)
                       'bv':0.67, # Atlas and Ulbrich (1977)
                       'ar':1.0,
                       'br':0., 
                       'sig':10.}
+                      #'aspect_ratio':lambda d: extended_brandes(d)} 
+                      #'vt':lambda d: rain_terminal_velocity(d)}
     
-    habits['rain']['am'] =  0.001*(np.pi/6.)*habits['rain']['arho'] # units of g 
+    habits['rain']['am'] =  0.001*(np.pi/6.)*habits['rain']['arho'] # units of g/mm^3 
     habits['rain']['bm'] =  3.-habits['rain']['brho']
     
-    habits['snow'] = {'arho':0.2,
+    habits['snow'] = {'arho':0.2, # g/cm^3 * 1/mm^brho
                       'brho':1.0, 
                       'av':0.8,
                       'bv':0.14, 
@@ -234,7 +248,8 @@ def fragments(dist='exp',**kwargs):
     elif dist=='LGN':
               
         bounds = kwargs.pop('bounds',None)
-        cdf_bounds = kwargs.pop('cdf_bounds',(0.5,0.95))
+        #cdf_bounds = kwargs.pop('cdf_bounds',(0.5,0.95))
+        cdf_bounds = kwargs.pop('cdf_bounds',None)
         #pbounds = kwargs.pop('pbounds',(0.5,1.0))
         
         pbounds = kwargs.pop('pbounds',None)
@@ -275,11 +290,22 @@ def fragments(dist='exp',**kwargs):
         
     elif dist=='Straub':
         
-        bounds = kwargs.pop('bounds',(0.1,0.25))
+        #bounds = kwargs.pop('bounds',(0.1,0.25))
+        bounds = kwargs.pop('bounds',None)
         #cdf_bounds = kwargs.pop('cdf_bounds',None)
-        cdf_bounds = kwargs.pop('cdf_bounds',(0.5,0.95))
-        #parent_cutoff = kwargs.pop('parent_cutoff',3.0)
-        pbounds = kwargs.pop('pbounds',(0.5,1.0))
+       # cdf_bounds = kwargs.pop('cdf_bounds',(0.5,0.95))
+        
+        #cdf_bounds = kwargs.pop('cdf_bounds',(0.5,0.95))
+        cdf_bounds =kwargs.pop('cdf_bounds',None)
+        # ORIG
+        #pbounds = kwargs.pop('pbounds',(1.5,2.5))
+        
+        # Gradual
+        pbounds = kwargs.pop('pbounds',(1.2,2.8))
+        
+        #pbounds = kwargs.pop('pbounds',(2.2,2.5))
+        #pbounds = kwargs.pop('pbounds',None)
+        #pbounds = kwargs.pop('pbounds',(0.1,0.15))
         var = 'size'
         
         if isinstance(bounds,tuple):
@@ -294,7 +320,9 @@ def fragments(dist='exp',**kwargs):
         # would be done in some clever way by taking into account all mass 
         # combinations between the bin limits.
         
-        params = lambda pi, pj: Straub_params(pi.d, pj.d, pi.vt, pj.vt ,cdf_bounds=cdf_bounds)
+        state = {}
+        
+        params = lambda pi, pj: Straub_params(pi.d, pj.d, pi.vt, pj.vt ,cdf_bounds=cdf_bounds,state=state)
         
         IF_func = lambda n, c, pi, pj: straub_wrapper(n,c,pi,pj)
 
@@ -304,6 +332,7 @@ def fragments(dist='exp',**kwargs):
                      'pbounds':pbounds,
                      'd_start':d_start,
                      'd_end':d_end,
+                     'state':state,
                      'params':params,
                      'func':IF_func}
         
@@ -315,28 +344,31 @@ def fragments(dist='exp',**kwargs):
 
     
 # --- Define the unified wrapper function ---
-def straub_wrapper(n, c, pi, pj, cdf_bounds=None):
+def straub_wrapper(n, c, pi, pj, cdf_bounds=None,state=None):
     """
     Evaluates the full 4-part Straub distribution efficiently in 4D.
     """
     # 1. Calculate parameters exactly ONCE
     sp = Straub_params(pi.d, pj.d, pi.vt, pj.vt)
     
+    # CHANGE THIS FROM 0.1!
+    sig2_min=1e-5
+    
     n1 = sp['dist1']['N']
     muf1 = sp['dist1']['muf']
-    sig2f = np.maximum(sp['dist1']['sig2f'],0.05)
+    sig2f = np.maximum(sp['dist1']['sig2f'],sig2_min)
     
     n2 = sp['dist2']['N']
     mu2 = sp['dist2']['mu']
-    sig2_2 = np.maximum(sp['dist2']['sig2'],0.05)
+    sig2_2 = np.maximum(sp['dist2']['sig2'],sig2_min)
     
     n3 = sp['dist3']['N']
     mu3 = sp['dist3']['mu']
-    sig2_3 = np.maximum(sp['dist3']['sig2'],0.05)
+    sig2_3 = np.maximum(sp['dist3']['sig2'],sig2_min)
     
-    n1[sig2f==0.05]  = 0.
-    n2[sig2_2==0.05] = 0. 
-    n3[sig2_3==0.05] = 0.
+    #n1[sig2f==sig2_min]  = 0.
+    #n2[sig2_2==sig2_min] = 0. 
+    #n3[sig2_3==sig2_min] = 0.
     
     d0 = np.min(c.d1)
     #ds   = np.minimum(pi.d,pj.d)
@@ -377,10 +409,12 @@ def straub_wrapper(n, c, pi, pj, cdf_bounds=None):
     
     shed_fraction = M_frag_scaled/M_parent_total
     
-    f_min = 0.005
-    f_max = 0.015
+    f_min = 1e-4
+    f_max = 5e-4
     
-    #is_significant = M_frag_scaled >(min_shed_fraction * M_parent_total)
+    # OLD
+    #f_min = 0.01
+    #f_max = 0.015
     
     is_significant = np.clip((shed_fraction - f_min) / (f_max - f_min), 0.0, 1.0)
 
@@ -399,6 +433,17 @@ def straub_wrapper(n, c, pi, pj, cdf_bounds=None):
     
     # Return D_res^n inside the correct bin
     N4 = (D_res ** n) * in_bin_mask
+    
+    #sig2_res = np.maximum((0.02*D_res)**2,1e-12)
+    
+    #N4 = GAU_int(n,D_res,sig2_res,c.d1,c.d2)
+    
+    #valid_res_mask = (x_res>1e-12)
+    
+    #N4 *= valid_res_mask
+  
+    if state is not None:
+        state['is_significant'] = is_significant
     
     N1 *= scale_factor * is_significant
     N2 *= scale_factor * is_significant

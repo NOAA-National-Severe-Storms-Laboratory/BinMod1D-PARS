@@ -7,24 +7,16 @@ Created on Thu Oct  2 11:31:38 2025
 ## Import stuff
 import numpy as np
 
-from .collection_kernels import hydro_kernel, long_kernel, hall_kernel, Straub_params
-from .bin_integrals import In_int, gam_int, LGN_int, GAU_int
+from .collection_kernels import hydro_kernel, long_kernel, hall_kernel
+#from .bin_integrals import In_int, gam_int, LGN_int, GAU_int
 from .bin_integrals import setup_regions
 from .bin_integrals import calculate_rates,calculate_regions_batch
 from .bin_integrals import vectorized_1mom, vectorized_2mom, combined_coeffs_array
 from .distribution import update_1mom, update_2mom
 
-#from joblib import dump
-
-#from tempfile import gettempdir
-
 import numba as nb
 
-from scipy.special import erfinv
-
-#import os
-
-#from multiprocessing import shared_memory
+#from scipy.special import erfinv
 
 class Interaction():
     
@@ -35,6 +27,36 @@ class Interaction():
     '''
     
     def __init__(self,dists,Hlen,cc_dest,br_dest,Eagg,Ecb,Ebr,frag_dict=None,kernel='Golovin',mom_num=2,gpu=False):
+        '''
+    
+
+        Parameters
+        ----------
+        dists : TYPE
+            DESCRIPTION.
+        Hlen : TYPE
+            DESCRIPTION.
+        cc_dest : TYPE
+            DESCRIPTION.
+        br_dest : TYPE
+            DESCRIPTION.
+        Eagg : TYPE
+            DESCRIPTION.
+        Ecb : TYPE
+            DESCRIPTION.
+        Ebr : TYPE
+            DESCRIPTION.
+        frag_dict : TYPE, optional
+            DESCRIPTION. The default is None.
+        kernel : TYPE, optional
+            DESCRIPTION. The default is 'Golovin'.
+        mom_num : TYPE, optional
+            DESCRIPTION. The default is 2.
+        gpu : TYPE, optional
+            DESCRIPTION. The default is False.
+
+        '''
+        
         
         # if gpu:
         #     import cupy as np  
@@ -219,28 +241,7 @@ class Interaction():
         else:
             self.dMb_gain_kernel = np.zeros((self.pnum,self.bins,self.bins,self.bins))
             self.dNb_gain_kernel = np.zeros((self.pnum,self.bins,self.bins,self.bins))
-          
-        # Only consider breakup if the breakup distribution is complete.
-        # censor_Ebr = np.broadcast_to((self.dMb_gain_frac.sum(axis=0)<0.5),self.Ebr.shape)    
-        # self.Ebr[censor_Ebr] = 0.
-          
-
-        # NOTE: Before, I was (stupidly?) using the actual limits from the SBE. 
-        # HOWEVER, this isn't physically realistic when coalescence and breakup
-        # are considered (and calculated) as mutually exclusive scenarios. 
-        # This presents a big problem because realistic fragment distributions
-        # like the lognormal distribution has a fat tail and thus the presence of breakup
-        # can actually generates particles much larger than either of the colliding
-        # particles! In order to compare results with Feingold et al. (1988), the
-        # kmin limit is used. For realistic kernels, the maximum index of the interacting
-        # species is used instead.
-        # if (self.kernel=='Constant') | (self.kernel=='Golovin') | (self.kernel=='Product'):
-        #     self.dMb_gain_kernel = self.dMb_gain_frac[:,self.kmin]
-        #     self.dNb_gain_kernel = self.dNb_gain_frac[:,self.kmin]
-        # else:
-        #     self.dMb_gain_kernel = self.dMb_gain_frac[:,self.k_lim]
-        #     self.dNb_gain_kernel = self.dNb_gain_frac[:,self.k_lim]
-               
+                       
         self.PK = self.create_kernels(dists)
         
         self.kmin_p = self.kmin[None,:,:].repeat(self.pnum,axis=0)
@@ -252,12 +253,16 @@ class Interaction():
             self.setup_1mom()
             
      
-    def setup_1mom_numba(self):
+    #def setup_1mom_numba(self):
         
-        self.get_dynamic_params_1mom()
+    #    self.get_dynamic_params_1mom()
         
      
     def setup_1mom(self):
+        '''
+        Sets up 1 moment calculations
+
+        '''
         
         self.dMi_loss = np.zeros((self.pnum,self.bins,self.bins))
         self.dMj_loss = np.zeros((self.pnum,self.bins,self.bins))
@@ -380,7 +385,7 @@ class Interaction():
     def get_dynamic_params(self):
         """
         Synchronizes moving grid edges and evolving distributions into a 
-        single God Mode parameter dictionary.
+        single parameter dictionary.
         """
         p1, p2 = self.d1_indices, self.d2_indices
         bins = self.bins
@@ -516,32 +521,35 @@ class Interaction():
             'y_lef': y_lef.ravel()[sort_inds], 
             'y_rig': y_rig.ravel()[sort_inds]}
 
-    def _update_shm_from_dict(self, params):
-        """
-        Efficiently copies local tensors into Shared Memory.
-        """
-        # Aki/Cki
-        self.shm_aki1[:] = params['aki1']
-        self.shm_cki1[:] = params['cki1']
-        self.shm_aki2[:] = params['aki2']
-        self.shm_cki2[:] = params['cki2']
+    # def _update_shm_from_dict(self, params):
+    #     """
+    #     Efficiently copies local tensors into Shared Memory.
+    #     """
+    #     # Aki/Cki
+    #     self.shm_aki1[:] = params['aki1']
+    #     self.shm_cki1[:] = params['cki1']
+    #     self.shm_aki2[:] = params['aki2']
+    #     self.shm_cki2[:] = params['cki2']
     
-        # Mask
-        self.shm_mask[:] = params['mask']
+    #     # Mask
+    #     self.shm_mask[:] = params['mask']
     
-        # Consolidated Boundaries
-        # Order: x11, x21, x12, x22, x_top, x_bot, y_lef, y_rig
-        self.shm_bounds[0] = params['x11']
-        self.shm_bounds[1] = params['x21']
-        self.shm_bounds[2] = params['x12']
-        self.shm_bounds[3] = params['x22']
-        self.shm_bounds[4] = params['x_top']
-        self.shm_bounds[5] = params['x_bot']
-        self.shm_bounds[6] = params['y_lef']
-        self.shm_bounds[7] = params['y_rig']
+    #     # Consolidated Boundaries
+    #     # Order: x11, x21, x12, x22, x_top, x_bot, y_lef, y_rig
+    #     self.shm_bounds[0] = params['x11']
+    #     self.shm_bounds[1] = params['x21']
+    #     self.shm_bounds[2] = params['x12']
+    #     self.shm_bounds[3] = params['x22']
+    #     self.shm_bounds[4] = params['x_top']
+    #     self.shm_bounds[5] = params['x_bot']
+    #     self.shm_bounds[6] = params['y_lef']
+    #     self.shm_bounds[7] = params['y_rig']
  
 
     def update_1mom_subgrid(self):
+        ''' 
+        Updates 1 moment subgrid uniform distribution parameters from Mbins
+        '''
         
         self.cki = update_1mom(self.Mbins,self.dxi[None,None,:])
         
@@ -549,6 +557,9 @@ class Interaction():
     
   
     def update_2mom_subgrid(self):
+        ''' 
+        Updates 2 moment subgrid linear distribution from Mbins and Nbins
+        '''
         
         self.aki, self.cki, self.x1, self.x2 = update_2mom(self.Mbins,self.Nbins,self.rhobins,
                                                              self.bound_low,self.bound_high,
@@ -560,6 +571,20 @@ class Interaction():
         self.Nfbins = self.vt[:,None,:]*self.Nbins
     
     def create_kernels(self,dists):
+        '''
+        Creates collection kernel bilinear coefficients for requested kernel type.
+
+        Parameters
+        ----------
+        dists : TYPE
+            DESCRIPTION.
+
+        Returns
+        -------
+        TYPE
+            DESCRIPTION.
+
+        '''
         
         # Kernel ind, x, y
         # NOTE: HK also has denominator bin width terms for x and y
@@ -633,8 +658,13 @@ class Interaction():
            PK[1,:,:,:] = 0.0
            PK[2,:,:,:] = 0.0
            PK[3,:,:,:] = 0.0
+           
+           
+        # TESTING
         
-        return PK       
+        return 0.001*PK
+        
+        #return PK       
    
 
     def calc_smootherstep(self,d_array, d_start, d_end):
@@ -672,6 +702,9 @@ class Interaction():
     
 
     def setup_fragments(self):
+        ''' 
+        Sets up conditional fragment distribution based on self.kernel.
+        '''
         
         if np.isin(self.kernel, ['Constant', 'Golovin', 'Product']):
             targ_broad = self.kmin
@@ -689,10 +722,22 @@ class Interaction():
         p_i   = BroadcastNode4D(self.dists, self.d1_indices, target_axes=(0, 2))
         p_j   = BroadcastNode4D(self.dists, self.d2_indices, target_axes=(0, 3))
         
+        # Broadcast self.Ebr to 4D
+        
+        #target_Ebr_shape = (self.pnum,1,self.bins,self.bins)
+        
+        target_Ebr_shape = (self.pnum,self.Hlen,self.bins,self.bins)
+        
+        if np.isscalar(self.Ebr) or (np.ndim(self.Ebr) == 0):
+            self.Ebr = np.full(target_Ebr_shape,self.Ebr,dtype=np.float64)
+        elif self.Ebr.shape != target_Ebr_shape:
+            self.Ebr = np.broadcast_to(self.Ebr,target_Ebr_shape).copy()
+            
         IF_func = self.frag_dict['func']   
         var_name = self.frag_dict['var']
         #par_cut  = self.frag_dict.get('parent_cutoff',0.)
         pbounds = self.frag_dict.get('pbounds',None)
+        state = self.frag_dict.get('state',None)
         
         frag_list = list(self.frag_dict)
         
@@ -701,15 +746,15 @@ class Interaction():
             d_end   = self.frag_dict['d_end']
         else:
             d_start = None 
-            d_end = None
+            d_end   = None
               
         # ---------------------------------------------------------
         # 2. EVALUATE RAMP / SCALE FACTOR 
         # ---------------------------------------------------------
         # targ_broad is (pnum, bins, bins). 
         # Indexing child.d (a 1D array) with targ_broad yields exactly (pnum, bins, bins)!
-        d_cen = self.dists[self.indb].d[targ_broad] 
-        d_left = self.dists[self.indb].d1[targ_broad] 
+        d_cen   = self.dists[self.indb].d[targ_broad] 
+        d_left  = self.dists[self.indb].d1[targ_broad] 
         d_right = self.dists[self.indb].d2[targ_broad]
         
         dD = d_right - d_left
@@ -723,8 +768,8 @@ class Interaction():
             d_start = np.where(narrow_mask, midpoint - half_min_width, d_start)
             d_end   = np.where(narrow_mask, midpoint + half_min_width, d_end) 
 
-            E_left = self.calc_smootherstep(d_left, d_start, d_end)
-            E_cen = self.calc_smootherstep(d_cen, d_start, d_end)
+            E_left  = self.calc_smootherstep(d_left, d_start, d_end)
+            E_cen   = self.calc_smootherstep(d_cen, d_start, d_end)
             E_right = self.calc_smootherstep(d_right, d_start, d_end)
 
             scale_factor = (E_left + 4.*E_cen + E_right) / 6.
@@ -746,24 +791,39 @@ class Interaction():
         Mb_kernel = np.broadcast_to(Mb_raw, target_shape).copy()
         Nb_kernel = np.broadcast_to(Nb_raw, target_shape).copy()
      
+        if (state is not None) and ('is_significant' in state):
+            sig_ramp = state['is_significant']
+            
+            self.Ebr *= sig_ramp
+     
         # Parent cutoff
+        min_parent_d = np.minimum(p_i.d,p_j.d)
         max_parent_d = np.maximum(p_i.d,p_j.d)
         
         if pbounds is not None:
-            parent_ramp = np.broadcast_to(self.calc_smootherstep(max_parent_d, pbounds[0]*np.ones_like(max_parent_d), pbounds[1]*np.ones_like(max_parent_d)),Mb_kernel.shape)
+             
+            d_ratio = min_parent_d / max_parent_d
+            
+            # Smooth ramp between 5% and 15% size ratio
+            #ratio_ramp = self.calc_smootherstep(d_ratio, 0.15*np.ones_like(max_parent_d), 0.18*np.ones_like(max_parent_d))
+            ratio_ramp = self.calc_smootherstep(d_ratio, 0.1*np.ones_like(max_parent_d), 0.25*np.ones_like(max_parent_d))
+            #ratio_ramp = self.calc_smootherstep(d_ratio, 0.05*np.ones_like(max_parent_d), 0.15*np.ones_like(max_parent_d))
+            
+            #base_ramp = self.calc_smootherstep(min_parent_d, pbounds[0]*np.ones_like(min_parent_d), pbounds[1]*np.ones_like(min_parent_d))
+            
+            base_ramp = self.calc_smootherstep(max_parent_d, pbounds[0]*np.ones_like(max_parent_d), pbounds[1]*np.ones_like(max_parent_d))
         
+            self.Ebr *= base_ramp * ratio_ramp
+        
+            parent_ramp = np.broadcast_to(base_ramp,Mb_kernel.shape)
+            
             Mb_kernel *= parent_ramp 
             Nb_kernel *= parent_ramp
+
             
-            self.Ebr = self.Ebr * parent_ramp[:,0,:,:]
-        
-        #small_parent_mask = np.broadcast_to((max_parent_d < par_cut),Mb_kernel.shape)
-        
-        # Mb_kernel[small_parent_mask] = 0. 
-        # Nb_kernel[small_parent_mask] = 0.
-        
-        # mask_2D = small_parent_mask[:,0,:,:]
-        # self.Ebr = np.where(mask_2D, 0., self.Ebr)
+            #self.Ebr = self.Ebr * parent_ramp[:,0,:,:]
+            
+            #self.Ebr *= parent_ramp[:,0,:,:]
      
         # ---------------------------------------------------------
         # 4. KINEMATIC TRUNCATION (Using Axis 1 for Fragments)
@@ -771,7 +831,6 @@ class Interaction():
         # k_idx is (1, bins, 1, 1). targ_broad is (1, 1, bins, bins).
         k_idx = np.arange(self.bins)[None, :, None, None]
         
- 
         # 1. Calculate the base mask (1, bins, bins, bins)
         base_mask = k_idx > targ_broad[None, None, :, :]
         
@@ -825,559 +884,63 @@ class Interaction():
         # 5. FINAL ASSIGNMENTS
         # ---------------------------------------------------------
         # Squeeze surv_pairs to (pnum, bins, bins) to match scale_factor
-        surv_2D = surv_pairs.squeeze(axis=1)
-        scale_factor = np.where(surv_2D, scale_factor, 0.0)
+        # WORKING BOX
+        #surv_2D = surv_pairs.squeeze(axis=1)
+        #scale_factor = np.where(surv_2D, scale_factor, 0.0)
+        
+        scale_factor = np.where(surv_pairs,scale_factor,0.)
+        
+        censor_mask = np.broadcast_to(~surv_pairs,target_shape)
         
         # Assuming Ebr is aligned with the pnum logic, expand scale_factor to mask it
         # You may need to adjust the [:, None, :, :] depending on Ebr's exact shape definition!
-        self.Ebr = scale_factor[:, None, :, :] * self.Ebr
+        #self.Ebr = scale_factor[:, None, :, :] * self.Ebr
+        
+        #print('censor_mask=',surv_pairs.shape)
+        #print('Ebr=',self.Ebr.shape)
+        #raise Exception()
+        
+        #self.Ebr[censor_mask] = 0.
+        
+        # BOX WORKING
+        #self.Ebr *= scale_factor[:,None,:,:]
+        
+        
+        
         self.scale_factor = scale_factor
+        
+        # if self.frag_dict['dist']=='Straub':
+             
+        #     m_i = p_i.am * p_i.d**p_i.bm
+        #     m_j = p_j.am * p_j.d**p_j.bm
+            
+        #     mi_4D = np.broadcast_to(m_i,self.Ebr.shape)
+        #     mj_4D = np.broadcast_to(m_j,self.Ebr.shape)
+            
+        #     mass_ratio = np.minimum(mi_4D,mj_4D)/np.maximum(mi_4D,mj_4D)
+                      
+        #     self.Ebr[mass_ratio<0.001] = 0.
+             
+        #     involves_dest = (self.d1_indices == self.indb) | (self.d2_indices == self.indb)
+            
+        #     self.Ebr[involves_dest, :, :, :] = 0.0
   
         # Mask out Ebr where the parent combinations don't result in valid fragments
         # Using ~surv_pairs (which is pnum, 1, bins, bins) will broadcast cleanly against Ebr.
-        censor_Ebr = np.broadcast_to(~surv_pairs, self.Ebr.shape)    
-        self.Ebr[censor_Ebr] = 0.
+        #censor_Ebr = np.broadcast_to(~surv_pairs, self.Ebr.shape) 
+        
+        
+        self.Ebr = np.where(surv_pairs,self.Ebr,0.)
+        
+        # BOX WORKING
+        #self.Ebr[~surv_pairs] = 0.
+        #self.Ebr =  self.Ebr[:,0,:,:]
+        
+
           
         self.dMb_gain_kernel = Mb_kernel
         self.dNb_gain_kernel = Nb_kernel
     
-
-    def setup_fragments_3D(self):
-        
-        if np.isin(self.kernel, ['Constant', 'Golovin', 'Product']):
-            targ_broad = self.kmin
-        else:
-            targ_broad = self.k_lim
-            
-        # ---------------------------------------------------------
-        # 1. SETUP 3D BROADCASTING NODES
-        # ---------------------------------------------------------
-        dist = self.dists[self.indb] # Your base grid object
-        
-        # Create the three nodes for the lambda function
-        child = BroadcastNode(dist, axis=0)
-        p_i   = BroadcastNode(dist, axis=1)
-        p_j   = BroadcastNode(dist, axis=2)
-        
-        IF_func = self.frag_dict['func']   
-        dist_name = self.frag_dict['dist']
-        frag_list = list(self.frag_dict)
-        
-        if ('d_start' in frag_list) and ('d_end' in frag_list):
-            d_start = self.frag_dict['d_start']
-            d_end   = self.frag_dict['d_end']
-        else:
-            d_start = None 
-            d_end = None
-              
-        # ---------------------------------------------------------
-        # 2. EVALUATE RAMP / SCALE FACTOR (2D: i, j pairs)
-        # ---------------------------------------------------------
-        # use max(i,j) for upper limit of truncated fragment distribution
-        d_cen = self.dists[self.indb].d[targ_broad] 
-        d_left = self.dists[self.indb].d1[targ_broad] 
-        d_right = self.dists[self.indb].d2[targ_broad]
-        
-        dD = d_right - d_left
-            
-        if (d_start is not None) and (d_end is not None):
-            narrow_mask = (d_end - d_start) < dD
-            midpoint = (d_start + d_end) / 2.
-            
-            min_ramp_width = 1.5 * dD
-            half_min_width = min_ramp_width / 2.
-            
-            d_start = np.where(narrow_mask, midpoint - half_min_width, d_start)
-            d_end   = np.where(narrow_mask, midpoint + half_min_width, d_end) 
-
-            E_left = self.calc_smootherstep(d_left, d_start, d_end)
-            E_cen = self.calc_smootherstep(d_cen, d_start, d_end)
-            E_right = self.calc_smootherstep(d_right, d_start, d_end)
-
-            scale_factor = (E_left + 4.*E_cen + E_right) / 6.
-        else:
-            scale_factor = np.ones_like(targ_broad, dtype=np.float64) 
-        
-        # ---------------------------------------------------------
-        # 3. EVALUATE CONDITIONAL DISTRIBUTION (3D: k, i, j)
-        # ---------------------------------------------------------
-        if dist_name == 'exp_mass':
-            Mb_gain_kernel = IF_func(1, child, p_i, p_j)
-            Nb_gain_kernel = IF_func(0, child, p_i, p_j)
-        else:
-            bm = dist.bm
-            am = dist.am
-            Mb_gain_kernel = am * IF_func(bm, child, p_i, p_j)
-            Nb_gain_kernel = IF_func(0., child, p_i, p_j)
-
-        # FIX: The lambda might return a 1D array (bins,) OR a degenerate 
-        # 3D array (bins, 1, 1) if it ignores the parent nodes. 
-        # We must align and force it to fully expand into (bins, bins, bins).
-        
-        if Mb_gain_kernel.ndim == 1:
-            Mb_gain_kernel = Mb_gain_kernel[:, None, None]
-            Nb_gain_kernel = Nb_gain_kernel[:, None, None]
-            
-        target_shape = (self.bins, self.bins, self.bins)
-        
-        # broadcast_to tiles the array dynamically, .copy() allocates it in memory
-        Mb_gain_kernel = np.broadcast_to(Mb_gain_kernel, target_shape).copy()
-        Nb_gain_kernel = np.broadcast_to(Nb_gain_kernel, target_shape).copy()
-        # ---------------------------------------------------------
-        # 4. KINEMATIC TRUNCATION
-        # ---------------------------------------------------------
-        # Clean up negative noise and invalid bounds
-        # Instead of np.tri, we create a 3D mask comparing child index (k) to max parent index (targ_broad)
-        k_idx = np.arange(self.bins)[:, None, None]
-        invalid_mask = k_idx > targ_broad[None, :, :]
-        
-        Mb_gain_kernel[invalid_mask] = 0.0 
-        Nb_gain_kernel[invalid_mask] = 0.0
-
-        Mb_gain_kernel[Mb_gain_kernel < 0.0] = 0.0
-        Nb_gain_kernel[Nb_gain_kernel < 0.0] = 0.0
-
-        # ---------------------------------------------------------
-        # PASS 1: Initial Normalization
-        # ---------------------------------------------------------
-        # Summing a 3D array over axis=0 yields a 2D array of (i,j) pairs
-        dMb_gain_tot = np.sum(Mb_gain_kernel, axis=0)
-        
-        valid_pairs = dMb_gain_tot > 1e-100 
-        
-        Mb_gain_kernel[:, valid_pairs] /= dMb_gain_tot[None, valid_pairs]
-        Nb_gain_kernel[:, valid_pairs] /= dMb_gain_tot[None, valid_pairs]
-        
-        # ---------------------------------------------------------
-        # PASS 2: Censor the Noise & Re-normalize
-        # ---------------------------------------------------------
-        fit_threshold = 1e-12
-        
-        censor_mask_M = Mb_gain_kernel < fit_threshold
-        censor_mask_N = Nb_gain_kernel < fit_threshold
-        censor_mask = censor_mask_M | censor_mask_N
-        
-        Mb_gain_kernel[censor_mask] = 0.0
-        Nb_gain_kernel[censor_mask] = 0.0
-        
-        dMb_gain_tot_2 = np.sum(Mb_gain_kernel, axis=0)
-        surviving_pairs = dMb_gain_tot_2 > 0.0
-        
-        Mb_gain_kernel[:, surviving_pairs] /= dMb_gain_tot_2[None, surviving_pairs]
-        Nb_gain_kernel[:, surviving_pairs] /= dMb_gain_tot_2[None, surviving_pairs]
-        
-        # Clean up the dead columns
-        Mb_gain_kernel[:, ~surviving_pairs] = 0.0
-        Nb_gain_kernel[:, ~surviving_pairs] = 0.0
-
-        # ---------------------------------------------------------
-        # 5. FINAL ASSIGNMENTS
-        # ---------------------------------------------------------
-        # Apply scale factor only to surviving pairs
-        scale_factor[~surviving_pairs] = 0.0
-        
-        # Broadcast and Assign
-        self.Ebr = scale_factor[None, None, :, :] * self.Ebr
-        self.scale_factor = scale_factor
-  
-        # Only consider breakup if the breakup distribution is complete.
-        # surviving_pairs is already a 2D boolean mask of viable i,j combinations
-        censor_Ebr = np.broadcast_to(~surviving_pairs, self.Ebr.shape)    
-        self.Ebr[censor_Ebr] = 0.
-          
-        # Assign directly (No need to index with targ_broad because it's already 3D)
-        self.dMb_gain_kernel = Mb_gain_kernel
-        self.dNb_gain_kernel = Nb_gain_kernel
-    
-    def setup_fragments_NEW(self):
-        
-            if np.isin(self.kernel,['Constant','Golovin','Product']):
-                targ_broad = self.kmin
-            else:
-                targ_broad = self.k_lim
-                
-            IF_func = self.frag_dict['func']   
-            dist_name = self.frag_dict['dist']
-            
-            frag_list = list(self.frag_dict)
-            
-            if ('d_start' in frag_list) and ('d_end' in frag_list):
-                d_start = self.frag_dict['d_start']
-                d_end   = self.frag_dict['d_end']
-            else:
-                d_start = None 
-                d_end = None
-                  
-            # use max(i,j) for upper limit of truncated fragment distribution
-            d_cen = self.dists[self.indb].d[self.k_lim] 
-            d_left = self.dists[self.indb].d1[self.k_lim] 
-            d_right = self.dists[self.indb].d2[self.k_lim]
-            
-            dD = d_right-d_left
-                
-            # If d_start and d_end are provided then do a smooth ramp where
-            # breakup shuts off for sizes below d_start and is equal to Eb
-            # above d_end.
-            if (d_start is not None) and (d_end is not None):
-
-                # Create a boolean mask of where the ramp is currently too narrow
-                narrow_mask = (d_end - d_start) < dD
-
-                midpoint = (d_start+d_end)/2.
-                
-                min_ramp_width = 1.5 * dD
-                
-                half_min_width = min_ramp_width/2.
-                
-                d_start = np.where(narrow_mask, midpoint - half_min_width, d_start)
-                d_end   = np.where(narrow_mask, midpoint + half_min_width, d_end) 
-
-                E_left = self.calc_smootherstep(d_left,d_start,d_end)
-                E_cen = self.calc_smootherstep(d_cen,d_start,d_end)
-                E_right = self.calc_smootherstep(d_right,d_start,d_end)
-
-                # Simpson's rule for averaging out the smoothsteps.
-                scale_factor = (E_left+4.*E_cen+E_right)/6.
-                
-            else:
-
-                scale_factor = np.ones_like(self.kmin,dtype=np.float64) 
-            
-            # scale factor for modifying conditional fragment distribution
-            # if parent particles are not large enough. This is important
-            # because fragmentation of really small particles is not necessarily
-            # realistic and the adaptive stepping takes forever in these cases.
-        
-            if dist_name=='exp_mass':
-                Mb_gain_vec = IF_func(1,self.xi1,self.xi2)
-                Nb_gain_vec = IF_func(0,self.xi1,self.xi2)
-                
-            else:
-                d1 = self.dists[self.indb].d1
-                d2 = self.dists[self.indb].d2
-    
-                Mb_gain_vec = self.dists[self.indb].am*IF_func(self.dists[self.indb].bm,d1,d2)
-                Nb_gain_vec = IF_func(0.,d1,d2)
-                
-                #Mb_gain_vec = self.dists[self.indb].am*IF_func(self.dists[self.indb].bm,d_left,d_right)
-                #Nb_gain_vec = IF_func(0.,d_left,d_right)
-            
-            # NOTE: Try Mb_gain_vec = self.dists[self.indb].am*IF_func(self.dists[self.indb].bm,d_left,d_right)
-            
-            if Mb_gain_vec.ndim==1:
-                #print('Mb_gain_vec=',Mb_gain_vec.sum())
-                #raise Exception()
-                self.dMb_gain_frac  = np.tile(Mb_gain_vec[:,None],(1,self.bins))
-                self.dNb_gain_frac  = np.tile(Nb_gain_vec[:,None],(1,self.bins))
-            
-            # If needed, convert self.dMb_gain_frac (p(m)) into conditional distribution (p(m|x,y))
-
-            # 1. Clean up negative noise and invalid bounds
-            invalid_mask = np.tri(self.bins, self.bins, k=-1, dtype=bool)
-            self.dMb_gain_frac[invalid_mask] = 0.0 
-            self.dNb_gain_frac[invalid_mask] = 0.0
-
-            self.dMb_gain_frac[self.dMb_gain_frac < 0.0] = 0.0
-            self.dNb_gain_frac[self.dNb_gain_frac < 0.0] = 0.0
-
-            # ---------------------------------------------------------
-            # PASS 1: Initial Normalization
-            # ---------------------------------------------------------
-            dMb_gain_tot = np.sum(self.dMb_gain_frac, axis=0)
-            
-            # Avoid divide-by-zero for empty columns
-            valid_cols = dMb_gain_tot > 1e-100 
-            
-            self.dMb_gain_frac[:, valid_cols] /= dMb_gain_tot[None, valid_cols]
-            self.dNb_gain_frac[:, valid_cols] /= dMb_gain_tot[None, valid_cols]
-            
-            # ---------------------------------------------------------
-            # PASS 2: Censor the Noise & Re-normalize
-            # ---------------------------------------------------------
-            fit_threshold = 1e-12
-            
-            # Find bins that receive a physically meaningless fraction of the mass/number
-            censor_mask_M = self.dMb_gain_frac < fit_threshold
-            censor_mask_N = self.dNb_gain_frac < fit_threshold
-            
-            # Combine masks: If a bin is killed for M, it must be killed for N
-            censor_mask = censor_mask_M | censor_mask_N
-            
-            self.dMb_gain_frac[censor_mask] = 0.0
-            self.dNb_gain_frac[censor_mask] = 0.0
-            
-            # Re-sum the columns after trimming the tails
-            dMb_gain_tot_2 = np.sum(self.dMb_gain_frac, axis=0)
-            
-            # Find columns that survived the censoring
-            surviving_cols = dMb_gain_tot_2 > 0.0
-            
-            # Re-normalize so the trimmed distributions perfectly sum to 1.0 again
-            self.dMb_gain_frac[:, surviving_cols] /= dMb_gain_tot_2[None, surviving_cols]
-            self.dNb_gain_frac[:, surviving_cols] /= dMb_gain_tot_2[None, surviving_cols]
-            
-            # Clean up the dead columns
-            self.dMb_gain_frac[:, ~surviving_cols] = 0.0
-            self.dNb_gain_frac[:, ~surviving_cols] = 0.0
-
-            # ---------------------------------------------------------
-            # Finally: Apply scale factor only to surviving columns
-            # ---------------------------------------------------------
-            valid_matrix = surviving_cols[self.k_lim]
-            scale_factor[~valid_matrix] = 0.0
-            
-            # Broadcast and Assign
-            self.Ebr = scale_factor[None, None, :, :] * self.Ebr
-            self.scale_factor = scale_factor
-      
-            # # # Only consider breakup if the breakup distribution is complete.
-            censor_Ebr = np.broadcast_to((self.dMb_gain_frac.sum(axis=0)<0.5),self.Ebr.shape)    
-            self.Ebr[censor_Ebr] = 0.
-              
-            # # NOTE: Before, I was (stupidly?) using the actual limits from the SBE. 
-            # # HOWEVER, this isn't physically realistic when coalescence and breakup
-            # # are considered (and calculated) as mutually exclusive scenarios. 
-            # # This presents a big problem because realistic fragment distributions
-            # # like the lognormal distribution has a fat tail and thus the presence of breakup
-            # # can actually generates particles much larger than either of the colliding
-            # # particles! In order to compare results with Feingold et al. (1988), the
-            # # kmin limit is used. For realistic kernels, the maximum index of the interacting
-            # # species is used instead.
-            self.dMb_gain_kernel = self.dMb_gain_frac[:,targ_broad]
-            self.dNb_gain_kernel = self.dNb_gain_frac[:,targ_broad]
-            
-            #print('sum=',self.dMb_gain_frac)
-           # raise Exception()
-            
-
-    def setup_fragments_ORIG(self):
-        
-            # scale factor for modifying conditional fragment distribution
-            # if parent particles are not large enough. This is important
-            # because fragmentation of really small particles is not necessarily
-            # realistic and the adaptive stepping takes forever in these cases.
-            scale_factor = np.ones_like(self.kmin,dtype=np.float64)    
-            
-            if (self.kernel=='Hydro') or (self.kernel=='Long'):
-            
-                # Largest possible size of fragments based on grid
-                if self.frag_dict['dist']=='exp':
-                    IF_func = lambda n,x1,x2: gam_int(n,0.,self.frag_dict['Dmf'],x1,x2)
-                elif self.frag_dict['dist']=='gamma':
-                    IF_func = lambda n,x1,x2: gam_int(n,self.frag_dict['muf'],self.frag_dict['Dmf'],x1,x2) 
-                     
-                elif self.frag_dict['dist']=='LGN':
-                    # TEMP
-                    Df_med = self.frag_dict['Df_med'] # mm
-                    muf = np.log(Df_med)
-                    Df_mode = self.frag_dict['Df_mode']
-                    sig2f = muf-np.log(Df_mode)
-                    IF_func = lambda n,x1,x2:LGN_int(n,muf,sig2f,x1,x2)
-                    
-                    perc_start = 0.5
-                    perc_end = 0.95
-                    
-                    d_start = np.exp(muf+np.sqrt(2*sig2f)*erfinv(2.*perc_start-1))
-                    d_end = np.exp(muf+np.sqrt(2*sig2f)*erfinv(2.*perc_end-1))
-
-                    d_cen = self.dists[self.indb].d[self.k_lim] 
-                    d_left = self.dists[self.indb].d1[self.k_lim] 
-                    d_right = self.dists[self.indb].d2[self.k_lim]
-                    
-                    dD = d_right-d_left
-    
-                    # Create a boolean mask of where the ramp is currently too narrow
-                    narrow_mask = (d_end - d_start) < dD
-
-                    midpoint = (d_start+d_end)/2.
-                    
-                    min_ramp_width = 1.5 * dD
-                    
-                    half_min_width = min_ramp_width/2.
-                    
-                    d_start = np.where(narrow_mask, midpoint - half_min_width, d_start)
-                    d_end   = np.where(narrow_mask, midpoint + half_min_width, d_end) 
-
-                    E_left = self.calc_smootherstep(d_left,d_start,d_end)
-                    E_cen = self.calc_smootherstep(d_cen,d_start,d_end)
-                    E_right = self.calc_smootherstep(d_right,d_start,d_end)
-
-                    # Simpson's rule for averaging out the smoothsteps.
-                    scale_factor = (E_left+4.*E_cen+E_right)/6.
-
-                elif (self.frag_dict['dist']=='Straub'):
-                    # CURRENTLY NOT IMPLEMENTED!
-                    
-                    IF_func = self.setup_Straub()
-
-                d1 = self.dists[self.indb].d1
-                d2 = self.dists[self.indb].d2
-
-                Mb_gain_vec = self.dists[self.indb].am*IF_func(self.dists[self.indb].bm,d1,d2)
-                Nb_gain_vec = IF_func(0.,d1,d2)
-                
-                #print('Mb_Gain_vec=',Mb_gain_vec.max())
-                #print('Nb_gain_vec=',Nb_gain_vec.shape)
-                #raise Exception()
-                
-                # The Straub et al. (2010) fragment distribution parameterization is already a conditional distribution.
-                # If one of the other distributions is chosen, assume that the conditional distribution is identical to 
-                # the marginal distribution along the breakup distribution axis (i.e., assumption of independence: p(m|x,y) = p(m)).
-                if (self.frag_dict['dist']!='Straub'):
-                    self.dMb_gain_frac  = np.tile(Mb_gain_vec[:,None],(1,self.bins))
-                    self.dNb_gain_frac  = np.tile(Nb_gain_vec[:,None],(1,self.bins))
-                
-            else: # If using Feingold test fragment distribution.
-                for xx in range(self.bins): # m1+m2 breakup mass
-                   for kk in range(0,xx+1): # breakup gain bins
-                       self.dMb_gain_frac[kk,xx] = In_int(1.,self.frag_dict['lamf'],self.xi1[kk],self.xi2[kk])
-                       self.dNb_gain_frac[kk,xx] = In_int(0.,self.frag_dict['lamf'],self.xi1[kk],self.xi2[kk])   
-       
-            # If needed, convert self.dMb_gain_frac (p(m)) into conditional distribution (p(m|x,y))
-
-            
-            # 1. Clean up negative noise and invalid bounds
-            invalid_mask = np.tri(self.bins, self.bins, k=-1, dtype=bool)
-            self.dMb_gain_frac[invalid_mask] = 0.0 
-            self.dNb_gain_frac[invalid_mask] = 0.0
-
-            self.dMb_gain_frac[self.dMb_gain_frac < 0.0] = 0.0
-            self.dNb_gain_frac[self.dNb_gain_frac < 0.0] = 0.0
-
-            # ---------------------------------------------------------
-            # PASS 1: Initial Normalization
-            # ---------------------------------------------------------
-            dMb_gain_tot = np.sum(self.dMb_gain_frac, axis=0)
-            
-            # Avoid divide-by-zero for empty columns
-            valid_cols = dMb_gain_tot > 1e-100 
-            
-            self.dMb_gain_frac[:, valid_cols] /= dMb_gain_tot[None, valid_cols]
-            self.dNb_gain_frac[:, valid_cols] /= dMb_gain_tot[None, valid_cols]
-            
-            # ---------------------------------------------------------
-            # PASS 2: Censor the Noise & Re-normalize
-            # ---------------------------------------------------------
-            fit_threshold = 1e-12
-            
-            # Find bins that receive a physically meaningless fraction of the mass/number
-            censor_mask_M = self.dMb_gain_frac < fit_threshold
-            censor_mask_N = self.dNb_gain_frac < fit_threshold
-            
-            # Combine masks: If a bin is killed for M, it must be killed for N
-            censor_mask = censor_mask_M | censor_mask_N
-            
-            self.dMb_gain_frac[censor_mask] = 0.0
-            self.dNb_gain_frac[censor_mask] = 0.0
-            
-            # Re-sum the columns after trimming the tails
-            dMb_gain_tot_2 = np.sum(self.dMb_gain_frac, axis=0)
-            
-            # Find columns that survived the censoring
-            surviving_cols = dMb_gain_tot_2 > 0.0
-            
-            # Re-normalize so the trimmed distributions perfectly sum to 1.0 again
-            self.dMb_gain_frac[:, surviving_cols] /= dMb_gain_tot_2[None, surviving_cols]
-            self.dNb_gain_frac[:, surviving_cols] /= dMb_gain_tot_2[None, surviving_cols]
-            
-            # Clean up the dead columns
-            self.dMb_gain_frac[:, ~surviving_cols] = 0.0
-            self.dNb_gain_frac[:, ~surviving_cols] = 0.0
-
-            # ---------------------------------------------------------
-            # Finally: Apply scale factor only to surviving columns
-            # ---------------------------------------------------------
-            valid_matrix = surviving_cols[self.k_lim]
-            scale_factor[~valid_matrix] = 0.0
-            
-            # Broadcast and Assign
-            self.Ebr = scale_factor[None, None, :, :] * self.Ebr
-            self.scale_factor = scale_factor
-      
-            # # # Only consider breakup if the breakup distribution is complete.
-            # censor_Ebr = np.broadcast_to((self.dMb_gain_frac.sum(axis=0)<0.5),self.Ebr.shape)    
-            # self.Ebr[censor_Ebr] = 0.
-              
-    
-            # # NOTE: Before, I was (stupidly?) using the actual limits from the SBE. 
-            # # HOWEVER, this isn't physically realistic when coalescence and breakup
-            # # are considered (and calculated) as mutually exclusive scenarios. 
-            # # This presents a big problem because realistic fragment distributions
-            # # like the lognormal distribution has a fat tail and thus the presence of breakup
-            # # can actually generates particles much larger than either of the colliding
-            # # particles! In order to compare results with Feingold et al. (1988), the
-            # # kmin limit is used. For realistic kernels, the maximum index of the interacting
-            # # species is used instead.
-            # if (self.kernel=='Constant') | (self.kernel=='Golovin') | (self.kernel=='Product'):
-            #     self.dMb_gain_kernel = self.dMb_gain_frac[:,self.kmin]
-            #     self.dNb_gain_kernel = self.dNb_gain_frac[:,self.kmin]
-            # else:
-            #     self.dMb_gain_kernel = self.dMb_gain_frac[:,self.k_lim]
-            #     self.dNb_gain_kernel = self.dNb_gain_frac[:,self.k_lim]  
-          
-
-    def setup_Straub(self):
-        
-        '''
-        Sets up Straub et al. (2010) Fragment distributions.
-        CURRENTLY NOT IMPLEMENTED!
-        '''
-        
-        # Get Straub distribution parameters.
-        # NOTE: For simplicity, I'm assuming that users will only be using
-        # this distribution function for rain. Thus, we don't need to loop 
-        # through all distribution combinations (i.e., assume that all dists
-        # share the same size, fallspeed, etc. grids).
-        
-        dist1 = self.dists[0] 
-        dist2 = self.dists[0]
-
-        # Get Straub parameters. Note, for simplicity just use bin midpoints
-        # To get Straub's four fragment distribution parameters. Ideally, this 
-        # would be done in some clever way by taking into account all mass 
-        # combinations between the bin limits.
-        straub_dict = Straub_params(dist1.d,dist2.d,dist1.vt,dist2.vt)
-        
-        self.straub_dict = straub_dict
-        
-        # Distribution 1: A Lognormal distribution
-        frag_dist1 = lambda n,x1,x2:straub_dict['dist1']['N']*LGN_int(n,straub_dict['dist1']['muf'],
-                                              straub_dict['dist1']['sig2f'],
-                                              x1,x2)
-        # Distribution 2: A Gaussian distribution
-        frag_dist2 = lambda n,x1,x2: straub_dict['dist2']['N']*GAU_int(n,straub_dict['dist2']['mu'],
-                                               straub_dict['dist2']['sig2'],
-                                               x1,x2)
-        # Distribution 3: Another Gaussian distribution
-        frag_dist3 = lambda n,x1,x2: straub_dict['dist3']['N']*GAU_int(n,straub_dict['dist3']['mu'],
-                                               straub_dict['dist3']['sig2'],
-                                               x1,x2)
-        
-        # Find bin for residual drop
-        x_res = 0.001*(np.pi/6.)*straub_dict['dist4']['x_res'] # Get mass (assume rain for now)
-        
-        # Find bin that residual is supposed to go in
-        xres_ind = np.searchsorted(self.xi2,x_res,side='right')
-        
-        frag4_num = np.zeros_like(self.xi2)
-        frag4_mass = np.zeros_like(self.xi2)
-        
-        frag4_num[xres_ind] = 1.0 # Only one drop for remnant
-        frag4_mass[xres_ind] = x_res # Mass of the one particle assuming mass conservation overall for the binary interaction
-           
-        # Distribution 4: A Dirac delta spike in corresponding bin for either number or mass
-        frag_dist4 = lambda n,x1,x2: frag4_num if n==1 else frag4_mass
-            
-        #self.frag1 = lambda n,x1,x2: frag_dist1(n,x1,x2) 
-        #self.frag2 = lambda n,x1,x2: frag_dist2(n,x1,x2)
-        
-        return lambda n,x1,x2: frag_dist1(n,x1,x2)+frag_dist2(n,x1,x2)+frag_dist3(n,x1,x2)+frag_dist4(n,x1,x2)
-        
-        
-        
-    
-    
-             
 
     def __plot_source_target(self,d1,d2,rtype,rind,invert=False,full=False):
         
@@ -1628,738 +1191,11 @@ class Interaction():
     
         return fig, ax
 
-    def interact_1mom_SS_Final_FC(self, dt):
-        """
-        Flux-Corrected Solver.
-        Calculates max permissible loss per bin, scales fluxes, 
-        and applies them. Strictly conservative and stable.
-        """
-        self.get_dynamic_params_1mom()
-        
-        if len(self.params['active_rate']) > 10000:
-            nb.set_num_threads(nb.config.NUMBA_DEFAULT_NUM_THREADS)
-        else:
-            nb.set_num_threads(1)
 
-        # 1. Calculate Potential Fluxes
-        # M_loss is the mass the physics WANTS to remove.
-        M_loss, M_gain = vectorized_1mom(
-            self.cki, self.params, self.dMi_loss, 
-            self.dMj_loss, self.dM_gain,
-            self.kmin_p, self.kmid_p, self.dMb_gain_kernel, 
-            self.indc, self.indb, 
-            self.dnum, self.Hlen, self.bins
-        )
-
-        # 2. Calculate the Limiters (The "Reality Check")
-        # How much mass can actually leave bin 'k' in time 'dt'?
-        # We limit removal to 99% of current mass to stay positive.
-        max_loss = 0.99 * self.Mbins
-        
-        requested_loss = M_loss * dt
-        
-        # Alpha is the fraction of the requested flux allowed to leave bin 'k'
-        # alpha = 1.0 (Safe)
-        # alpha < 1.0 (Limited)
-        alpha = np.ones_like(self.Mbins)
-        
-        mask = requested_loss > 1e-30 # Avoid div/0
-        alpha[mask] = np.minimum(1.0, max_loss[mask] / requested_loss[mask])
-        
-        # 3. Apply the Limiters to the Fluxes
-        # This is the tricky part. 
-        # Loss[k] is scaled by alpha[k].
-        # Gain[k] comes from OTHER bins (i, j). It must be scaled by alpha[i] and alpha[j].
-        
-        # We need to map 'alpha' back to the collisions.
-        # Since we can't easily invert the gain kernel, we use a 
-        # "Global Weighted Limiter" or re-run the kernel with scaled rates.
-        
-        # RE-RUN METHOD (Safest and Correct):
-        # We scale the 'active_rate' by min(alpha_i, alpha_j).
-        
-        # Map alpha to the collision pairs
-        #h_act = self.params['active_h']
-        #s1_act = self.params['active_s1']
-        #s2_act = self.params['active_s2']
-        i_act = self.params['active_i']
-        j_act = self.params['active_j']
-        
-        alpha_i = alpha[i_act] # (Or correct mapping based on s1_act/h_act if multidim)
-        alpha_j = alpha[j_act]
-        
-        # The limiter for collision (i,j) is the stricter of the two source limits
-        pair_alpha = np.minimum(alpha_i, alpha_j)
-        
-        # 4. Final Calculation
-        # Instead of calling the full kernel again, we can just compute the result directly?
-        # No, because M_gain aggregates many pairs. 
-        # We must re-run the kernel ONE time with the scaled rates.
-        
-        # This is your "Pass 2" from before, but with a critical difference:
-        # We computed alpha based on TOTAL loss, not just individual rates.
-        
-        orig_rates = self.params['active_rate'].copy()
-        self.params['active_rate'] *= pair_alpha
-        
-        M_loss_final, M_gain_final = vectorized_1mom(
-            self.cki, self.params, self.dMi_loss, 
-            self.dMj_loss, self.dM_gain,
-            self.kmin_p, self.kmid_p, self.dMb_gain_kernel, 
-            self.indc, self.indb, 
-            self.dnum, self.Hlen, self.bins
-        )
-        
-        self.params['active_rate'] = orig_rates
-        
-        return dt * (M_gain_final - M_loss_final)
-
-
-    def interact_1mom_SS_Final_adaptive(self, dt):
-        """
-        Adaptive Sub-stepping for 1-Moment Scheme.
-        Optimized to behave like Single-Step Euler unless stability is threatened.
-        """
-        
-        # 1. Local Working Copy (Don't touch self.Mbins yet)
-        M_current = self.Mbins.copy()
-        
-        # 1. Base Setup
-        self.get_dynamic_params_1mom()
-        
-        t_evolved = 0.0
-        
-        # Accumulator for final net change
-        M_net_total = np.zeros_like(M_current)
-        
-        max_substeps = 20 
-        loop_count = 0
-        
-        while t_evolved < dt and loop_count < max_substeps:
-            
-            # -----------------------------------------------------------------
-            # A. Physics Update (Only on 2nd+ step)
-            # -----------------------------------------------------------------
-            # If loop_count == 0, we use the params passed into the function.
-            # We only update if the mass has actually changed.
-            if loop_count > 0:
-                self.Mbins = M_current
-                self.update_1mom_subgrid()
-                self.get_dynamic_params_1mom()
-                
-                if len(self.params['active_rate']) > 10000:
-                    nb.set_num_threads(nb.config.NUMBA_DEFAULT_NUM_THREADS)
-                else:
-                    nb.set_num_threads(1)
-            
-            # -----------------------------------------------------------------
-            # B. Run Kernel (Predictor)
-            # -----------------------------------------------------------------
-            M_loss, M_gain = vectorized_1mom(self.cki, self.params, self.dMi_loss, 
-                                         self.dMj_loss, self.dM_gain,
-                                         self.kmin_p, self.kmid_p, self.dMb_gain_kernel, 
-                                         self.indc, self.indb, 
-                                         self.dnum, self.Hlen, self.bins)
-            # -----------------------------------------------------------------
-            # C. Check Stability (Relative Thresholds)
-            # -----------------------------------------------------------------
-            peak_M = np.max(M_current)
-            
-            # Threshold: 0.1% of peak, with safety floor
-            thresh_M = max(peak_M * 1e-3, 1e-20)
-            
-            sig_mask_M = M_current > thresh_M
-            
-            # Default: Take the rest of the step
-            dt_step = dt - t_evolved 
-            max_safe_dt = dt_step
-            
-            # Stability criterion: Don't deplete more than 90% of any significant bin
-            if np.any(sig_mask_M):
-                # Calculate turnover time tau = Mass / Loss
-                # Add epsilon to Loss to prevent divide-by-zero
-                loss_rates = M_loss[sig_mask_M] + 1e-30
-                masses     = M_current[sig_mask_M] + 1e-30
-                
-                tau_M = masses / loss_rates
-                
-                # We limit the step to 90% of the fastest turnover time
-                max_safe_dt = min(max_safe_dt, 0.9 * np.min(tau_M))
-
-            # Apply Limit
-            dt_step = min(dt_step, max_safe_dt)
-            
-            # Prevent infinitesimal steps (infinite loop guard)
-            min_dt_limit = dt / max_substeps
-            if dt_step < min_dt_limit and (dt - t_evolved) > min_dt_limit:
-                 dt_step = min_dt_limit
-
-            # -----------------------------------------------------------------
-            # D. Evolve State
-            # -----------------------------------------------------------------
-            dM_step = dt_step * (M_gain - M_loss)
-            
-            M_current   += dM_step
-            M_net_total += dM_step
-            
-            t_evolved   += dt_step
-            loop_count  += 1
-
-        # 3. Reset Global Object State
-        # We manually update self.Mbins to the final result minus the net change
-        # so the main loop can add M_net_total cleanly.
-        self.Mbins = M_current - M_net_total
-        
-        # Restore parameters to the final state for the next timestep
-        self.update_1mom_subgrid()
-        
-        return M_net_total   
-
-# NEED TO DECIDE WHICH solver to use
-    def interact_1mom_SS_Final_adaptive2(self, dt):
-        """
-        Frozen-Rate Adaptive Solver.
-        Fast (1 kernel call) + Smooth (Analytical Integration).
-        """
-        # 1. Base Setup
-        self.get_dynamic_params_1mom()
-        
-        n_active = len(self.params['active_rate'])
-        if n_active > 10000:
-            nb.set_num_threads(nb.config.NUMBA_DEFAULT_NUM_THREADS)
-        else:
-            nb.set_num_threads(1)
-
-        # 2. Run Kernel ONCE (The Expensive Part)
-        # We assume the interaction RATES (collisions per second) are constant 
-        # over the timestep, even if the MASS changes.
-        M_loss, M_gain = vectorized_1mom(
-            self.cki, self.params, self.dMi_loss, 
-            self.dMj_loss, self.dM_gain,
-            self.kmin_p, self.kmid_p, self.dMb_gain_kernel, 
-            self.indc, self.indb, 
-            self.dnum, self.Hlen, self.bins
-        )
-
-        # 3. Analytical Sub-stepping (The Fast Part)
-        # We evolve the distribution using the fixed rates calculated above.
-        M_current = self.Mbins.copy()
-        M_start = M_current.copy()
-        
-        t_evolved = 0.0
-        remaining_dt = dt
-        
-        # Define "Significant" mass threshold to avoid dividing by zero/noise
-        peak_mass = np.max(M_current)
-        threshold = max(peak_mass * 1e-4, 1e-20)
-        
-        while t_evolved < dt:
-            
-            # A. Calculate max safe step for this sub-interval
-            # We want to ensure no bin loses > 50% of its current mass in one sub-step
-            # to maintain accuracy of the linear approximation.
-            
-            sig_mask = M_current > threshold
-            
-            # Default step is the rest of the time
-            dt_sub = remaining_dt
-            
-            if np.any(sig_mask):
-                # Rate = Loss_Flux / Current_Mass
-                # Note: M_loss from kernel is "Mass/sec" based on M_start.
-                # We scale it by (M_current / M_start) to approximate 1st order decay.
-                
-                # Effective Loss Rate (1/s)
-                # decay_rate = (M_loss / M_start) 
-                # This stays constant if we assume frozen kinetics!
-                
-                denom = M_start[sig_mask] + 1e-30
-                decay_rates = M_loss[sig_mask] / denom
-                
-                max_rate = np.max(decay_rates)
-                
-                # If rate is 0.1 s^-1, max step should be ~5 seconds (0.5 / 0.1)
-                if max_rate > 0:
-                    safe_dt = 0.5 / max_rate 
-                    dt_sub = min(dt_sub, safe_dt)
-            
-            # Prevent tiny steps
-            dt_sub = max(dt_sub, 1e-6)
-            if t_evolved + dt_sub > dt:
-                dt_sub = dt - t_evolved
-                
-            # B. Apply Updates
-            # We scale the initial rates by the fraction of mass remaining
-            # Gain_t = Gain_0 * (M_source / M_source_0) ... hard to track sources.
-            # Simplified Hybrid: Just apply explicit Euler on small steps.
-            
-            # Since we froze the rates relative to M_start, we just apply:
-            # dM = (Gain - Loss) * (dt_sub) * (Correction?)
-            # The simplest valid approach for "Frozen Rate" is pure Euler on small steps.
-            
-            #dM = dt_sub * (M_gain - M_loss)
-            
-            # BUT! We must limit dM to not cross zero.
-            # Since we calculated safe_dt above, this should be naturally safe.
-            
-            # Refined Approach: Scaling Loss by Depletion
-            # Loss_now ~= Loss_0 * (M_current / M_start)
-            # Gain_now ~= Gain_0 * (Total_Mass_Current / Total_Mass_Start) ?? 
-            # Gains are harder because they come from other bins. 
-            # Assumption: Global Mass is conserved, so Gains are roughly constant? 
-            # actually Gains drop as sources deplete.
-            
-            # Let's try the Linear Scaling approximation:
-           # scaling_factor = M_current / (M_start + 1e-30)
-            
-            # Apply scaling only to LOSS. Keep GAIN constant (conservative estimate)
-            # or scale Gain by a global depletion factor?
-            # Let's stick to the simplest conservative method:
-            
-            # Limit loss to available mass
-           # actual_loss = M_loss * dt_sub
-            # If actual_loss > M_current, we clamp it.
-            # But since we chose dt_sub to be safe, this rarely happens.
-            
-            # To ensure strict conservation, we just apply the net flux:
-            M_current += dt_sub * (M_gain - M_loss)
-            
-            # C. Advance
-            t_evolved += dt_sub
-            remaining_dt -= dt_sub
-            
-            # Safety break for infinite loops
-            if dt_sub < 1e-9:
-                break
-        
-        # Final cleanup for tiny negative zeros
-        M_current[M_current < 0] = 0.0
-        
-        return M_current - M_start
-
-    def interact_1mom_SS_Final_PC(self, dt):
-        
-        # 1. Base Setup
-        self.get_dynamic_params_1mom()
-        
-        n_active = len(self.params['active_rate'])
-        if n_active > 10000:
-            nb.set_num_threads(nb.config.NUMBA_DEFAULT_NUM_THREADS)
-        else:
-            nb.set_num_threads(1)
-
-        # Save the original unscaled rates
-        original_rate = self.params['active_rate'].copy()
-
-        # =====================================================================
-        # PASS 1: The Predictor
-        # =====================================================================
-        M_loss, M_gain = vectorized_1mom(self.cki, self.params, self.dMi_loss, 
-                                         self.dMj_loss, self.dM_gain,
-                                         self.kmin_p, self.kmid_p, self.dMb_gain_kernel, 
-                                         self.indc, self.indb, 
-                                         self.dnum, self.Hlen, self.bins)
-        
-        # NOTE: This works for this coalescence-only case!
-        #return dt * (M_gain - M_loss)
-
-        # Calculate how much mass we are TRYING to remove relative to what we HAVE
-        Mbins = self.Mbins
-        
-        # Depletion ratio = (Requested Loss) / (Available Mass)
-        # Avoid divide-by-zero using 1e-30
-        depletion = (M_loss * dt) / (Mbins + 1e-80)
-        max_depletion = np.max(depletion)
-
-        # =====================================================================
-        # THE DECISION
-        # =====================================================================
-        # If no bin loses more than 95% of its mass, Explicit Euler is completely safe!
-        if max_depletion <= 0.95:
-            # FAST PATH: Perfect conservation, 1 kernel call.
-            return dt * (M_gain - M_loss)
-
-        # =====================================================================
-        # PASS 2: The Corrector (Flux Limiter)
-        # =====================================================================
-        else:
-            # We need to slow down the physics to prevent negative mass.
-            # Calculate the safety fraction for every bin in the 3D grid.
-            # If depletion is 2.0 (200%), alpha becomes 0.5 (run at half speed).
-            alpha_grid = np.clip(1.0 / (depletion + 1e-16), 0.0, 1.0)
-            
-            # Map the safety fractions back to the 1D interaction arrays
-            h_act = self.params['active_h']
-            s1_act = self.params['active_s1']
-            s2_act = self.params['active_s2']
-            i_act = self.params['active_i']
-            j_act = self.params['active_j']
-            
-            # Get the safety limit for the two parent bins of every collision
-            alpha_i = alpha_grid[s1_act, h_act, i_act]
-            alpha_j = alpha_grid[s2_act, h_act, j_act]
-            
-            # The collision rate is limited by the most heavily depleted parent
-            safe_scaling = np.minimum(alpha_i, alpha_j)
-            
-            # Apply the limit to the collision rates
-            self.params['active_rate'] = original_rate * safe_scaling
-            
-            # Run the kernel ONE MORE TIME with the safe rates
-            M_loss_safe, M_gain_safe = vectorized_1mom(
-                                         self.cki, self.params, self.dMi_loss, 
-                                         self.dMj_loss, self.dM_gain,
-                                         self.kmin_p, self.kmid_p, self.dMb_gain_kernel, 
-                                         self.indc, self.indb, 
-                                         self.dnum, self.Hlen, self.bins)
-            
-            # Restore the original rates to keep the object state clean
-            self.params['active_rate'] = original_rate
-            
-            # SLOW PATH: Perfectly conservative, guaranteed positive, 2 kernel calls.
-            return dt * (M_gain_safe - M_loss_safe)
-
-
-    def interact_1mom_SS_Final(self, dt):
-        # Reset master buffers
-        
-        self.get_dynamic_params_1mom()
-
-        n_active = len(self.params['active_rate'])
-
-        if n_active>10000:
-            nb.set_num_threads(nb.config.NUMBA_DEFAULT_NUM_THREADS)
-        else:
-            nb.set_num_threads(1)
-
-        M_loss, M_gain = vectorized_1mom(self.cki, self.params, self.dMi_loss, 
-                                         self.dMj_loss,self.dM_gain,
-                                         self.kmin_p,self.kmid_p,self.dMb_gain_kernel, 
-                                         self.indc, self.indb, 
-                                         self.dnum, self.Hlen, self.bins)
-    
-        return dt * (M_gain-M_loss)
-    
-    
-    def interact_2mom_SS_Final_FC(self, dt):
-        """
-        Strictly Conservative Flux-Corrected 2-Moment Solver.
-        Scales Efficiencies (Eagg, Ebr) to enforce mass/number conservation limits.
-        """
-        # 1. Base Setup
-        self.get_dynamic_params()
-        
-        n_active = len(self.params['regions'])
-        if n_active > 10000:
-            nb.set_num_threads(nb.config.NUMBA_DEFAULT_NUM_THREADS)
-        else:
-            nb.set_num_threads(1)
-
-        # Save original efficiencies (The "Control Knobs")
-        # We will modify these in-place for the second pass
-        orig_Eagg = self.params['Eagg'].copy()
-        orig_Ebr  = self.params['Ebr'].copy()
-
-        # -----------------------------------------------------------------
-        # STEP 1: Calculate "Wishlist" Fluxes (Unlimited)
-        # -----------------------------------------------------------------
-        # Run the kernel with full efficiency (alpha=1.0)
-        M_loss, M_gain, N_loss, N_gain = vectorized_2mom(
-            self.params, self.w, self.L, self.dMb_gain_kernel, self.dNb_gain_kernel,
-            self.indc, self.indb, self.dnum, 
-            self.Hlen, self.bins
-        )
-
-        # -----------------------------------------------------------------
-        # STEP 2: Calculate Bin-Level Safety Factors (Alphas)
-        # -----------------------------------------------------------------
-        # Determine the max permissible depletion for every bin in the grid.
-        
-        # Define available budget (e.g., 99.9% of current mass)
-        M_avail = 0.999 * self.Mbins
-        N_avail = 0.999 * self.Nbins
-        
-        # Desired removal (Flux * dt)
-        M_req = M_loss * dt
-        N_req = N_loss * dt
-        
-        # Initialize alpha grid (default = 1.0 = Safe)
-        # Shape matches Mbins (e.g., [Hlen, bins])
-        alpha_M = np.ones_like(self.Mbins)
-        alpha_N = np.ones_like(self.Nbins)
-        
-        # Calculate limit where requested flux is non-zero
-        # alpha = Available / Requested
-        mask_M = M_req > 1e-30
-        alpha_M[mask_M] = np.minimum(1.0, M_avail[mask_M] / M_req[mask_M])
-        
-        mask_N = N_req > 1e-30
-        alpha_N[mask_N] = np.minimum(1.0, N_avail[mask_N] / N_req[mask_N])
-        
-        # The limit for a bin is the stricter of Mass or Number constraints
-        # This keeps Mean Diameter (M/N) consistent.
-        bin_alpha = np.minimum(alpha_M, alpha_N)
-
-        # -----------------------------------------------------------------
-        # STEP 3: Map Alphas to Interactions
-        # -----------------------------------------------------------------
-        # A collision between bin 'i' and bin 'j' is limited by the 
-        # weakest link (the bin that is emptying out fastest).
-        
-        # Retrieve the index mapping from params
-        d1_act = self.params['d1_ind'] # Parent 1 domain index
-        d2_act = self.params['d2_ind'] # Parent 2 domain index
-        h_act  = self.params['hind']   # Height/Spatial index
-        i_act  = self.params['bi_ind'] # Parent 1 bin index
-        j_act  = self.params['bj_ind'] # Parent 2 bin index
-        
-        # Look up the safety factor for parent i and parent j
-        # bin_alpha is (dnum, Hlen, bins) or similar, depending on your grid
-        # Assuming bin_alpha matches the shape of Mbins, we broadcast lookup:
-        alpha_i = bin_alpha[d1_act, h_act, i_act]
-        alpha_j = bin_alpha[d2_act, h_act, j_act]
-        
-        # The Global Safety Factor for each interaction 'k'
-        # Shape: (n_active,) - one scalar per interaction
-        interaction_alpha = np.minimum(alpha_i, alpha_j)
-
-        # -----------------------------------------------------------------
-        # STEP 4: Re-Run Kernel with Scaled Efficiencies
-        # -----------------------------------------------------------------
-        # We assume the kernel is linear with respect to Efficiency.
-        # Loss = Integral * E * ...
-        # Gain = Integral * E * ...
-        # Scaling E by alpha scales Loss and Gain exactly equally.
-        
-        # Apply scaling to the efficiencies in the params dict
-        self.params['Eagg'] *= interaction_alpha
-        self.params['Ebr']  *= interaction_alpha
-        
-        # Run the physics one last time (The "Safe" Pass)
-        M_loss_final, M_gain_final, N_loss_final, N_gain_final = vectorized_2mom(
-            self.params, self.w, self.L, self.dMb_gain_kernel, self.dNb_gain_kernel,
-            self.indc, self.indb, self.dnum, 
-            self.Hlen, self.bins
-        )
-        
-        # Restore original efficiencies to clean up state
-        self.params['Eagg'][:] = orig_Eagg
-        self.params['Ebr'][:]  = orig_Ebr
-
-        # -----------------------------------------------------------------
-        # STEP 5: Final Update
-        # -----------------------------------------------------------------
-        M_net = dt * (M_gain_final - M_loss_final)
-        N_net = dt * (N_gain_final - N_loss_final)
-        
-        return M_net, N_net
-    
-    
-    def interact_2mom_SS_Final_adaptive(self, dt):
-        """
-        Adaptive Sub-stepping for 2-Moment Scheme.
-        Optimized to behave like Single-Step Euler unless stability is threatened.
-        """
-        
-        # 1. Local Working Copies (Don't touch self.Mbins yet)
-        M_current = self.Mbins.copy()
-        N_current = self.Nbins.copy()
-        
-        self.get_dynamic_params()
-        
-        t_evolved = 0.0
-        
-        # Accumulators for final net change
-        M_net_total = np.zeros_like(M_current)
-        N_net_total = np.zeros_like(N_current)
-        
-        max_substeps = 20 
-        loop_count = 0
-        
-        while t_evolved < dt and loop_count < max_substeps:
-            
-            # -----------------------------------------------------------------
-            # A. Physics Update (Only on 2nd+ step)
-            # -----------------------------------------------------------------
-            # If loop_count == 0, we use the params passed into the function.
-            # We only update if the mass has actually changed.
-            if loop_count > 0:
-                self.Mbins = M_current
-                self.Nbins = N_current
-                self.update_2mom_subgrid() 
-                self.get_dynamic_params()
-                
-                # Check thread count again just in case regions changed
-                if len(self.params['regions']) > 10000:
-                    nb.set_num_threads(nb.config.NUMBA_DEFAULT_NUM_THREADS)
-                else:
-                    nb.set_num_threads(1)
-            
-            # -----------------------------------------------------------------
-            # B. Run Kernel (Predictor)
-            # -----------------------------------------------------------------
-            M_loss, M_gain, N_loss, N_gain = vectorized_2mom(
-                self.params, self.w, self.L, self.dMb_gain_kernel, self.dNb_gain_kernel,
-                self.indc, self.indb, self.dnum, 
-                self.Hlen, self.bins
-            )
-            
-            # -----------------------------------------------------------------
-            # C. Check Stability (Relative Thresholds)
-            # -----------------------------------------------------------------
-            # 1. Define "Significant" bins (ignore tiny numerical noise)
-            peak_M = np.max(M_current)
-            peak_N = np.max(N_current)
-            
-            # Threshold: 0.1% of peak, with safety floor
-            thresh_M = max(peak_M * 1e-3, 1e-20)
-            thresh_N = max(peak_N * 1e-3, 1e-20)
-            
-            sig_mask_M = M_current > thresh_M
-            sig_mask_N = N_current > thresh_N
-            
-            # 2. Calculate Max Safe Time
-            dt_step = dt - t_evolved # Default: Take the rest of the step
-            max_safe_dt = dt_step
-            
-            # Stability criterion: Don't deplete more than 90% of any significant bin
-            if np.any(sig_mask_M):
-                tau_M = (M_current[sig_mask_M] + 1e-30) / (M_loss[sig_mask_M] + 1e-30)
-                max_safe_dt = min(max_safe_dt, 0.9 * np.min(tau_M))
-
-            if np.any(sig_mask_N):
-                tau_N = (N_current[sig_mask_N] + 1e-30) / (N_loss[sig_mask_N] + 1e-30)
-                max_safe_dt = min(max_safe_dt, 0.9 * np.min(tau_N))
-                
-            # 3. Apply Limit
-            dt_step = min(dt_step, max_safe_dt)
-            
-            # Prevent infinite loops with minimum step size
-            min_dt_limit = dt / max_substeps
-            if dt_step < min_dt_limit and (dt - t_evolved) > min_dt_limit:
-                 dt_step = min_dt_limit
-
-            # -----------------------------------------------------------------
-            # D. Evolve State
-            # -----------------------------------------------------------------
-            dM_step = dt_step * (M_gain - M_loss)
-            dN_step = dt_step * (N_gain - N_loss)
-            
-            M_current   += dM_step
-            N_current   += dN_step
-            
-            M_net_total += dM_step
-            N_net_total += dN_step
-            
-            t_evolved   += dt_step
-            loop_count  += 1
-
-        # 3. Reset Global Object State
-        # We manually update self.Mbins to the final result minus the net change
-        # so the main loop can add M_net_total cleanly.
-        self.Mbins = M_current - M_net_total
-        self.Nbins = N_current - N_net_total
-        
-        # Restore parameters to the final state for the next timestep
-        self.update_2mom_subgrid() 
-        
-        return M_net_total, N_net_total
-    
-  
-    def interact_2mom_SS_Final_PC(self, dt):
-        """Main method for the Interaction class (Predictor-Corrector)."""
-        
-        # 1. Base Setup
-        self.get_dynamic_params()
-        
-        n_active = len(self.params['regions'])
-        if n_active > 10000:
-            nb.set_num_threads(nb.config.NUMBA_DEFAULT_NUM_THREADS)
-        else:
-            nb.set_num_threads(1)
-
-        # Save the original efficiencies to reset them later
-        orig_Eagg = self.params['Eagg'].copy()
-        orig_Ebr  = self.params['Ebr'].copy()
-
-        # =====================================================================
-        # PASS 1: The Predictor
-        # =====================================================================
-        M_loss, M_gain, N_loss, N_gain = vectorized_2mom(
-            self.params, self.w, self.L, self.dMb_gain_kernel, self.dNb_gain_kernel,
-            self.indc, self.indb, self.dnum, 
-            self.Hlen, self.bins
-        )
-
-        # =====================================================================
-        # Calculate Depletion for BOTH Mass and Number
-        # =====================================================================
-        # Prevent divide-by-zero using 1e-30
-        depletion_M = (M_loss * dt) / (self.Mbins + 1e-30)
-        depletion_N = (N_loss * dt) / (self.Nbins + 1e-30)
-        
-        # Find the worst-case depletion anywhere in the domain
-        max_dep_M = np.max(depletion_M)
-        max_dep_N = np.max(depletion_N)
-        max_depletion = max(max_dep_M, max_dep_N)
-
-        # =====================================================================
-        # THE DECISION
-        # =====================================================================
-        if max_depletion <= 0.95:
-            # FAST PATH: Perfect conservation, 1 kernel call.
-            M_net = dt * (M_gain - M_loss)
-            N_net = dt * (N_gain - N_loss)
-            return M_net, N_net
-
-        # =====================================================================
-        # PASS 2: The Corrector (Flux Limiter)
-        # =====================================================================
-        else:
-            # Calculate the safety fraction (alpha) for every bin in the 3D grid
-            alpha_grid_M = np.clip(1.0 / (depletion_M + 1e-16), 0.0, 1.0)
-            alpha_grid_N = np.clip(1.0 / (depletion_N + 1e-16), 0.0, 1.0)
-            
-            # The bin is limited by whichever variable (M or N) is depleting faster
-            alpha_grid = np.minimum(alpha_grid_M, alpha_grid_N)
-            
-            # Map safety fractions back to specific parent bins for each interaction
-            d1_act = self.params['d1_ind']
-            d2_act = self.params['d2_ind']
-            h_act  = self.params['hind']
-            i_act  = self.params['bi_ind']
-            j_act  = self.params['bj_ind']
-            
-            # Lookup the limit for parent 1 and parent 2
-            alpha_i = alpha_grid[d1_act, h_act, i_act]
-            alpha_j = alpha_grid[d2_act, h_act, j_act]
-            
-            # The collision is scaled back by the most heavily depleted parent
-            safe_scaling = np.minimum(alpha_i, alpha_j)
-            
-            # --- APPLY SCALING TO EFFICIENCIES ---
-            self.params['Eagg'] = orig_Eagg * safe_scaling
-            self.params['Ebr']  = orig_Ebr * safe_scaling
-            
-            # Run the kernel ONE MORE TIME with the scaled efficiencies
-            M_loss_s, M_gain_s, N_loss_s, N_gain_s = vectorized_2mom(
-                self.params, self.w, self.L, self.dMb_gain_kernel, self.dNb_gain_kernel,
-                self.indc, self.indb, self.dnum, 
-                self.Hlen, self.bins
-            )
-            
-            # Restore original efficiencies to keep your object state clean
-            self.params['Eagg'] = orig_Eagg
-            self.params['Ebr']  = orig_Ebr
-            
-            # SLOW PATH: 2 kernel calls, mathematically guaranteed positive.
-            M_net = dt * (M_gain_s - M_loss_s)
-            N_net = dt * (N_gain_s - N_loss_s)
-            
-            return M_net, N_net
-  
-    def interact_2mom_SS_Final(self, dt):
-        """Main method for the Interaction class."""
+    def interact_2mom(self, dt):
+        ''' 
+        Interaction kernel calculation for 2 moment scheme.
+        '''
         
         # Get dictionary of dynamic parameters as 
         # multidimensional tensors
@@ -2383,6 +1219,30 @@ class Interaction():
         return M_net, N_net
 
 
+
+    def interact_1mom(self, dt):
+        ''' 
+        Interaction kernel calculation for 1 moment scheme.
+        '''
+
+        self.get_dynamic_params_1mom()
+
+        n_active = len(self.params['active_rate'])
+
+        if n_active>10000:
+            nb.set_num_threads(nb.config.NUMBA_DEFAULT_NUM_THREADS)
+        else:
+            nb.set_num_threads(1)
+
+        M_loss, M_gain = vectorized_1mom(self.cki, self.params, self.dMi_loss, 
+                                         self.dMj_loss,self.dM_gain,
+                                         self.kmin_p,self.kmid_p,self.dMb_gain_kernel, 
+                                         self.indc, self.indb, 
+                                         self.dnum, self.Hlen, self.bins)
+    
+        return dt * (M_gain-M_loss)
+    
+    
 class BroadcastNode4D:
     """
     Wraps an array of distributions. Intercepts property requests, 
@@ -2417,36 +1277,6 @@ class BroadcastNode4D:
             return stacked[self.slicer]
         else:
             return stacked
-
-class BroadcastNode:
-    """
-    Wraps a distribution object. Automatically intercepts requests for 1D arrays 
-    (like .d, .vt, .mass) and broadcasts them into the target 3D axis.
-    """
-    def __init__(self, dist_obj, axis):
-        self._dist = dist_obj
-        
-        # Create slicing tuple based on target axis
-        # Axis 0 -> (slice(None), None, None)
-        # Axis 1 -> (None, slice(None), None)
-        # Axis 2 -> (None, None, slice(None))
-        idx = [None, None, None]
-        idx[axis] = slice(None)
-        self._slice = tuple(idx)
-        
-    def __getattr__(self, name):
-        # Dynamically fetch the requested attribute from the real grid object
-        val = getattr(self._dist, name)
-        
-        # If it's a 1D grid array, broadcast it to 3D instantly
-        if isinstance(val, np.ndarray) and val.ndim == 1:
-            return val[self._slice]
-        
-        # If it's a scalar (like .am or .bm), return it as-is
-        return val    
-
-
-
 
 
 
@@ -5917,3 +4747,1283 @@ class BroadcastNode:
     #         dump(array,path)
     #         self.mem_map_dict['inputs'][name] = path
     #         self._temp_files.append(path)
+    
+    
+    
+    # def setup_fragments_3D(self):
+        
+    #     if np.isin(self.kernel, ['Constant', 'Golovin', 'Product']):
+    #         targ_broad = self.kmin
+    #     else:
+    #         targ_broad = self.k_lim
+            
+    #     # ---------------------------------------------------------
+    #     # 1. SETUP 3D BROADCASTING NODES
+    #     # ---------------------------------------------------------
+    #     dist = self.dists[self.indb] # Your base grid object
+        
+    #     # Create the three nodes for the lambda function
+    #     child = BroadcastNode(dist, axis=0)
+    #     p_i   = BroadcastNode(dist, axis=1)
+    #     p_j   = BroadcastNode(dist, axis=2)
+        
+    #     IF_func = self.frag_dict['func']   
+    #     dist_name = self.frag_dict['dist']
+    #     frag_list = list(self.frag_dict)
+        
+    #     if ('d_start' in frag_list) and ('d_end' in frag_list):
+    #         d_start = self.frag_dict['d_start']
+    #         d_end   = self.frag_dict['d_end']
+    #     else:
+    #         d_start = None 
+    #         d_end = None
+              
+    #     # ---------------------------------------------------------
+    #     # 2. EVALUATE RAMP / SCALE FACTOR (2D: i, j pairs)
+    #     # ---------------------------------------------------------
+    #     # use max(i,j) for upper limit of truncated fragment distribution
+    #     d_cen = self.dists[self.indb].d[targ_broad] 
+    #     d_left = self.dists[self.indb].d1[targ_broad] 
+    #     d_right = self.dists[self.indb].d2[targ_broad]
+        
+    #     dD = d_right - d_left
+            
+    #     if (d_start is not None) and (d_end is not None):
+    #         narrow_mask = (d_end - d_start) < dD
+    #         midpoint = (d_start + d_end) / 2.
+            
+    #         min_ramp_width = 1.5 * dD
+    #         half_min_width = min_ramp_width / 2.
+            
+    #         d_start = np.where(narrow_mask, midpoint - half_min_width, d_start)
+    #         d_end   = np.where(narrow_mask, midpoint + half_min_width, d_end) 
+
+    #         E_left = self.calc_smootherstep(d_left, d_start, d_end)
+    #         E_cen = self.calc_smootherstep(d_cen, d_start, d_end)
+    #         E_right = self.calc_smootherstep(d_right, d_start, d_end)
+
+    #         scale_factor = (E_left + 4.*E_cen + E_right) / 6.
+    #     else:
+    #         scale_factor = np.ones_like(targ_broad, dtype=np.float64) 
+        
+    #     # ---------------------------------------------------------
+    #     # 3. EVALUATE CONDITIONAL DISTRIBUTION (3D: k, i, j)
+    #     # ---------------------------------------------------------
+    #     if dist_name == 'exp_mass':
+    #         Mb_gain_kernel = IF_func(1, child, p_i, p_j)
+    #         Nb_gain_kernel = IF_func(0, child, p_i, p_j)
+    #     else:
+    #         bm = dist.bm
+    #         am = dist.am
+    #         Mb_gain_kernel = am * IF_func(bm, child, p_i, p_j)
+    #         Nb_gain_kernel = IF_func(0., child, p_i, p_j)
+
+    #     # FIX: The lambda might return a 1D array (bins,) OR a degenerate 
+    #     # 3D array (bins, 1, 1) if it ignores the parent nodes. 
+    #     # We must align and force it to fully expand into (bins, bins, bins).
+        
+    #     if Mb_gain_kernel.ndim == 1:
+    #         Mb_gain_kernel = Mb_gain_kernel[:, None, None]
+    #         Nb_gain_kernel = Nb_gain_kernel[:, None, None]
+            
+    #     target_shape = (self.bins, self.bins, self.bins)
+        
+    #     # broadcast_to tiles the array dynamically, .copy() allocates it in memory
+    #     Mb_gain_kernel = np.broadcast_to(Mb_gain_kernel, target_shape).copy()
+    #     Nb_gain_kernel = np.broadcast_to(Nb_gain_kernel, target_shape).copy()
+    #     # ---------------------------------------------------------
+    #     # 4. KINEMATIC TRUNCATION
+    #     # ---------------------------------------------------------
+    #     # Clean up negative noise and invalid bounds
+    #     # Instead of np.tri, we create a 3D mask comparing child index (k) to max parent index (targ_broad)
+    #     k_idx = np.arange(self.bins)[:, None, None]
+    #     invalid_mask = k_idx > targ_broad[None, :, :]
+        
+    #     Mb_gain_kernel[invalid_mask] = 0.0 
+    #     Nb_gain_kernel[invalid_mask] = 0.0
+
+    #     Mb_gain_kernel[Mb_gain_kernel < 0.0] = 0.0
+    #     Nb_gain_kernel[Nb_gain_kernel < 0.0] = 0.0
+
+    #     # ---------------------------------------------------------
+    #     # PASS 1: Initial Normalization
+    #     # ---------------------------------------------------------
+    #     # Summing a 3D array over axis=0 yields a 2D array of (i,j) pairs
+    #     dMb_gain_tot = np.sum(Mb_gain_kernel, axis=0)
+        
+    #     valid_pairs = dMb_gain_tot > 1e-100 
+        
+    #     Mb_gain_kernel[:, valid_pairs] /= dMb_gain_tot[None, valid_pairs]
+    #     Nb_gain_kernel[:, valid_pairs] /= dMb_gain_tot[None, valid_pairs]
+        
+    #     # ---------------------------------------------------------
+    #     # PASS 2: Censor the Noise & Re-normalize
+    #     # ---------------------------------------------------------
+    #     fit_threshold = 1e-12
+        
+    #     censor_mask_M = Mb_gain_kernel < fit_threshold
+    #     censor_mask_N = Nb_gain_kernel < fit_threshold
+    #     censor_mask = censor_mask_M | censor_mask_N
+        
+    #     Mb_gain_kernel[censor_mask] = 0.0
+    #     Nb_gain_kernel[censor_mask] = 0.0
+        
+    #     dMb_gain_tot_2 = np.sum(Mb_gain_kernel, axis=0)
+    #     surviving_pairs = dMb_gain_tot_2 > 0.0
+        
+    #     Mb_gain_kernel[:, surviving_pairs] /= dMb_gain_tot_2[None, surviving_pairs]
+    #     Nb_gain_kernel[:, surviving_pairs] /= dMb_gain_tot_2[None, surviving_pairs]
+        
+    #     # Clean up the dead columns
+    #     Mb_gain_kernel[:, ~surviving_pairs] = 0.0
+    #     Nb_gain_kernel[:, ~surviving_pairs] = 0.0
+
+    #     # ---------------------------------------------------------
+    #     # 5. FINAL ASSIGNMENTS
+    #     # ---------------------------------------------------------
+    #     # Apply scale factor only to surviving pairs
+    #     scale_factor[~surviving_pairs] = 0.0
+        
+    #     # Broadcast and Assign
+    #     self.Ebr = scale_factor[None, None, :, :] * self.Ebr
+    #     self.scale_factor = scale_factor
+  
+    #     # Only consider breakup if the breakup distribution is complete.
+    #     # surviving_pairs is already a 2D boolean mask of viable i,j combinations
+    #     censor_Ebr = np.broadcast_to(~surviving_pairs, self.Ebr.shape)    
+    #     self.Ebr[censor_Ebr] = 0.
+          
+    #     # Assign directly (No need to index with targ_broad because it's already 3D)
+    #     self.dMb_gain_kernel = Mb_gain_kernel
+    #     self.dNb_gain_kernel = Nb_gain_kernel
+    
+    # def setup_fragments_NEW(self):
+        
+    #         if np.isin(self.kernel,['Constant','Golovin','Product']):
+    #             targ_broad = self.kmin
+    #         else:
+    #             targ_broad = self.k_lim
+                
+    #         IF_func = self.frag_dict['func']   
+    #         dist_name = self.frag_dict['dist']
+            
+    #         frag_list = list(self.frag_dict)
+            
+    #         if ('d_start' in frag_list) and ('d_end' in frag_list):
+    #             d_start = self.frag_dict['d_start']
+    #             d_end   = self.frag_dict['d_end']
+    #         else:
+    #             d_start = None 
+    #             d_end = None
+                  
+    #         # use max(i,j) for upper limit of truncated fragment distribution
+    #         d_cen = self.dists[self.indb].d[self.k_lim] 
+    #         d_left = self.dists[self.indb].d1[self.k_lim] 
+    #         d_right = self.dists[self.indb].d2[self.k_lim]
+            
+    #         dD = d_right-d_left
+                
+    #         # If d_start and d_end are provided then do a smooth ramp where
+    #         # breakup shuts off for sizes below d_start and is equal to Eb
+    #         # above d_end.
+    #         if (d_start is not None) and (d_end is not None):
+
+    #             # Create a boolean mask of where the ramp is currently too narrow
+    #             narrow_mask = (d_end - d_start) < dD
+
+    #             midpoint = (d_start+d_end)/2.
+                
+    #             min_ramp_width = 1.5 * dD
+                
+    #             half_min_width = min_ramp_width/2.
+                
+    #             d_start = np.where(narrow_mask, midpoint - half_min_width, d_start)
+    #             d_end   = np.where(narrow_mask, midpoint + half_min_width, d_end) 
+
+    #             E_left = self.calc_smootherstep(d_left,d_start,d_end)
+    #             E_cen = self.calc_smootherstep(d_cen,d_start,d_end)
+    #             E_right = self.calc_smootherstep(d_right,d_start,d_end)
+
+    #             # Simpson's rule for averaging out the smoothsteps.
+    #             scale_factor = (E_left+4.*E_cen+E_right)/6.
+                
+    #         else:
+
+    #             scale_factor = np.ones_like(self.kmin,dtype=np.float64) 
+            
+    #         # scale factor for modifying conditional fragment distribution
+    #         # if parent particles are not large enough. This is important
+    #         # because fragmentation of really small particles is not necessarily
+    #         # realistic and the adaptive stepping takes forever in these cases.
+        
+    #         if dist_name=='exp_mass':
+    #             Mb_gain_vec = IF_func(1,self.xi1,self.xi2)
+    #             Nb_gain_vec = IF_func(0,self.xi1,self.xi2)
+                
+    #         else:
+    #             d1 = self.dists[self.indb].d1
+    #             d2 = self.dists[self.indb].d2
+    
+    #             Mb_gain_vec = self.dists[self.indb].am*IF_func(self.dists[self.indb].bm,d1,d2)
+    #             Nb_gain_vec = IF_func(0.,d1,d2)
+                
+    #             #Mb_gain_vec = self.dists[self.indb].am*IF_func(self.dists[self.indb].bm,d_left,d_right)
+    #             #Nb_gain_vec = IF_func(0.,d_left,d_right)
+            
+    #         # NOTE: Try Mb_gain_vec = self.dists[self.indb].am*IF_func(self.dists[self.indb].bm,d_left,d_right)
+            
+    #         if Mb_gain_vec.ndim==1:
+    #             #print('Mb_gain_vec=',Mb_gain_vec.sum())
+    #             #raise Exception()
+    #             self.dMb_gain_frac  = np.tile(Mb_gain_vec[:,None],(1,self.bins))
+    #             self.dNb_gain_frac  = np.tile(Nb_gain_vec[:,None],(1,self.bins))
+            
+    #         # If needed, convert self.dMb_gain_frac (p(m)) into conditional distribution (p(m|x,y))
+
+    #         # 1. Clean up negative noise and invalid bounds
+    #         invalid_mask = np.tri(self.bins, self.bins, k=-1, dtype=bool)
+    #         self.dMb_gain_frac[invalid_mask] = 0.0 
+    #         self.dNb_gain_frac[invalid_mask] = 0.0
+
+    #         self.dMb_gain_frac[self.dMb_gain_frac < 0.0] = 0.0
+    #         self.dNb_gain_frac[self.dNb_gain_frac < 0.0] = 0.0
+
+    #         # ---------------------------------------------------------
+    #         # PASS 1: Initial Normalization
+    #         # ---------------------------------------------------------
+    #         dMb_gain_tot = np.sum(self.dMb_gain_frac, axis=0)
+            
+    #         # Avoid divide-by-zero for empty columns
+    #         valid_cols = dMb_gain_tot > 1e-100 
+            
+    #         self.dMb_gain_frac[:, valid_cols] /= dMb_gain_tot[None, valid_cols]
+    #         self.dNb_gain_frac[:, valid_cols] /= dMb_gain_tot[None, valid_cols]
+            
+    #         # ---------------------------------------------------------
+    #         # PASS 2: Censor the Noise & Re-normalize
+    #         # ---------------------------------------------------------
+    #         fit_threshold = 1e-12
+            
+    #         # Find bins that receive a physically meaningless fraction of the mass/number
+    #         censor_mask_M = self.dMb_gain_frac < fit_threshold
+    #         censor_mask_N = self.dNb_gain_frac < fit_threshold
+            
+    #         # Combine masks: If a bin is killed for M, it must be killed for N
+    #         censor_mask = censor_mask_M | censor_mask_N
+            
+    #         self.dMb_gain_frac[censor_mask] = 0.0
+    #         self.dNb_gain_frac[censor_mask] = 0.0
+            
+    #         # Re-sum the columns after trimming the tails
+    #         dMb_gain_tot_2 = np.sum(self.dMb_gain_frac, axis=0)
+            
+    #         # Find columns that survived the censoring
+    #         surviving_cols = dMb_gain_tot_2 > 0.0
+            
+    #         # Re-normalize so the trimmed distributions perfectly sum to 1.0 again
+    #         self.dMb_gain_frac[:, surviving_cols] /= dMb_gain_tot_2[None, surviving_cols]
+    #         self.dNb_gain_frac[:, surviving_cols] /= dMb_gain_tot_2[None, surviving_cols]
+            
+    #         # Clean up the dead columns
+    #         self.dMb_gain_frac[:, ~surviving_cols] = 0.0
+    #         self.dNb_gain_frac[:, ~surviving_cols] = 0.0
+
+    #         # ---------------------------------------------------------
+    #         # Finally: Apply scale factor only to surviving columns
+    #         # ---------------------------------------------------------
+    #         valid_matrix = surviving_cols[self.k_lim]
+    #         scale_factor[~valid_matrix] = 0.0
+            
+    #         # Broadcast and Assign
+    #         self.Ebr = scale_factor[None, None, :, :] * self.Ebr
+    #         self.scale_factor = scale_factor
+      
+    #         # # # Only consider breakup if the breakup distribution is complete.
+    #         censor_Ebr = np.broadcast_to((self.dMb_gain_frac.sum(axis=0)<0.5),self.Ebr.shape)    
+    #         self.Ebr[censor_Ebr] = 0.
+              
+    #         # # NOTE: Before, I was (stupidly?) using the actual limits from the SBE. 
+    #         # # HOWEVER, this isn't physically realistic when coalescence and breakup
+    #         # # are considered (and calculated) as mutually exclusive scenarios. 
+    #         # # This presents a big problem because realistic fragment distributions
+    #         # # like the lognormal distribution has a fat tail and thus the presence of breakup
+    #         # # can actually generates particles much larger than either of the colliding
+    #         # # particles! In order to compare results with Feingold et al. (1988), the
+    #         # # kmin limit is used. For realistic kernels, the maximum index of the interacting
+    #         # # species is used instead.
+    #         self.dMb_gain_kernel = self.dMb_gain_frac[:,targ_broad]
+    #         self.dNb_gain_kernel = self.dNb_gain_frac[:,targ_broad]
+            
+    #         #print('sum=',self.dMb_gain_frac)
+    #        # raise Exception()
+            
+
+    # def setup_fragments_ORIG(self):
+        
+    #         # scale factor for modifying conditional fragment distribution
+    #         # if parent particles are not large enough. This is important
+    #         # because fragmentation of really small particles is not necessarily
+    #         # realistic and the adaptive stepping takes forever in these cases.
+    #         scale_factor = np.ones_like(self.kmin,dtype=np.float64)    
+            
+    #         if (self.kernel=='Hydro') or (self.kernel=='Long'):
+            
+    #             # Largest possible size of fragments based on grid
+    #             if self.frag_dict['dist']=='exp':
+    #                 IF_func = lambda n,x1,x2: gam_int(n,0.,self.frag_dict['Dmf'],x1,x2)
+    #             elif self.frag_dict['dist']=='gamma':
+    #                 IF_func = lambda n,x1,x2: gam_int(n,self.frag_dict['muf'],self.frag_dict['Dmf'],x1,x2) 
+                     
+    #             elif self.frag_dict['dist']=='LGN':
+    #                 # TEMP
+    #                 Df_med = self.frag_dict['Df_med'] # mm
+    #                 muf = np.log(Df_med)
+    #                 Df_mode = self.frag_dict['Df_mode']
+    #                 sig2f = muf-np.log(Df_mode)
+    #                 IF_func = lambda n,x1,x2:LGN_int(n,muf,sig2f,x1,x2)
+                    
+    #                 perc_start = 0.5
+    #                 perc_end = 0.95
+                    
+    #                 d_start = np.exp(muf+np.sqrt(2*sig2f)*erfinv(2.*perc_start-1))
+    #                 d_end = np.exp(muf+np.sqrt(2*sig2f)*erfinv(2.*perc_end-1))
+
+    #                 d_cen = self.dists[self.indb].d[self.k_lim] 
+    #                 d_left = self.dists[self.indb].d1[self.k_lim] 
+    #                 d_right = self.dists[self.indb].d2[self.k_lim]
+                    
+    #                 dD = d_right-d_left
+    
+    #                 # Create a boolean mask of where the ramp is currently too narrow
+    #                 narrow_mask = (d_end - d_start) < dD
+
+    #                 midpoint = (d_start+d_end)/2.
+                    
+    #                 min_ramp_width = 1.5 * dD
+                    
+    #                 half_min_width = min_ramp_width/2.
+                    
+    #                 d_start = np.where(narrow_mask, midpoint - half_min_width, d_start)
+    #                 d_end   = np.where(narrow_mask, midpoint + half_min_width, d_end) 
+
+    #                 E_left = self.calc_smootherstep(d_left,d_start,d_end)
+    #                 E_cen = self.calc_smootherstep(d_cen,d_start,d_end)
+    #                 E_right = self.calc_smootherstep(d_right,d_start,d_end)
+
+    #                 # Simpson's rule for averaging out the smoothsteps.
+    #                 scale_factor = (E_left+4.*E_cen+E_right)/6.
+
+    #             elif (self.frag_dict['dist']=='Straub'):
+    #                 # CURRENTLY NOT IMPLEMENTED!
+                    
+    #                 IF_func = self.setup_Straub()
+
+    #             d1 = self.dists[self.indb].d1
+    #             d2 = self.dists[self.indb].d2
+
+    #             Mb_gain_vec = self.dists[self.indb].am*IF_func(self.dists[self.indb].bm,d1,d2)
+    #             Nb_gain_vec = IF_func(0.,d1,d2)
+                
+    #             #print('Mb_Gain_vec=',Mb_gain_vec.max())
+    #             #print('Nb_gain_vec=',Nb_gain_vec.shape)
+    #             #raise Exception()
+                
+    #             # The Straub et al. (2010) fragment distribution parameterization is already a conditional distribution.
+    #             # If one of the other distributions is chosen, assume that the conditional distribution is identical to 
+    #             # the marginal distribution along the breakup distribution axis (i.e., assumption of independence: p(m|x,y) = p(m)).
+    #             if (self.frag_dict['dist']!='Straub'):
+    #                 self.dMb_gain_frac  = np.tile(Mb_gain_vec[:,None],(1,self.bins))
+    #                 self.dNb_gain_frac  = np.tile(Nb_gain_vec[:,None],(1,self.bins))
+                
+    #         else: # If using Feingold test fragment distribution.
+    #             for xx in range(self.bins): # m1+m2 breakup mass
+    #                for kk in range(0,xx+1): # breakup gain bins
+    #                    self.dMb_gain_frac[kk,xx] = In_int(1.,self.frag_dict['lamf'],self.xi1[kk],self.xi2[kk])
+    #                    self.dNb_gain_frac[kk,xx] = In_int(0.,self.frag_dict['lamf'],self.xi1[kk],self.xi2[kk])   
+       
+    #         # If needed, convert self.dMb_gain_frac (p(m)) into conditional distribution (p(m|x,y))
+
+            
+    #         # 1. Clean up negative noise and invalid bounds
+    #         invalid_mask = np.tri(self.bins, self.bins, k=-1, dtype=bool)
+    #         self.dMb_gain_frac[invalid_mask] = 0.0 
+    #         self.dNb_gain_frac[invalid_mask] = 0.0
+
+    #         self.dMb_gain_frac[self.dMb_gain_frac < 0.0] = 0.0
+    #         self.dNb_gain_frac[self.dNb_gain_frac < 0.0] = 0.0
+
+    #         # ---------------------------------------------------------
+    #         # PASS 1: Initial Normalization
+    #         # ---------------------------------------------------------
+    #         dMb_gain_tot = np.sum(self.dMb_gain_frac, axis=0)
+            
+    #         # Avoid divide-by-zero for empty columns
+    #         valid_cols = dMb_gain_tot > 1e-100 
+            
+    #         self.dMb_gain_frac[:, valid_cols] /= dMb_gain_tot[None, valid_cols]
+    #         self.dNb_gain_frac[:, valid_cols] /= dMb_gain_tot[None, valid_cols]
+            
+    #         # ---------------------------------------------------------
+    #         # PASS 2: Censor the Noise & Re-normalize
+    #         # ---------------------------------------------------------
+    #         fit_threshold = 1e-12
+            
+    #         # Find bins that receive a physically meaningless fraction of the mass/number
+    #         censor_mask_M = self.dMb_gain_frac < fit_threshold
+    #         censor_mask_N = self.dNb_gain_frac < fit_threshold
+            
+    #         # Combine masks: If a bin is killed for M, it must be killed for N
+    #         censor_mask = censor_mask_M | censor_mask_N
+            
+    #         self.dMb_gain_frac[censor_mask] = 0.0
+    #         self.dNb_gain_frac[censor_mask] = 0.0
+            
+    #         # Re-sum the columns after trimming the tails
+    #         dMb_gain_tot_2 = np.sum(self.dMb_gain_frac, axis=0)
+            
+    #         # Find columns that survived the censoring
+    #         surviving_cols = dMb_gain_tot_2 > 0.0
+            
+    #         # Re-normalize so the trimmed distributions perfectly sum to 1.0 again
+    #         self.dMb_gain_frac[:, surviving_cols] /= dMb_gain_tot_2[None, surviving_cols]
+    #         self.dNb_gain_frac[:, surviving_cols] /= dMb_gain_tot_2[None, surviving_cols]
+            
+    #         # Clean up the dead columns
+    #         self.dMb_gain_frac[:, ~surviving_cols] = 0.0
+    #         self.dNb_gain_frac[:, ~surviving_cols] = 0.0
+
+    #         # ---------------------------------------------------------
+    #         # Finally: Apply scale factor only to surviving columns
+    #         # ---------------------------------------------------------
+    #         valid_matrix = surviving_cols[self.k_lim]
+    #         scale_factor[~valid_matrix] = 0.0
+            
+    #         # Broadcast and Assign
+    #         self.Ebr = scale_factor[None, None, :, :] * self.Ebr
+    #         self.scale_factor = scale_factor
+      
+    #         # # # Only consider breakup if the breakup distribution is complete.
+    #         # censor_Ebr = np.broadcast_to((self.dMb_gain_frac.sum(axis=0)<0.5),self.Ebr.shape)    
+    #         # self.Ebr[censor_Ebr] = 0.
+              
+    
+    #         # # NOTE: Before, I was (stupidly?) using the actual limits from the SBE. 
+    #         # # HOWEVER, this isn't physically realistic when coalescence and breakup
+    #         # # are considered (and calculated) as mutually exclusive scenarios. 
+    #         # # This presents a big problem because realistic fragment distributions
+    #         # # like the lognormal distribution has a fat tail and thus the presence of breakup
+    #         # # can actually generates particles much larger than either of the colliding
+    #         # # particles! In order to compare results with Feingold et al. (1988), the
+    #         # # kmin limit is used. For realistic kernels, the maximum index of the interacting
+    #         # # species is used instead.
+    #         # if (self.kernel=='Constant') | (self.kernel=='Golovin') | (self.kernel=='Product'):
+    #         #     self.dMb_gain_kernel = self.dMb_gain_frac[:,self.kmin]
+    #         #     self.dNb_gain_kernel = self.dNb_gain_frac[:,self.kmin]
+    #         # else:
+    #         #     self.dMb_gain_kernel = self.dMb_gain_frac[:,self.k_lim]
+    #         #     self.dNb_gain_kernel = self.dNb_gain_frac[:,self.k_lim]  
+    
+
+    # def setup_Straub(self):
+        
+    #     '''
+    #     Sets up Straub et al. (2010) Fragment distributions.
+    #     '''
+        
+    #     # Get Straub distribution parameters.
+    #     # NOTE: For simplicity, I'm assuming that users will only be using
+    #     # this distribution function for rain. Thus, we don't need to loop 
+    #     # through all distribution combinations (i.e., assume that all dists
+    #     # share the same size, fallspeed, etc. grids).
+        
+    #     dist1 = self.dists[0] 
+    #     dist2 = self.dists[0]
+
+    #     # Get Straub parameters. Note, for simplicity just use bin midpoints
+    #     # To get Straub's four fragment distribution parameters. Ideally, this 
+    #     # would be done in some clever way by taking into account all mass 
+    #     # combinations between the bin limits.
+    #     straub_dict = Straub_params(dist1.d,dist2.d,dist1.vt,dist2.vt)
+        
+    #     self.straub_dict = straub_dict
+        
+    #     # Distribution 1: A Lognormal distribution
+    #     frag_dist1 = lambda n,x1,x2:straub_dict['dist1']['N']*LGN_int(n,straub_dict['dist1']['muf'],
+    #                                           straub_dict['dist1']['sig2f'],
+    #                                           x1,x2)
+    #     # Distribution 2: A Gaussian distribution
+    #     frag_dist2 = lambda n,x1,x2: straub_dict['dist2']['N']*GAU_int(n,straub_dict['dist2']['mu'],
+    #                                            straub_dict['dist2']['sig2'],
+    #                                            x1,x2)
+    #     # Distribution 3: Another Gaussian distribution
+    #     frag_dist3 = lambda n,x1,x2: straub_dict['dist3']['N']*GAU_int(n,straub_dict['dist3']['mu'],
+    #                                            straub_dict['dist3']['sig2'],
+    #                                            x1,x2)
+        
+    #     # Find bin for residual drop
+    #     x_res = 0.001*(np.pi/6.)*straub_dict['dist4']['x_res'] # Get mass (assume rain for now)
+        
+    #     # Find bin that residual is supposed to go in
+    #     xres_ind = np.searchsorted(self.xi2,x_res,side='right')
+        
+    #     frag4_num = np.zeros_like(self.xi2)
+    #     frag4_mass = np.zeros_like(self.xi2)
+        
+    #     frag4_num[xres_ind] = 1.0 # Only one drop for remnant
+    #     frag4_mass[xres_ind] = x_res # Mass of the one particle assuming mass conservation overall for the binary interaction
+           
+    #     # Distribution 4: A Dirac delta spike in corresponding bin for either number or mass
+    #     frag_dist4 = lambda n,x1,x2: frag4_num if n==1 else frag4_mass
+            
+    #     #self.frag1 = lambda n,x1,x2: frag_dist1(n,x1,x2) 
+    #     #self.frag2 = lambda n,x1,x2: frag_dist2(n,x1,x2)
+        
+    #     return lambda n,x1,x2: frag_dist1(n,x1,x2)+frag_dist2(n,x1,x2)+frag_dist3(n,x1,x2)+frag_dist4(n,x1,x2)
+        
+
+## INTERACTION FUNCTIONS
+
+
+    # def interact_2mom_SS_Final_FC(self, dt):
+    #     """
+    #     Strictly Conservative Flux-Corrected 2-Moment Solver.
+    #     Scales Efficiencies (Eagg, Ebr) to enforce mass/number conservation limits.
+    #     """
+    #     # 1. Base Setup
+    #     self.get_dynamic_params()
+        
+    #     n_active = len(self.params['regions'])
+    #     if n_active > 10000:
+    #         nb.set_num_threads(nb.config.NUMBA_DEFAULT_NUM_THREADS)
+    #     else:
+    #         nb.set_num_threads(1)
+
+    #     # Save original efficiencies (The "Control Knobs")
+    #     # We will modify these in-place for the second pass
+    #     orig_Eagg = self.params['Eagg'].copy()
+    #     orig_Ebr  = self.params['Ebr'].copy()
+
+    #     # -----------------------------------------------------------------
+    #     # STEP 1: Calculate "Wishlist" Fluxes (Unlimited)
+    #     # -----------------------------------------------------------------
+    #     # Run the kernel with full efficiency (alpha=1.0)
+    #     M_loss, M_gain, N_loss, N_gain = vectorized_2mom(
+    #         self.params, self.w, self.L, self.dMb_gain_kernel, self.dNb_gain_kernel,
+    #         self.indc, self.indb, self.dnum, 
+    #         self.Hlen, self.bins
+    #     )
+
+    #     # -----------------------------------------------------------------
+    #     # STEP 2: Calculate Bin-Level Safety Factors (Alphas)
+    #     # -----------------------------------------------------------------
+    #     # Determine the max permissible depletion for every bin in the grid.
+        
+    #     # Define available budget (e.g., 99.9% of current mass)
+    #     M_avail = 0.999 * self.Mbins
+    #     N_avail = 0.999 * self.Nbins
+        
+    #     # Desired removal (Flux * dt)
+    #     M_req = M_loss * dt
+    #     N_req = N_loss * dt
+        
+    #     # Initialize alpha grid (default = 1.0 = Safe)
+    #     # Shape matches Mbins (e.g., [Hlen, bins])
+    #     alpha_M = np.ones_like(self.Mbins)
+    #     alpha_N = np.ones_like(self.Nbins)
+        
+    #     # Calculate limit where requested flux is non-zero
+    #     # alpha = Available / Requested
+    #     mask_M = M_req > 1e-30
+    #     alpha_M[mask_M] = np.minimum(1.0, M_avail[mask_M] / M_req[mask_M])
+        
+    #     mask_N = N_req > 1e-30
+    #     alpha_N[mask_N] = np.minimum(1.0, N_avail[mask_N] / N_req[mask_N])
+        
+    #     # The limit for a bin is the stricter of Mass or Number constraints
+    #     # This keeps Mean Diameter (M/N) consistent.
+    #     bin_alpha = np.minimum(alpha_M, alpha_N)
+
+    #     # -----------------------------------------------------------------
+    #     # STEP 3: Map Alphas to Interactions
+    #     # -----------------------------------------------------------------
+    #     # A collision between bin 'i' and bin 'j' is limited by the 
+    #     # weakest link (the bin that is emptying out fastest).
+        
+    #     # Retrieve the index mapping from params
+    #     d1_act = self.params['d1_ind'] # Parent 1 domain index
+    #     d2_act = self.params['d2_ind'] # Parent 2 domain index
+    #     h_act  = self.params['hind']   # Height/Spatial index
+    #     i_act  = self.params['bi_ind'] # Parent 1 bin index
+    #     j_act  = self.params['bj_ind'] # Parent 2 bin index
+        
+    #     # Look up the safety factor for parent i and parent j
+    #     # bin_alpha is (dnum, Hlen, bins) or similar, depending on your grid
+    #     # Assuming bin_alpha matches the shape of Mbins, we broadcast lookup:
+    #     alpha_i = bin_alpha[d1_act, h_act, i_act]
+    #     alpha_j = bin_alpha[d2_act, h_act, j_act]
+        
+    #     # The Global Safety Factor for each interaction 'k'
+    #     # Shape: (n_active,) - one scalar per interaction
+    #     interaction_alpha = np.minimum(alpha_i, alpha_j)
+
+    #     # -----------------------------------------------------------------
+    #     # STEP 4: Re-Run Kernel with Scaled Efficiencies
+    #     # -----------------------------------------------------------------
+    #     # We assume the kernel is linear with respect to Efficiency.
+    #     # Loss = Integral * E * ...
+    #     # Gain = Integral * E * ...
+    #     # Scaling E by alpha scales Loss and Gain exactly equally.
+        
+    #     # Apply scaling to the efficiencies in the params dict
+    #     self.params['Eagg'] *= interaction_alpha
+    #     self.params['Ebr']  *= interaction_alpha
+        
+    #     # Run the physics one last time (The "Safe" Pass)
+    #     M_loss_final, M_gain_final, N_loss_final, N_gain_final = vectorized_2mom(
+    #         self.params, self.w, self.L, self.dMb_gain_kernel, self.dNb_gain_kernel,
+    #         self.indc, self.indb, self.dnum, 
+    #         self.Hlen, self.bins
+    #     )
+        
+    #     # Restore original efficiencies to clean up state
+    #     self.params['Eagg'][:] = orig_Eagg
+    #     self.params['Ebr'][:]  = orig_Ebr
+
+    #     # -----------------------------------------------------------------
+    #     # STEP 5: Final Update
+    #     # -----------------------------------------------------------------
+    #     M_net = dt * (M_gain_final - M_loss_final)
+    #     N_net = dt * (N_gain_final - N_loss_final)
+        
+    #     return M_net, N_net
+    
+    
+    # def interact_2mom_SS_Final_adaptive(self, dt):
+    #     """
+    #     Adaptive Sub-stepping for 2-Moment Scheme.
+    #     Optimized to behave like Single-Step Euler unless stability is threatened.
+    #     """
+        
+    #     # 1. Local Working Copies (Don't touch self.Mbins yet)
+    #     M_current = self.Mbins.copy()
+    #     N_current = self.Nbins.copy()
+        
+    #     self.get_dynamic_params()
+        
+    #     t_evolved = 0.0
+        
+    #     # Accumulators for final net change
+    #     M_net_total = np.zeros_like(M_current)
+    #     N_net_total = np.zeros_like(N_current)
+        
+    #     max_substeps = 20 
+    #     loop_count = 0
+        
+    #     while t_evolved < dt and loop_count < max_substeps:
+            
+    #         # -----------------------------------------------------------------
+    #         # A. Physics Update (Only on 2nd+ step)
+    #         # -----------------------------------------------------------------
+    #         # If loop_count == 0, we use the params passed into the function.
+    #         # We only update if the mass has actually changed.
+    #         if loop_count > 0:
+    #             self.Mbins = M_current
+    #             self.Nbins = N_current
+    #             self.update_2mom_subgrid() 
+    #             self.get_dynamic_params()
+                
+    #             # Check thread count again just in case regions changed
+    #             if len(self.params['regions']) > 10000:
+    #                 nb.set_num_threads(nb.config.NUMBA_DEFAULT_NUM_THREADS)
+    #             else:
+    #                 nb.set_num_threads(1)
+            
+    #         # -----------------------------------------------------------------
+    #         # B. Run Kernel (Predictor)
+    #         # -----------------------------------------------------------------
+    #         M_loss, M_gain, N_loss, N_gain = vectorized_2mom(
+    #             self.params, self.w, self.L, self.dMb_gain_kernel, self.dNb_gain_kernel,
+    #             self.indc, self.indb, self.dnum, 
+    #             self.Hlen, self.bins
+    #         )
+            
+    #         # -----------------------------------------------------------------
+    #         # C. Check Stability (Relative Thresholds)
+    #         # -----------------------------------------------------------------
+    #         # 1. Define "Significant" bins (ignore tiny numerical noise)
+    #         peak_M = np.max(M_current)
+    #         peak_N = np.max(N_current)
+            
+    #         # Threshold: 0.1% of peak, with safety floor
+    #         thresh_M = max(peak_M * 1e-3, 1e-20)
+    #         thresh_N = max(peak_N * 1e-3, 1e-20)
+            
+    #         sig_mask_M = M_current > thresh_M
+    #         sig_mask_N = N_current > thresh_N
+            
+    #         # 2. Calculate Max Safe Time
+    #         dt_step = dt - t_evolved # Default: Take the rest of the step
+    #         max_safe_dt = dt_step
+            
+    #         # Stability criterion: Don't deplete more than 90% of any significant bin
+    #         if np.any(sig_mask_M):
+    #             tau_M = (M_current[sig_mask_M] + 1e-30) / (M_loss[sig_mask_M] + 1e-30)
+    #             max_safe_dt = min(max_safe_dt, 0.9 * np.min(tau_M))
+
+    #         if np.any(sig_mask_N):
+    #             tau_N = (N_current[sig_mask_N] + 1e-30) / (N_loss[sig_mask_N] + 1e-30)
+    #             max_safe_dt = min(max_safe_dt, 0.9 * np.min(tau_N))
+                
+    #         # 3. Apply Limit
+    #         dt_step = min(dt_step, max_safe_dt)
+            
+    #         # Prevent infinite loops with minimum step size
+    #         min_dt_limit = dt / max_substeps
+    #         if dt_step < min_dt_limit and (dt - t_evolved) > min_dt_limit:
+    #              dt_step = min_dt_limit
+
+    #         # -----------------------------------------------------------------
+    #         # D. Evolve State
+    #         # -----------------------------------------------------------------
+    #         dM_step = dt_step * (M_gain - M_loss)
+    #         dN_step = dt_step * (N_gain - N_loss)
+            
+    #         M_current   += dM_step
+    #         N_current   += dN_step
+            
+    #         M_net_total += dM_step
+    #         N_net_total += dN_step
+            
+    #         t_evolved   += dt_step
+    #         loop_count  += 1
+
+    #     # 3. Reset Global Object State
+    #     # We manually update self.Mbins to the final result minus the net change
+    #     # so the main loop can add M_net_total cleanly.
+    #     self.Mbins = M_current - M_net_total
+    #     self.Nbins = N_current - N_net_total
+        
+    #     # Restore parameters to the final state for the next timestep
+    #     self.update_2mom_subgrid() 
+        
+    #     return M_net_total, N_net_total
+    
+  
+    # def interact_2mom_SS_Final_PC(self, dt):
+    #     """Main method for the Interaction class (Predictor-Corrector)."""
+        
+    #     # 1. Base Setup
+    #     self.get_dynamic_params()
+        
+    #     n_active = len(self.params['regions'])
+    #     if n_active > 10000:
+    #         nb.set_num_threads(nb.config.NUMBA_DEFAULT_NUM_THREADS)
+    #     else:
+    #         nb.set_num_threads(1)
+
+    #     # Save the original efficiencies to reset them later
+    #     orig_Eagg = self.params['Eagg'].copy()
+    #     orig_Ebr  = self.params['Ebr'].copy()
+
+    #     # =====================================================================
+    #     # PASS 1: The Predictor
+    #     # =====================================================================
+    #     M_loss, M_gain, N_loss, N_gain = vectorized_2mom(
+    #         self.params, self.w, self.L, self.dMb_gain_kernel, self.dNb_gain_kernel,
+    #         self.indc, self.indb, self.dnum, 
+    #         self.Hlen, self.bins
+    #     )
+
+    #     # =====================================================================
+    #     # Calculate Depletion for BOTH Mass and Number
+    #     # =====================================================================
+    #     # Prevent divide-by-zero using 1e-30
+    #     depletion_M = (M_loss * dt) / (self.Mbins + 1e-30)
+    #     depletion_N = (N_loss * dt) / (self.Nbins + 1e-30)
+        
+    #     # Find the worst-case depletion anywhere in the domain
+    #     max_dep_M = np.max(depletion_M)
+    #     max_dep_N = np.max(depletion_N)
+    #     max_depletion = max(max_dep_M, max_dep_N)
+
+    #     # =====================================================================
+    #     # THE DECISION
+    #     # =====================================================================
+    #     if max_depletion <= 0.95:
+    #         # FAST PATH: Perfect conservation, 1 kernel call.
+    #         M_net = dt * (M_gain - M_loss)
+    #         N_net = dt * (N_gain - N_loss)
+    #         return M_net, N_net
+
+    #     # =====================================================================
+    #     # PASS 2: The Corrector (Flux Limiter)
+    #     # =====================================================================
+    #     else:
+    #         # Calculate the safety fraction (alpha) for every bin in the 3D grid
+    #         alpha_grid_M = np.clip(1.0 / (depletion_M + 1e-16), 0.0, 1.0)
+    #         alpha_grid_N = np.clip(1.0 / (depletion_N + 1e-16), 0.0, 1.0)
+            
+    #         # The bin is limited by whichever variable (M or N) is depleting faster
+    #         alpha_grid = np.minimum(alpha_grid_M, alpha_grid_N)
+            
+    #         # Map safety fractions back to specific parent bins for each interaction
+    #         d1_act = self.params['d1_ind']
+    #         d2_act = self.params['d2_ind']
+    #         h_act  = self.params['hind']
+    #         i_act  = self.params['bi_ind']
+    #         j_act  = self.params['bj_ind']
+            
+    #         # Lookup the limit for parent 1 and parent 2
+    #         alpha_i = alpha_grid[d1_act, h_act, i_act]
+    #         alpha_j = alpha_grid[d2_act, h_act, j_act]
+            
+    #         # The collision is scaled back by the most heavily depleted parent
+    #         safe_scaling = np.minimum(alpha_i, alpha_j)
+            
+    #         # --- APPLY SCALING TO EFFICIENCIES ---
+    #         self.params['Eagg'] = orig_Eagg * safe_scaling
+    #         self.params['Ebr']  = orig_Ebr * safe_scaling
+            
+    #         # Run the kernel ONE MORE TIME with the scaled efficiencies
+    #         M_loss_s, M_gain_s, N_loss_s, N_gain_s = vectorized_2mom(
+    #             self.params, self.w, self.L, self.dMb_gain_kernel, self.dNb_gain_kernel,
+    #             self.indc, self.indb, self.dnum, 
+    #             self.Hlen, self.bins
+    #         )
+            
+    #         # Restore original efficiencies to keep your object state clean
+    #         self.params['Eagg'] = orig_Eagg
+    #         self.params['Ebr']  = orig_Ebr
+            
+    #         # SLOW PATH: 2 kernel calls, mathematically guaranteed positive.
+    #         M_net = dt * (M_gain_s - M_loss_s)
+    #         N_net = dt * (N_gain_s - N_loss_s)
+            
+    #         return M_net, N_net
+  
+
+    
+    
+    
+# # NEED TO DECIDE WHICH solver to use
+#     def interact_1mom_SS_Final_adaptive2(self, dt):
+#         """
+#         Frozen-Rate Adaptive Solver.
+#         Fast (1 kernel call) + Smooth (Analytical Integration).
+#         """
+#         # 1. Base Setup
+#         self.get_dynamic_params_1mom()
+        
+#         n_active = len(self.params['active_rate'])
+#         if n_active > 10000:
+#             nb.set_num_threads(nb.config.NUMBA_DEFAULT_NUM_THREADS)
+#         else:
+#             nb.set_num_threads(1)
+
+#         # 2. Run Kernel ONCE (The Expensive Part)
+#         # We assume the interaction RATES (collisions per second) are constant 
+#         # over the timestep, even if the MASS changes.
+#         M_loss, M_gain = vectorized_1mom(
+#             self.cki, self.params, self.dMi_loss, 
+#             self.dMj_loss, self.dM_gain,
+#             self.kmin_p, self.kmid_p, self.dMb_gain_kernel, 
+#             self.indc, self.indb, 
+#             self.dnum, self.Hlen, self.bins
+#         )
+
+#         # 3. Analytical Sub-stepping (The Fast Part)
+#         # We evolve the distribution using the fixed rates calculated above.
+#         M_current = self.Mbins.copy()
+#         M_start = M_current.copy()
+        
+#         t_evolved = 0.0
+#         remaining_dt = dt
+        
+#         # Define "Significant" mass threshold to avoid dividing by zero/noise
+#         peak_mass = np.max(M_current)
+#         threshold = max(peak_mass * 1e-4, 1e-20)
+        
+#         while t_evolved < dt:
+            
+#             # A. Calculate max safe step for this sub-interval
+#             # We want to ensure no bin loses > 50% of its current mass in one sub-step
+#             # to maintain accuracy of the linear approximation.
+            
+#             sig_mask = M_current > threshold
+            
+#             # Default step is the rest of the time
+#             dt_sub = remaining_dt
+            
+#             if np.any(sig_mask):
+#                 # Rate = Loss_Flux / Current_Mass
+#                 # Note: M_loss from kernel is "Mass/sec" based on M_start.
+#                 # We scale it by (M_current / M_start) to approximate 1st order decay.
+                
+#                 # Effective Loss Rate (1/s)
+#                 # decay_rate = (M_loss / M_start) 
+#                 # This stays constant if we assume frozen kinetics!
+                
+#                 denom = M_start[sig_mask] + 1e-30
+#                 decay_rates = M_loss[sig_mask] / denom
+                
+#                 max_rate = np.max(decay_rates)
+                
+#                 # If rate is 0.1 s^-1, max step should be ~5 seconds (0.5 / 0.1)
+#                 if max_rate > 0:
+#                     safe_dt = 0.5 / max_rate 
+#                     dt_sub = min(dt_sub, safe_dt)
+            
+#             # Prevent tiny steps
+#             dt_sub = max(dt_sub, 1e-6)
+#             if t_evolved + dt_sub > dt:
+#                 dt_sub = dt - t_evolved
+                
+#             # B. Apply Updates
+#             # We scale the initial rates by the fraction of mass remaining
+#             # Gain_t = Gain_0 * (M_source / M_source_0) ... hard to track sources.
+#             # Simplified Hybrid: Just apply explicit Euler on small steps.
+            
+#             # Since we froze the rates relative to M_start, we just apply:
+#             # dM = (Gain - Loss) * (dt_sub) * (Correction?)
+#             # The simplest valid approach for "Frozen Rate" is pure Euler on small steps.
+            
+#             #dM = dt_sub * (M_gain - M_loss)
+            
+#             # BUT! We must limit dM to not cross zero.
+#             # Since we calculated safe_dt above, this should be naturally safe.
+            
+#             # Refined Approach: Scaling Loss by Depletion
+#             # Loss_now ~= Loss_0 * (M_current / M_start)
+#             # Gain_now ~= Gain_0 * (Total_Mass_Current / Total_Mass_Start) ?? 
+#             # Gains are harder because they come from other bins. 
+#             # Assumption: Global Mass is conserved, so Gains are roughly constant? 
+#             # actually Gains drop as sources deplete.
+            
+#             # Let's try the Linear Scaling approximation:
+#            # scaling_factor = M_current / (M_start + 1e-30)
+            
+#             # Apply scaling only to LOSS. Keep GAIN constant (conservative estimate)
+#             # or scale Gain by a global depletion factor?
+#             # Let's stick to the simplest conservative method:
+            
+#             # Limit loss to available mass
+#            # actual_loss = M_loss * dt_sub
+#             # If actual_loss > M_current, we clamp it.
+#             # But since we chose dt_sub to be safe, this rarely happens.
+            
+#             # To ensure strict conservation, we just apply the net flux:
+#             M_current += dt_sub * (M_gain - M_loss)
+            
+#             # C. Advance
+#             t_evolved += dt_sub
+#             remaining_dt -= dt_sub
+            
+#             # Safety break for infinite loops
+#             if dt_sub < 1e-9:
+#                 break
+        
+#         # Final cleanup for tiny negative zeros
+#         M_current[M_current < 0] = 0.0
+        
+#         return M_current - M_start
+
+#     def interact_1mom_SS_Final_PC(self, dt):
+        
+#         # 1. Base Setup
+#         self.get_dynamic_params_1mom()
+        
+#         n_active = len(self.params['active_rate'])
+#         if n_active > 10000:
+#             nb.set_num_threads(nb.config.NUMBA_DEFAULT_NUM_THREADS)
+#         else:
+#             nb.set_num_threads(1)
+
+#         # Save the original unscaled rates
+#         original_rate = self.params['active_rate'].copy()
+
+#         # =====================================================================
+#         # PASS 1: The Predictor
+#         # =====================================================================
+#         M_loss, M_gain = vectorized_1mom(self.cki, self.params, self.dMi_loss, 
+#                                          self.dMj_loss, self.dM_gain,
+#                                          self.kmin_p, self.kmid_p, self.dMb_gain_kernel, 
+#                                          self.indc, self.indb, 
+#                                          self.dnum, self.Hlen, self.bins)
+        
+#         # NOTE: This works for this coalescence-only case!
+#         #return dt * (M_gain - M_loss)
+
+#         # Calculate how much mass we are TRYING to remove relative to what we HAVE
+#         Mbins = self.Mbins
+        
+#         # Depletion ratio = (Requested Loss) / (Available Mass)
+#         # Avoid divide-by-zero using 1e-30
+#         depletion = (M_loss * dt) / (Mbins + 1e-80)
+#         max_depletion = np.max(depletion)
+
+#         # =====================================================================
+#         # THE DECISION
+#         # =====================================================================
+#         # If no bin loses more than 95% of its mass, Explicit Euler is completely safe!
+#         if max_depletion <= 0.95:
+#             # FAST PATH: Perfect conservation, 1 kernel call.
+#             return dt * (M_gain - M_loss)
+
+#         # =====================================================================
+#         # PASS 2: The Corrector (Flux Limiter)
+#         # =====================================================================
+#         else:
+#             # We need to slow down the physics to prevent negative mass.
+#             # Calculate the safety fraction for every bin in the 3D grid.
+#             # If depletion is 2.0 (200%), alpha becomes 0.5 (run at half speed).
+#             alpha_grid = np.clip(1.0 / (depletion + 1e-16), 0.0, 1.0)
+            
+#             # Map the safety fractions back to the 1D interaction arrays
+#             h_act = self.params['active_h']
+#             s1_act = self.params['active_s1']
+#             s2_act = self.params['active_s2']
+#             i_act = self.params['active_i']
+#             j_act = self.params['active_j']
+            
+#             # Get the safety limit for the two parent bins of every collision
+#             alpha_i = alpha_grid[s1_act, h_act, i_act]
+#             alpha_j = alpha_grid[s2_act, h_act, j_act]
+            
+#             # The collision rate is limited by the most heavily depleted parent
+#             safe_scaling = np.minimum(alpha_i, alpha_j)
+            
+#             # Apply the limit to the collision rates
+#             self.params['active_rate'] = original_rate * safe_scaling
+            
+#             # Run the kernel ONE MORE TIME with the safe rates
+#             M_loss_safe, M_gain_safe = vectorized_1mom(
+#                                          self.cki, self.params, self.dMi_loss, 
+#                                          self.dMj_loss, self.dM_gain,
+#                                          self.kmin_p, self.kmid_p, self.dMb_gain_kernel, 
+#                                          self.indc, self.indb, 
+#                                          self.dnum, self.Hlen, self.bins)
+            
+#             # Restore the original rates to keep the object state clean
+#             self.params['active_rate'] = original_rate
+            
+#             # SLOW PATH: Perfectly conservative, guaranteed positive, 2 kernel calls.
+#             return dt * (M_gain_safe - M_loss_safe)
+            
+
+    # def interact_1mom_SS_Final_FC(self, dt):
+    #     """
+    #     Flux-Corrected Solver.
+    #     Calculates max permissible loss per bin, scales fluxes, 
+    #     and applies them. Strictly conservative and stable.
+    #     """
+    #     self.get_dynamic_params_1mom()
+        
+    #     if len(self.params['active_rate']) > 10000:
+    #         nb.set_num_threads(nb.config.NUMBA_DEFAULT_NUM_THREADS)
+    #     else:
+    #         nb.set_num_threads(1)
+
+    #     # 1. Calculate Potential Fluxes
+    #     # M_loss is the mass the physics WANTS to remove.
+    #     M_loss, M_gain = vectorized_1mom(
+    #         self.cki, self.params, self.dMi_loss, 
+    #         self.dMj_loss, self.dM_gain,
+    #         self.kmin_p, self.kmid_p, self.dMb_gain_kernel, 
+    #         self.indc, self.indb, 
+    #         self.dnum, self.Hlen, self.bins
+    #     )
+
+    #     # 2. Calculate the Limiters (The "Reality Check")
+    #     # How much mass can actually leave bin 'k' in time 'dt'?
+    #     # We limit removal to 99% of current mass to stay positive.
+    #     max_loss = 0.99 * self.Mbins
+        
+    #     requested_loss = M_loss * dt
+        
+    #     # Alpha is the fraction of the requested flux allowed to leave bin 'k'
+    #     # alpha = 1.0 (Safe)
+    #     # alpha < 1.0 (Limited)
+    #     alpha = np.ones_like(self.Mbins)
+        
+    #     mask = requested_loss > 1e-30 # Avoid div/0
+    #     alpha[mask] = np.minimum(1.0, max_loss[mask] / requested_loss[mask])
+        
+    #     # 3. Apply the Limiters to the Fluxes
+    #     # This is the tricky part. 
+    #     # Loss[k] is scaled by alpha[k].
+    #     # Gain[k] comes from OTHER bins (i, j). It must be scaled by alpha[i] and alpha[j].
+        
+    #     # We need to map 'alpha' back to the collisions.
+    #     # Since we can't easily invert the gain kernel, we use a 
+    #     # "Global Weighted Limiter" or re-run the kernel with scaled rates.
+        
+    #     # RE-RUN METHOD (Safest and Correct):
+    #     # We scale the 'active_rate' by min(alpha_i, alpha_j).
+        
+    #     # Map alpha to the collision pairs
+    #     #h_act = self.params['active_h']
+    #     #s1_act = self.params['active_s1']
+    #     #s2_act = self.params['active_s2']
+    #     i_act = self.params['active_i']
+    #     j_act = self.params['active_j']
+        
+    #     alpha_i = alpha[i_act] # (Or correct mapping based on s1_act/h_act if multidim)
+    #     alpha_j = alpha[j_act]
+        
+    #     # The limiter for collision (i,j) is the stricter of the two source limits
+    #     pair_alpha = np.minimum(alpha_i, alpha_j)
+        
+    #     # 4. Final Calculation
+    #     # Instead of calling the full kernel again, we can just compute the result directly?
+    #     # No, because M_gain aggregates many pairs. 
+    #     # We must re-run the kernel ONE time with the scaled rates.
+        
+    #     # This is your "Pass 2" from before, but with a critical difference:
+    #     # We computed alpha based on TOTAL loss, not just individual rates.
+        
+    #     orig_rates = self.params['active_rate'].copy()
+    #     self.params['active_rate'] *= pair_alpha
+        
+    #     M_loss_final, M_gain_final = vectorized_1mom(
+    #         self.cki, self.params, self.dMi_loss, 
+    #         self.dMj_loss, self.dM_gain,
+    #         self.kmin_p, self.kmid_p, self.dMb_gain_kernel, 
+    #         self.indc, self.indb, 
+    #         self.dnum, self.Hlen, self.bins
+    #     )
+        
+    #     self.params['active_rate'] = orig_rates
+        
+    #     return dt * (M_gain_final - M_loss_final)
+
+
+    # def interact_1mom_SS_Final_adaptive(self, dt):
+    #     """
+    #     Adaptive Sub-stepping for 1-Moment Scheme.
+    #     Optimized to behave like Single-Step Euler unless stability is threatened.
+    #     """
+        
+    #     # 1. Local Working Copy (Don't touch self.Mbins yet)
+    #     M_current = self.Mbins.copy()
+        
+    #     # 1. Base Setup
+    #     self.get_dynamic_params_1mom()
+        
+    #     t_evolved = 0.0
+        
+    #     # Accumulator for final net change
+    #     M_net_total = np.zeros_like(M_current)
+        
+    #     max_substeps = 20 
+    #     loop_count = 0
+        
+    #     while t_evolved < dt and loop_count < max_substeps:
+            
+    #         # -----------------------------------------------------------------
+    #         # A. Physics Update (Only on 2nd+ step)
+    #         # -----------------------------------------------------------------
+    #         # If loop_count == 0, we use the params passed into the function.
+    #         # We only update if the mass has actually changed.
+    #         if loop_count > 0:
+    #             self.Mbins = M_current
+    #             self.update_1mom_subgrid()
+    #             self.get_dynamic_params_1mom()
+                
+    #             if len(self.params['active_rate']) > 10000:
+    #                 nb.set_num_threads(nb.config.NUMBA_DEFAULT_NUM_THREADS)
+    #             else:
+    #                 nb.set_num_threads(1)
+            
+    #         # -----------------------------------------------------------------
+    #         # B. Run Kernel (Predictor)
+    #         # -----------------------------------------------------------------
+    #         M_loss, M_gain = vectorized_1mom(self.cki, self.params, self.dMi_loss, 
+    #                                      self.dMj_loss, self.dM_gain,
+    #                                      self.kmin_p, self.kmid_p, self.dMb_gain_kernel, 
+    #                                      self.indc, self.indb, 
+    #                                      self.dnum, self.Hlen, self.bins)
+    #         # -----------------------------------------------------------------
+    #         # C. Check Stability (Relative Thresholds)
+    #         # -----------------------------------------------------------------
+    #         peak_M = np.max(M_current)
+            
+    #         # Threshold: 0.1% of peak, with safety floor
+    #         thresh_M = max(peak_M * 1e-3, 1e-20)
+            
+    #         sig_mask_M = M_current > thresh_M
+            
+    #         # Default: Take the rest of the step
+    #         dt_step = dt - t_evolved 
+    #         max_safe_dt = dt_step
+            
+    #         # Stability criterion: Don't deplete more than 90% of any significant bin
+    #         if np.any(sig_mask_M):
+    #             # Calculate turnover time tau = Mass / Loss
+    #             # Add epsilon to Loss to prevent divide-by-zero
+    #             loss_rates = M_loss[sig_mask_M] + 1e-30
+    #             masses     = M_current[sig_mask_M] + 1e-30
+                
+    #             tau_M = masses / loss_rates
+                
+    #             # We limit the step to 90% of the fastest turnover time
+    #             max_safe_dt = min(max_safe_dt, 0.9 * np.min(tau_M))
+
+    #         # Apply Limit
+    #         dt_step = min(dt_step, max_safe_dt)
+            
+    #         # Prevent infinitesimal steps (infinite loop guard)
+    #         min_dt_limit = dt / max_substeps
+    #         if dt_step < min_dt_limit and (dt - t_evolved) > min_dt_limit:
+    #              dt_step = min_dt_limit
+
+    #         # -----------------------------------------------------------------
+    #         # D. Evolve State
+    #         # -----------------------------------------------------------------
+    #         dM_step = dt_step * (M_gain - M_loss)
+            
+    #         M_current   += dM_step
+    #         M_net_total += dM_step
+            
+    #         t_evolved   += dt_step
+    #         loop_count  += 1
+
+    #     # 3. Reset Global Object State
+    #     # We manually update self.Mbins to the final result minus the net change
+    #     # so the main loop can add M_net_total cleanly.
+    #     self.Mbins = M_current - M_net_total
+        
+    #     # Restore parameters to the final state for the next timestep
+    #     self.update_1mom_subgrid()
+        
+    #     return M_net_total   
+    
+    
+# class BroadcastNode:
+#     """
+#     Wraps a distribution object. Automatically intercepts requests for 1D arrays 
+#     (like .d, .vt, .mass) and broadcasts them into the target 3D axis.
+#     """
+#     def __init__(self, dist_obj, axis):
+#         self._dist = dist_obj
+        
+#         # Create slicing tuple based on target axis
+#         # Axis 0 -> (slice(None), None, None)
+#         # Axis 1 -> (None, slice(None), None)
+#         # Axis 2 -> (None, None, slice(None))
+#         idx = [None, None, None]
+#         idx[axis] = slice(None)
+#         self._slice = tuple(idx)
+        
+#     def __getattr__(self, name):
+#         '''
+#         Dynamically fetch the requested attribute from the real grid object
+#         '''
+#         val = getattr(self._dist, name)
+        
+#         # If it's a 1D grid array, broadcast it to 3D instantly
+#         if isinstance(val, np.ndarray) and val.ndim == 1:
+#             return val[self._slice]
+        
+#         # If it's a scalar (like .am or .bm), return it as-is
+#         return val   
+    

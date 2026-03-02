@@ -5,15 +5,7 @@ Created on Wed Sep 24 08:17:50 2025
 @author: edwin.dunnavan
 """
 import numpy as np
-
 import scipy.special as scip
-#from functools import lru_cache
-#from heapq import heapify, heappop, heappush
-
-#from joblib import load
-
-#from multiprocessing import shared_memory
-
 import numba as nb
 
 @nb.jit(nopython=True, parallel=True, cache=False, fastmath=True)
@@ -21,6 +13,9 @@ def kernel_1mom(M_loss, M_gain,
                 Eagg, Ebr, rate, h_idx, s1_idx, s2_idx, i_idx, j_idx, 
                 p_idx, dMi, dMj, k0_map, k1_map, dMg, # Full Arrays
                 dMb_kernel, indc, indb):
+    ''' 
+    1 moment Numba kernel calculations
+    '''
     
     n_active = len(rate)
     n_threads = nb.get_num_threads()
@@ -93,20 +88,14 @@ def kernel_1mom(M_loss, M_gain,
     return M_loss, M_gain
 
 
-
-
 @nb.jit(nopython=True, parallel=True,cache=True, fastmath=False)
 def loss_kernel_numba(dN_out, dMi_out, dMj_out, 
                       C, x1, x2, y1, y2):
-    """
-    Computes rectangular source integrals matching 'source_integrals'.
+
+    ''' 
+    2-moment loss term numba calculation
+    '''
     
-    C: (9, N) flattened coefficient array from (3, 3, N)
-       Mapping: 
-       0:(0,0), 1:(0,1)[y], 2:(0,2)[y2]
-       3:(1,0)[x], 4:(1,1)[xy], 5:(1,2)[xy2]
-       6:(2,0)[x2], 7:(2,1)[x2y], 8:(2,2)[x2y2]
-    """
     n_interactions = len(x1)
     
     for k in nb.prange(n_interactions):
@@ -168,9 +157,11 @@ def loss_kernel_numba(dN_out, dMi_out, dMj_out,
 def tri_kernel_numba(dN_out, dM_out, 
                      C, x1, y1, x2, y2, x3, y3, 
                      w, L):
-    """
-    Computes triangular gain integrals matching 'tri_gain_integrals'.
-    """
+
+    ''' 
+    2-moment triangular gain region calculations using numba
+    '''
+    
     n_interactions = len(x1)
     n_quad = len(w)
     
@@ -224,10 +215,10 @@ def breakup_kernel(M_gain, N_gain, M_loss,
                    dMb_kernel, dNb_kernel,Ebr, 
                    p_idx, i_idx, j_idx, h_idx, k_limit_idx, 
                    indb):
-    """
-    Apply breakup redistribution.
-    Thread-safe implementation using local reduction buffers.
-    """
+
+    ''' 
+    2-moment breakup calculations using numba
+    '''
     
     n_interactions = len(i_idx)
     
@@ -297,8 +288,7 @@ def breakup_1mom_kernel(M_gain, M_loss,dMb_kernel,
                    i_idx, j_idx, h_idx, k_limit_idx, 
                    indb, Ebr):
     """
-    Apply breakup redistribution.
-    Thread-safe implementation using local reduction buffers.
+    2-moment breakup calculations using numba
     """
     n_interactions = len(i_idx)
     
@@ -375,79 +365,16 @@ def combined_coeffs_tensor(f, params):
     
     return C
 
-def solve_rect(C, x1, x2, y1, y2):
-    """
-    C: (k, l, n, h, i, j)
-    x1, x2, y1, y2: (n, h, i, j)
-    """
-    
-    N_source, Mi_source, Mj_source = solve_source(C,x1,x2,y1,y2)
-    
-    M_source = Mi_source+Mj_source
-
-    return M_source, N_source
-
-def solve_source(C, x1, x2, y1, y2):
-    """
-    C: (k, l, n, h, i, j)
-    x1, x2, y1, y2: (n, h, i, j)
-    """
-    dx, dy = x2 - x1, y2 - y1
-    dsx, dsy = x2 + x1, y2 + y1
-    x1x2, y1y2 = x1 * x2, y1 * y2
-
-    # Powers 0, 1, 2, 3
-    DX = np.stack([
-        dx, 
-        0.5 * dx * dsx, 
-        (1./3.) * dx * (dsx**2 - x1x2), 
-        0.25 * dx * dsx * (dsx**2 - 2.*x1x2)
-    ], axis=0) # (4, n, h, i, j)
-
-    DY = np.stack([
-        dy, 
-        0.5 * dy * dsy, 
-        (1./3.) * dy * (dsy**2 - y1y2), 
-        0.25 * dy * dsy * (dsy**2 - 2.*y1y2)
-    ], axis=0) # (4, n, h, i, j)
-
-    # Use 'k' for C's x-power, 'm' for DX's x-power
-    # Use 'l' for C's y-power, 'p' for DY's y-power
-    # Force alignment: k matches m, l matches p
-    iP  = np.einsum('klnhij,knhij,lnhij->nhij', C, DX[:3], DY[:3])
-    ixP = np.einsum('klnhij,knhij,lnhij->nhij', C, DX[1:4], DY[:3])
-    iyP = np.einsum('klnhij,knhij,lnhij->nhij', C, DX[:3], DY[1:4])
-
-    return iP, ixP, iyP
-
-def solve_tris(C, v_coords, w, L):
-    """Integrates 3x3 polynomial C over triangular field using 7-pt quadrature."""
-    #v1x, v1y, v2x, v2y, v3x, v3y = v_coords
-    
-    v1x,v2x,v3x,v1y,v2y,v3y = v_coords
-    
-    area = 0.5 * np.abs(v1x*(v2y-v3y) + v2x*(v3y-v1y) + v3x*(v1y-v2y))
-    
-    qx = np.tensordot(L, np.stack([v1x, v2x, v3x], axis=0), axes=([1], [0]))
-    qy = np.tensordot(L, np.stack([v1y, v2y, v3y], axis=0), axes=([1], [0]))
-    
-    x_p = np.stack([np.ones_like(qx), qx, qx**2], axis=0)
-    y_p = np.stack([np.ones_like(qy), qy, qy**2], axis=0)
-    monos = x_p[:, None,...] * y_p[None, :, ...] 
-    
-    N_t   = area * np.einsum('klnhij,klqnhij,q->nhij', C, monos, w)
-    M_t = area * np.einsum('klnhij,klqnhij,qnhij,q->nhij', C, monos, qx + qy, w)
-    
-    return M_t, N_t
 
 # =============================================================================
 # 2. VECTORIZED CORE ENGINE
 # =============================================================================
 
-
-
 def vectorized_2mom(params, w, L, dMb_kernel, dNb_kernel, 
                     indc, indb, dnum, Hlen, bins):
+    ''' 
+    Numba-optimized 2-moment gain and loss bin integral calculations
+    '''
     
     # 4D shape (pnum x Hlen x bins x bins)
     regions = params['regions']
@@ -513,9 +440,6 @@ def vectorized_2mom(params, w, L, dMb_kernel, dNb_kernel,
     yt3 = np.concatenate((x12[reg2], x12[reg3],x12[reg5],y_rig[reg6],y_rig[reg7],x12[reg8],x12[reg11],y_rig[reg12]))
     
     # 2. Rectangular Source Integrals (C, x1, x2, y1, y2)
-    # OLD
-   # dNi_rect, dMi_rect, dMj_rect = source_integrals(Cr,x1=xr1,x2=xr2,y1=yr1,y2=yr2)
-    
     n_rect_total = len(xr1) # The combined length of Cr
     dNi_rect = np.zeros(n_rect_total, dtype=np.float64)
     dMi_rect = np.zeros(n_rect_total, dtype=np.float64)
@@ -537,9 +461,7 @@ def vectorized_2mom(params, w, L, dMb_kernel, dNb_kernel,
     dN_gain_tri = np.zeros(n_tri_total, dtype=np.float64)
     dM_gain_tri = np.zeros(n_tri_total, dtype=np.float64)
     
-    # OLD
-    #dN_gain_tri, dM_gain_tri = tri_gain_integrals(Ct, xt1, yt1, xt2, yt2, xt3, yt3, w, L)
-    
+    # Triangular gain integrals
     tri_kernel_numba(dN_gain_tri, dM_gain_tri,
                      Ct.reshape(9,-1), 
                      xt1, yt1, xt2, yt2, xt3, yt3,
@@ -611,30 +533,6 @@ def vectorized_2mom(params, w, L, dMb_kernel, dNb_kernel,
     E11, E12     = Eagg[reg11], Eagg[reg12]
     
     # Concatenate all regions in order and do residual for bin partitioning
-    # dM_gain = np.concatenate((Mt2,Ml2-Mt2,
-    #                           Mt3,Ml3-Mt3,
-    #                           Ml4, 
-    #                           Mrt5,Ml5-Mrt5,
-    #                           Mrt6,Ml6-Mrt6, 
-    #                           Mt7,Ml7-Mt7, 
-    #                           Mt8,Ml8-Mt8, 
-    #                           Ml9, 
-    #                           Ml10,
-    #                           Mt11,Ml11-Mt11, 
-    #                           Mt12,Ml12-Mt12))
-    
-    # dN_gain = np.concatenate((Nt2,Nl2-Nt2,
-    #                           Nt3,Nl3-Nt3,
-    #                           Nl4, 
-    #                           Nrt5,Nl5-Nrt5,
-    #                           Nrt6,Nl6-Nrt6, 
-    #                           Nt7,Nl7-Nt7, 
-    #                           Nt8,Nl8-Nt8, 
-    #                           Nl9, 
-    #                           Nl10,
-    #                           Nt11,Nl11-Nt11, 
-    #                           Nt12,Nl12-Nt12))
-    
     dM_gain = np.concatenate((Mt2*E2,(Ml2-Mt2)*E2,
                               Mt3*E3,(Ml3-Mt3)*E3,
                               Ml4*E4, 
@@ -689,11 +587,6 @@ def vectorized_2mom(params, w, L, dMb_kernel, dNb_kernel,
     
     M_gain = np.zeros((dnum, Hlen, bins))
     N_gain = np.zeros((dnum, Hlen, bins))
- 
-    # np.add.at(M_loss, (d1_l, hind_l, bi_ind_l), dMi_loss)
-    # np.add.at(M_loss, (d2_l, hind_l, bj_ind_l), dMj_loss)
-    # np.add.at(N_loss, (d1_l, hind_l, bi_ind_l), dN_loss)
-    # np.add.at(N_loss, (d2_l, hind_l, bj_ind_l), dN_loss)
     
     np.add.at(M_loss, (d1_l, hind_l, bi_ind_l), Ecb * dMi_loss)
     np.add.at(M_loss, (d2_l, hind_l, bj_ind_l), Ecb * dMj_loss)
@@ -703,9 +596,6 @@ def vectorized_2mom(params, w, L, dMb_kernel, dNb_kernel,
     # Do gains all concatenated
     np.add.at(M_gain[indc],(h_gain, k_gain), dM_gain)
     np.add.at(N_gain[indc],(h_gain, k_gain), dN_gain)
-    
-    #M_gain[indc] *= Eagg
-    #N_gain[indc] *= Eagg
     
     # Collisional breakup
     if Ebr.any() > 0.:
@@ -718,7 +608,6 @@ def vectorized_2mom(params, w, L, dMb_kernel, dNb_kernel,
             indb)
     
     return M_loss, M_gain, N_loss, N_gain
-
 
 
 
@@ -1054,9 +943,7 @@ def calculate_rates(Hlen,bins,region_inds,x_bottom_edge,x_top_edge,y_left_edge,y
 
     '''
     Description: Calcualates Wang et al. (2007) integrals using numpy functions.
-    '''
     
-    '''
     # kr = Height index    (batch,)
     # ir = collectee index (batch,)
     # jr = collector index (batch,) 
@@ -1340,6 +1227,10 @@ def calculate_rates(Hlen,bins,region_inds,x_bottom_edge,x_top_edge,y_left_edge,y
 def transfer_bins(Hlen,bins,kr,ir,jr,kmin,kmid,dMi_loss,dMj_loss,dM_loss,dM_gain,
                   dNi_loss,dN_gain,dMb_gain_frac,dNb_gain_frac,breakup=False):
 
+    ''' 
+    Performs bin transfer of mass and number
+    '''
+    
     # DO TRANSFER HERE
     # Initialize gain term arrays
     M1_loss = np.zeros((Hlen,bins))
@@ -1673,272 +1564,11 @@ def calculate_regions_batch(Hlen,bins,kr,ir,jr,x11,x21,ak1,ck1,x12,x22,ak2,ck2,P
     return dMi_loss, dMj_loss, dM_gain, dNi_loss, dN_gain
 
 
-def transfer_1mom_vec_3D(static_chunk, M_loss_buffer, M_gain_buffer, Mb_gain_buffer, ck12_chunk, dMi_loss, dMj_loss, dM_loss, dM_gain, dMb_frac, bins, Hlen, dnum,breakup=False):
-    """
-    Worker function: Processes a contiguous 'chunk' of bin-pair interactions.
-    Bypasses object overhead by using flattened 1D array math. 
-    """
-    # 1. Extract indices from the pre-indexed structured array 
-    kr = static_chunk['kr']
-    kmin = static_chunk['kmin']
-    kmid = static_chunk['kmid']
-    idx_d1 = static_chunk['d1_flat']
-    idx_d2 = static_chunk['d2_flat']
-    
-    #idx_kmin = static_chunk['gain_kmin_4d']
-    #idx_kmid = static_chunk['gain_kmid_4d']
-    
-    #idx_d1 = kr * bins + ir
-    #idx_d2 = kr * bins + jr
-    
-    idx_kmin = kr * bins + kmin 
-    idx_kmid = kr * bins + kmid
-    
-    # 2. Map 3D (dnum, height, bin) coordinates to a 1D flat index 
-    full_grid_size = dnum * Hlen * bins
-    grid_size = Hlen*bins
-    
-    # 3. Accumulate Losses and Coalescence Gains using bincount 
-    # This is significantly faster than np.add.at for floating point weights. 
-    M_loss_flat = np.bincount(idx_d1, weights=ck12_chunk * dMi_loss, minlength=full_grid_size)
-    M_loss_flat += np.bincount(idx_d2, weights=ck12_chunk * dMj_loss, minlength=full_grid_size)
-       
-    M_loss_buffer.ravel()[:] = M_loss_flat
-    
-    # M1_loss_flat = np.bincount(idx_d1, weights=ck12_chunk * dMi_loss, minlength=grid_size)
-    # M2_loss_flat = np.bincount(idx_d2, weights=ck12_chunk * dMj_loss, minlength=grid_size)
-    
-    M_gain_flat  = np.bincount(idx_kmin, weights=ck12_chunk * dM_gain[:, 0], minlength=grid_size)
-    M_gain_flat += np.bincount(idx_kmid, weights=ck12_chunk * dM_gain[:, 1], minlength=grid_size)
-    
-    M_gain_buffer.ravel()[:] = M_gain_flat
-    
-    # 4. Handle Breakup Gains 
-    Mb_gain_flat = np.zeros(grid_size)
-    
-   # if dMb_frac is not None:
-    if breakup:
-        # Calculate total mass lost per interaction pair 
-       # Mij_loss = ck12_chunk * dM_loss
-   
-        # Multiply fragmentation fractions by the total mass lost 
-        # weighted_frac shape: (bins, chunk_n_pairs)
-        weighted_frac = dMb_frac *  ck12_chunk * dM_loss
-        
-        
-        # Distribute fragments into height bins (kr) for each particle size bin 
-        for b in range(bins):
-            
-            Mb_gain_flat[b::bins] += np.bincount(kr, weights=weighted_frac[b, :], minlength=Hlen)
-            
-            # Sum mass at each height level for this specific bin 
-            #h_sum = np.bincount(kr, weights=weighted_frac[b, :], minlength=Hlen)
-            # Map the height sums into the correct 1D flat grid positions 
-            #Mb_gain_flat[b::bins] = h_sum 
-        Mb_gain_buffer.ravel()[:] = Mb_gain_flat
-            
-    #M_loss_temp = M_loss_flat.reshape(dnum,Hlen, bins)
-                
-    #M1_loss_temp = M1_loss_flat.reshape(Hlen, bins)           
-    #M2_loss_temp = M2_loss_flat.reshape(Hlen, bins)
-    
-    #M_gain_temp  = M_gain_flat.reshape(Hlen, bins)
-    #Mb_gain_temp = Mb_gain_flat.reshape(Hlen, bins)
-
-    # Return a single stack of flattened results to minimize IPC overhead [cite: 1, 7]
-    return M_loss_buffer, M_gain_buffer, Mb_gain_buffer
-    #return M_loss_temp, M_gain_temp, Mb_gain_temp
-#    return M1_loss_temp, M2_loss_temp, M_gain_temp, Mb_gain_temp
-
-def transfer_1mom_bins_optimized(static_chunk, ck12_chunk, dMi_loss, dMj_loss, dM_loss, dM_gain, dMb_frac, bins, Hlen):
-    """
-    Worker function: Processes a contiguous 'chunk' of bin-pair interactions.
-    Bypasses object overhead by using flattened 1D array math. 
-    """
-    # 1. Extract indices from the pre-indexed structured array 
-    kr = static_chunk['kr']
-    ir = static_chunk['ir']
-    jr = static_chunk['jr']
-    kmin = static_chunk['kmin']
-    kmid = static_chunk['kmid']
-    
-    # 2. Map 2D (height, bin) coordinates to a 1D flat index 
-    grid_size = Hlen * bins
-    idx_i = kr * bins + ir
-    idx_j = kr * bins + jr
-    idx_kmin = kr * bins + kmin
-    idx_kmid = kr * bins + kmid
-    
-    # 3. Accumulate Losses and Coalescence Gains using bincount 
-    # This is significantly faster than np.add.at for floating point weights. 
-    M1_loss_flat = np.bincount(idx_i, weights=ck12_chunk * dMi_loss, minlength=grid_size)
-    M2_loss_flat = np.bincount(idx_j, weights=ck12_chunk * dMj_loss, minlength=grid_size)
-    
-    M_gain_flat = np.bincount(idx_kmin, weights=ck12_chunk * dM_gain[:, 0], minlength=grid_size)
-    M_gain_flat += np.bincount(idx_kmid, weights=ck12_chunk * dM_gain[:, 1], minlength=grid_size)
-    
-    # 4. Handle Breakup Gains 
-    Mb_gain_flat = np.zeros(grid_size)
-    if dMb_frac is not None:
-
-        weighted_frac = dMb_frac * ck12_chunk * dM_loss
-        
-        # Distribute fragments into height bins (kr) for each particle size bin 
-        for b in range(bins):
-            # Sum mass at each height level for this specific bin 
-            h_sum = np.bincount(kr, weights=weighted_frac[b, :], minlength=Hlen)
-            # Map the height sums into the correct 1D flat grid positions 
-            Mb_gain_flat[b::bins] = h_sum 
-            
-    M1_loss_temp = M1_loss_flat.reshape(Hlen, bins)
-    M2_loss_temp = M2_loss_flat.reshape(Hlen, bins)
-    M_gain_temp  = M_gain_flat.reshape(Hlen, bins)
-    Mb_gain_temp = Mb_gain_flat.reshape(Hlen, bins)
-
-    # Return a single stack of flattened results to minimize IPC overhead [cite: 1, 7]
-    return M1_loss_temp, M2_loss_temp, M_gain_temp, Mb_gain_temp
-
-def transfer_1mom_bins_inplace(static_chunk, ck12_chunk, dMi_loss, dMj_loss, dM_loss, dM_gain, dMb_frac,
-                               M1_loss_buffer,M2_loss_buffer,M_gain_buffer,Mb_gain_buffer,bins, Hlen,breakup=False):
-    """
-    Worker function: Processes a contiguous 'chunk' of bin-pair interactions.
-    Bypasses object overhead by using flattened 1D array math. 
-    """
-    # 1. Extract indices from the pre-indexed structured array 
-    kr = static_chunk['kr']
-    ir = static_chunk['ir']
-    jr = static_chunk['jr']
-    kmin = static_chunk['kmin']
-    kmid = static_chunk['kmid']
-    
-    # 2. Map 2D (height, bin) coordinates to a 1D flat index 
-    grid_size = Hlen * bins
-    idx_i = kr * bins + ir
-    idx_j = kr * bins + jr
-    idx_kmin = kr * bins + kmin
-    idx_kmid = kr * bins + kmid
-    
-    # 3. Accumulate Losses and Coalescence Gains using bincount 
-    # This is significantly faster than np.add.at for floating point weights. 
-    M1_loss_buffer[:] += np.bincount(idx_i, weights=ck12_chunk * dMi_loss, minlength=grid_size)
-    M2_loss_buffer[:] += np.bincount(idx_j, weights=ck12_chunk * dMj_loss, minlength=grid_size)
-    
-    M_gain_buffer[:] += np.bincount(idx_kmin, weights=ck12_chunk * dM_gain[:, 0], minlength=grid_size)
-    M_gain_buffer[:] += np.bincount(idx_kmid, weights=ck12_chunk * dM_gain[:, 1], minlength=grid_size)
-    
-    # 4. Handle Breakup Gains 
-    if breakup:
-
-        weighted_frac = dMb_frac * ck12_chunk * dM_loss
-        
-        # Distribute fragments into height bins (kr) for each particle size bin 
-        for b in range(bins):
-            # Sum mass at each height level for this specific bin 
-            Mb_gain_buffer[b::bins] += np.bincount(kr, weights=weighted_frac[b, :], minlength=Hlen)
-            
-    #M1_loss_temp = M1_loss_flat.reshape(Hlen, bins)
-    #M2_loss_temp = M2_loss_flat.reshape(Hlen, bins)
-    #M_gain_temp  = M_gain_flat.reshape(Hlen, bins)
-    #Mb_gain_temp = Mb_gain_flat.reshape(Hlen, bins)
-
-    # Return a single stack of flattened results to minimize IPC overhead [cite: 1, 7]
-    #return M1_loss_buffer, M2_loss_buffer, M_gain_buffer, Mb_gain_buffer
-    #return M1_loss_temp, M2_loss_temp, M_gain_temp, Mb_gain_temp
-
-def transfer_1mom_bins_vec(static_chunk, n12, dMi_loss, dMj_loss, dM_loss, dM_gain, dMb_gain_frac, dnum, bins, Hlen, breakup=False):
-
-    # 1. Extract indices from the pre-indexed structured array 
-    kr = static_chunk['kr']
-    ir = static_chunk['ir']
-    jr = static_chunk['jr']
-    d1 = static_chunk['d1']
-    d2 = static_chunk['d2']
-    kmin = static_chunk['kmin']
-    kmid = static_chunk['kmid']
-    
-    # DO TRANSFER HERE
-    # Initialize gain term arrays
-    M_loss  = np.zeros((dnum,Hlen,bins))
-    M_gain  = np.zeros((Hlen,bins))
-    Mb_gain = np.zeros((Hlen,bins))
-    
-    np.add.at(M_loss,(d1,kr,ir),n12*dMi_loss)
-    np.add.at(M_loss,(d2,kr,jr),n12*dMj_loss)
-    
-    np.add.at(M_gain,(kr,kmin),n12*dM_gain[:,0])
-    np.add.at(M_gain,(kr,kmid),n12*dM_gain[:,1])
-    
-    # ELD NOTE: Breakup here can take losses from each pair and calculate gains
-    # for breakup. Breakup gain arrays will be 3D.
-    if breakup:    
-        np.add.at(Mb_gain, kr, np.transpose(dMb_gain_frac[:,kmin]*n12*dM_loss))
-
-    return M_loss, M_gain, Mb_gain 
-
-def worker_tensor_vec(h_slice, p_d1, p_d2, cki, dMi, dMj, dMl, dMg, dMb_kernel, 
-                        kmin_p, kmid_p, indc, indb, Eagg, Ebr, dnum):
-    num_h = len(h_slice)
-    num_bins = cki.shape[2]
-    
-    # 1. 4D Interaction Tensor: (Pairs, H_slice, bins_i, bins_j)
-    ck12 = cki[p_d1][:, h_slice, :, None] * cki[p_d2][:, h_slice, None, :]
-
-    # 2. Vectorized Loss (Contract bin axes)
-    loss_i = np.einsum('phij,pij->phi', ck12, dMi)
-    loss_j = np.einsum('phij,pij->phj', ck12, dMj)
-
-    # 3. Vectorized Breakup Gain: (H_slice, bin_out)
-    # Contracts Pair (p), bin_i (i), and bin_j (j) axes simultaneously
-    Mij_loss = ck12 * dMl[:, None, :, :]
-    #Mij_loss = ck12 * (dMi + dMj)[:, None, :, :]
-    
-    Mb_gain_dist = np.einsum('bij,phij->hb', dMb_kernel, Mij_loss)
-
-    # 4. Local Accumulation Buffers
-    l_loss = np.zeros((dnum, num_h, num_bins))
-    l_gain = np.zeros((dnum, num_h, num_bins))
-    
-    # --- Scatter Loss Mapping ---
-    # Explicit 3D indices to avoid broadcasting errors
-    p_idx_3d = p_d1[:, None, None]
-    h_idx_3d = np.arange(num_h)[None, :, None]
-    b_idx_3d = np.arange(num_bins)[None, None, :]
-    
-    np.add.at(l_loss, (p_idx_3d, h_idx_3d, b_idx_3d), loss_i)
-    np.add.at(l_loss, (p_d2[:, None, None], h_idx_3d, b_idx_3d), loss_j)
-    
-    # --- Scatter Coalescence Gain ---
-    # gain_m_full: (Pairs, H_slice, bin_i, bin_j)
-    gain_m_full = ck12 * dMg[:, None, :, :, 0]
-    gain_d_full = ck12 * dMg[:, None, :, :, 1]
-    
-    # Explicit 4D indices for height and the pair-bin destination maps
-    h_idx_4d = np.arange(num_h)[None, :, None, None]
-    dest_bins_min = kmin_p[:, None, :, :] # (Pairs, 1, bins, bins)
-    dest_bins_mid = kmid_p[:, None, :, :] # (Pairs, 1, bins, bins)
-
-    np.add.at(l_gain[indc], (h_idx_4d, dest_bins_min), Eagg * gain_m_full)
-    np.add.at(l_gain[indc], (h_idx_4d, dest_bins_mid), Eagg * gain_d_full)
-
-    # --- Scatter Breakup Gain ---
-    # Direct additive assignment for the redistributed mass
-    l_gain[indb] += Ebr * Mb_gain_dist
-
-    return l_loss, l_gain
-
-
-
-#def vectorized_1mom(M_loss, M_gain, cki, params,
-#                          p_d1, p_d2, dMi, dMj, dMg, 
-#                          kmin_p, kmid_p, 
-#                          indc, Eagg, Ebr, dnum, Hlen, bins):
-    
 def vectorized_1mom(cki, params, dMi, dMj, dMg, kmin, kmid, 
                     dMb_kernel, indc, indb, dnum, Hlen, bins):
-    """
-    Fused 1-Moment Kernel.
-    Calculates Coalescence Loss and Gain in a single parallel pass.
-    """
+    ''' 
+    Numba-optimized 1-moment gain and loss bin integral calculations
+    '''
     
     M_loss = np.zeros((dnum, Hlen, bins))  
     M_gain = np.zeros((dnum, Hlen, bins))
@@ -1961,77 +1591,7 @@ def vectorized_1mom(cki, params, dMi, dMj, dMg, kmin, kmid,
     return M_loss, M_gain
 
 
-def vectorized_1mom_OLD(cki_slice, p_d1, p_d2, dMi, dMj, dMtot, dMg, dMb, 
-                         kmin_p, kmid_p, indc, indb, Eagg, Ebr, dnum):
-    """
-    Pure NumPy Math Engine. 
-    Processes a slice of heights for all distribution pairs.
-    """
-    num_h = cki_slice.shape[1]
-    num_bins = cki_slice.shape[2]
-    
-    # 1. Tensor Product: (Pairs, H_slice, bins, bins)
-    ck12 = cki_slice[p_d1][:, :, :, None] * cki_slice[p_d2][:, :, None, :]
 
-    # 2. Loss Terms (einsum is faster/cache-friendly here)
-    loss_i = np.einsum('phij,pij->phi', ck12, dMi)
-    loss_j = np.einsum('phij,pij->phj', ck12, dMj)
-
-    # 3. Gain Terms
-    # Coalescence
-    gain_m = Eagg * (ck12 * dMg[:, None, :, :, 0])
-    gain_d = Eagg * (ck12 * dMg[:, None, :, :, 1])
-    
-    # Breakup (Using pre-summed dMtot)
-    Mb_gain_dist = np.einsum('bij,phij->hb', dMb, ck12 * dMtot[:, None, :, :])
-
-    # 4. Local Accumulation (To be mapped to SHM)
-    l_loss = np.zeros((dnum, num_h, num_bins))
-    l_gain = np.zeros((dnum, num_h, num_bins))
-    
-    # Scatter Loss
-    h_idx_3 = np.arange(num_h)[None, :, None]
-    b_idx_3 = np.arange(num_bins)[None, None, :]
-    
-    np.add.at(l_loss, (p_d1[:, None, None], h_idx_3, b_idx_3), loss_i)
-    np.add.at(l_loss, (p_d2[:, None, None], h_idx_3, b_idx_3), loss_j)
-    
-    # Scatter Coalescence Gain
-    h_idx_4 = np.arange(num_h)[None, :, None, None]
-    np.add.at(l_gain[indc], (h_idx_4, kmin_p[:, None, :, :]), gain_m)
-    np.add.at(l_gain[indc], (h_idx_4, kmid_p[:, None, :, :]), gain_d)
-
-    # Add Breakup Gain
-    l_gain[indb] += Ebr * Mb_gain_dist
-
-    return l_loss, l_gain
-
-
-
-def transfer_1mom_bins_NEW(Hlen, bins, ck12, dMi_loss, dMj_loss, dM_loss, dM_gain, 
-                       kmin, kmid, dMb_gain_frac, breakup=False):
-
-    # (hlen x bins x bins)
-    M1_loss = np.sum(ck12*dMi_loss[None,:,:],axis=2)
-    M2_loss = np.sum(ck12*dMj_loss[None,:,:],axis=1)
-    
-    # ChatGPT is the GOAT for telling me about np.add.at!
-    M_gain = np.zeros((Hlen,bins))
-    np.add.at(M_gain,  (np.arange(Hlen)[:,None,None],kmin),  ck12*(dM_gain[:,:,0][None,:,:]))
-    np.add.at(M_gain,  (np.arange(Hlen)[:,None,None],kmid),  ck12*(dM_gain[:,:,1][None,:,:]))
-    
-    # ELD NOTE: Breakup here can take losses from each pair and calculate gains
-    # for breakup. Breakup gain arrays will be 3D.
-    if breakup:
-        
-        # (Hlen,bins,bins)
-        Mij_loss = ck12*(dM_loss[None,:,:])
-
-        Mb_gain = np.sum((dMb_gain_frac[:,kmin][None,:,:,:])*Mij_loss[:,None,:,:],axis=(2,3))
-    else:
-        Mb_gain = np.zeros((Hlen,bins))
-    
-    return M1_loss, M2_loss, M_gain, Mb_gain
 
 def transfer_1mom_bins(Hlen, bins, kr, ir, jr, n12, dMi_loss, dMj_loss, dM_loss, dM_gain, kmin, kmid, dMb_gain_frac, breakup):
 
@@ -2056,55 +1616,10 @@ def transfer_1mom_bins(Hlen, bins, kr, ir, jr, n12, dMi_loss, dMj_loss, dM_loss,
 
     return M1_loss, M2_loss, M_gain, Mb_gain 
 
-def transfer_1mom_bins_Google(Hlen, bins, kr, ir, jr, n12, dMi_loss, dMj_loss, dM_gain, kmin, kmid, dMb_gain_frac, breakup):
-    """
-    Calculates mass transfer rates using optimized bincount accumulation.
-    Indices (kr, ir, jr, kmin, kmid) must be integers.
-    Weights (n12, dMi_loss, etc.) are floats.
-    """
-    
-    # Pre-calculate the flat grid size for the 1D accumulator
-    grid_size = Hlen * bins
-    
-    # 1. Flatten 2D indices (kr, bin) into a 1D index space
-    # This allows bincount to sum across the entire Hlen x bins grid in one C-call
-    idx_i = kr * bins + ir
-    idx_j = kr * bins + jr
-    idx_kmin = kr * bins + kmin
-    idx_kmid = kr * bins + kmid
 
-    # 2. Accumulate Losses (M1 and M2)
-    # weights=n12*dMi_loss handles the floating point mass transfer rates
-    M1_loss = np.bincount(idx_i, weights=n12 * dMi_loss, minlength=grid_size).reshape(Hlen, bins)
-    M2_loss = np.bincount(idx_j, weights=n12 * dMj_loss, minlength=grid_size).reshape(Hlen, bins)
-
-    # 3. Accumulate Coalescence Gains
-    # We sum the primary and secondary gain bins (kmin/kmid) separately
-    M_gain = np.bincount(idx_kmin, weights=n12 * dM_gain[:, 0], minlength=grid_size).reshape(Hlen, bins)
-    M_gain += np.bincount(idx_kmid, weights=n12 * dM_gain[:, 1], minlength=grid_size).reshape(Hlen, bins)
-
-    # 4. Handle Breakup Gains
-    Mb_gain = np.zeros((Hlen, bins))
-    if breakup:
-        # Mij_loss represents total mass lost from the bin-pair to be redistributed
-        Mij_loss = n12 * (dMi_loss + dMj_loss)
-        
-        # dMb_gain_frac is (bins, n_pairs). We scale it by the total mass lost.
-        # This is a large broadcasting operation, but NumPy handles it efficiently in RAM.
-        weighted_frac = dMb_gain_frac * Mij_loss  # Result shape: (bins, n_pairs)
-        
-        # We must sum the fragments into the correct height levels (kr).
-        # We loop over bins because 'bins' is usually small (e.g. 30-100), 
-        # while 'n_pairs' can be huge. bincount stays in optimized C.
-        for b in range(bins):
-            Mb_gain[:, b] = np.bincount(kr, weights=weighted_frac[b, :], minlength=Hlen)
-
-    return M1_loss, M2_loss, M_gain, Mb_gain 
 
 def _unpack_f(f):
     return f[0,:], f[1,:], f[2,:], f[3,:]
-
-
 
 
 def LGN_int(n, mu, sig2, x1, x2):
@@ -2178,41 +1693,6 @@ def _calc_tail_interval(out_array, mask, z_small, z_large):
     out_array[mask] = 0.5 * np.exp(-zs**2) * term_bracket
 
 
-def LGN_int_OLD(n,muf,sig2f,x1,x2):
-    # 
-
-    #I = 0.5*np.exp(0.5*n*(n-1)*sig2f)*\
-   #     (scip.erf((np.log(x2-muf)-sig2f*(n-0.5))/(np.sqrt(2*sig2f)))-\
-   #      scip.erf((np.log(x1-muf)-sig2f*(n-0.5))/(np.sqrt(2*sig2f))))
-
-    I = 0.5*np.exp(n*muf+0.5*n**2*sig2f)*\
-        (scip.erf((np.log(x2)-muf-n*sig2f)/(np.sqrt(2*sig2f)))-\
-         scip.erf((np.log(x1)-muf-n*sig2f)/(np.sqrt(2*sig2f))))
-            
-            
-    # I = np.exp(n*muf+0.5*n**2*sig2f)*\
-    #     (scip.erf((np.log(x2)-muf-n*sig2f)/(np.sqrt(sig2f)))-\
-    #      scip.erf((np.log(x1)-muf-n*sig2f)/(np.sqrt(sig2f))))
-
-
-    return I 
-
-def LGN_int_PB07(n,muf,sig2f,x1,x2):
-    # moments of lognormal fragment mass distribution from x1 to x2
-    # See Prat and Barros (2007)
-    
-    n += 1
-
-    t1 = np.log(x1-muf)/np.sqrt(sig2f)
-    t2 = np.log(x2-muf)/np.sqrt(sig2f)
-
-    I = (np.sqrt(np.pi*sig2f)/2.)*np.exp(n*(muf+0.25*n*sig2f))*\
-        (scip.erf(t2-0.5*n*np.sqrt(sig2f))-scip.erf(t1-0.5*n*np.sqrt(sig2f)))
-         
-    # NORMALIZE I so that integral of mass from x1[0] to x2[-1] evaluates to unity.
-    # This is needed to preserve the total mass from each interaction.
-
-    return I 
 
 
 def GAU_int(n, mu, sig2, x1, x2):
@@ -2274,38 +1754,6 @@ def GAU_int(n, mu, sig2, x1, x2):
     
     return term0 + term1 + term2 + term3
 
-def GAU_int_ORIG(n, mu, sig2, x1, x2):
-    """
-    Integrates x^n * Normal(mu, sigma^2) from x1 to x2.
-    Safe and stable using error functions.
-    """
-    sqrt2 = np.sqrt(2.0)
-    sigma = np.sqrt(sig2)
-    sig_sqrt2 = np.sqrt(2.*sig2)
-    
-    # Standardize bounds
-    z1 = (x1 - mu) / sig_sqrt2
-    z2 = (x2 - mu) / sig_sqrt2
-    
-    # n=0: Number (Area under curve)
-    if n == 0:
-        return 0.5 * (scip.erf(z2) - scip.erf(z1))
-    
-    # n=3: Mass (Integral of x^3 * PDF)
-    # Using analytic expansion of moments for Normal distribution
-    if n == 3:
-        # We need the indefinite integral of x^3 * exp(-(x-mu)^2 / 2sig^2)
-        # It's cleaner to use a helper that evaluates the moment-generating function
-        def normal_moment_3(x):
-            z = (x - mu) / sigma
-            # Integral part: -sigma * (x^2 + mu*x + mu^2 + 2*sig^2) * PDF(x) + mu*(mu^2 + 3sig^2)*CDF(x)
-            pdf = (1.0 / (sigma * np.sqrt(2*np.pi))) * np.exp(-0.5 * z**2)
-            cdf = 0.5 * (1.0 + scip.erf(z / sqrt2))
-            return -sig2 * (x**2 + mu*x + mu**2 + 2*sig2) * pdf + mu * (mu**2 + 3*sig2) * cdf
-        
-        return normal_moment_3(x2) - normal_moment_3(x1)
-    
-    return 0.0 # Extend if other moments are needed
 
 
 
@@ -2892,3 +2340,516 @@ def Pn(n,x1,x2):
 #     # Cleanup handles
 #     for s in [s1, s2, s3, s4, s5, s6, s7, s8]:
 #         s.close()
+
+
+# def solve_tris(C, v_coords, w, L):
+#     """Integrates 3x3 polynomial C over triangular field using 7-pt quadrature."""
+#     #v1x, v1y, v2x, v2y, v3x, v3y = v_coords
+    
+#     v1x,v2x,v3x,v1y,v2y,v3y = v_coords
+    
+#     area = 0.5 * np.abs(v1x*(v2y-v3y) + v2x*(v3y-v1y) + v3x*(v1y-v2y))
+    
+#     qx = np.tensordot(L, np.stack([v1x, v2x, v3x], axis=0), axes=([1], [0]))
+#     qy = np.tensordot(L, np.stack([v1y, v2y, v3y], axis=0), axes=([1], [0]))
+    
+#     x_p = np.stack([np.ones_like(qx), qx, qx**2], axis=0)
+#     y_p = np.stack([np.ones_like(qy), qy, qy**2], axis=0)
+#     monos = x_p[:, None,...] * y_p[None, :, ...] 
+    
+#     N_t   = area * np.einsum('klnhij,klqnhij,q->nhij', C, monos, w)
+#     M_t = area * np.einsum('klnhij,klqnhij,qnhij,q->nhij', C, monos, qx + qy, w)
+    
+#     return M_t, N_t
+
+
+# def solve_rect(C, x1, x2, y1, y2):
+#     """
+#     C: (k, l, n, h, i, j)
+#     x1, x2, y1, y2: (n, h, i, j)
+#     """
+    
+#     N_source, Mi_source, Mj_source = solve_source(C,x1,x2,y1,y2)
+    
+#     M_source = Mi_source+Mj_source
+
+#     return M_source, N_source
+
+# def solve_source(C, x1, x2, y1, y2):
+#     """
+#     C: (k, l, n, h, i, j)
+#     x1, x2, y1, y2: (n, h, i, j)
+#     """
+#     dx, dy = x2 - x1, y2 - y1
+#     dsx, dsy = x2 + x1, y2 + y1
+#     x1x2, y1y2 = x1 * x2, y1 * y2
+
+#     # Powers 0, 1, 2, 3
+#     DX = np.stack([
+#         dx, 
+#         0.5 * dx * dsx, 
+#         (1./3.) * dx * (dsx**2 - x1x2), 
+#         0.25 * dx * dsx * (dsx**2 - 2.*x1x2)
+#     ], axis=0) # (4, n, h, i, j)
+
+#     DY = np.stack([
+#         dy, 
+#         0.5 * dy * dsy, 
+#         (1./3.) * dy * (dsy**2 - y1y2), 
+#         0.25 * dy * dsy * (dsy**2 - 2.*y1y2)
+#     ], axis=0) # (4, n, h, i, j)
+
+#     # Use 'k' for C's x-power, 'm' for DX's x-power
+#     # Use 'l' for C's y-power, 'p' for DY's y-power
+#     # Force alignment: k matches m, l matches p
+#     iP  = np.einsum('klnhij,knhij,lnhij->nhij', C, DX[:3], DY[:3])
+#     ixP = np.einsum('klnhij,knhij,lnhij->nhij', C, DX[1:4], DY[:3])
+#     iyP = np.einsum('klnhij,knhij,lnhij->nhij', C, DX[:3], DY[1:4])
+
+#     return iP, ixP, iyP
+
+
+# def worker_tensor_vec(h_slice, p_d1, p_d2, cki, dMi, dMj, dMl, dMg, dMb_kernel, 
+#                         kmin_p, kmid_p, indc, indb, Eagg, Ebr, dnum):
+#     num_h = len(h_slice)
+#     num_bins = cki.shape[2]
+    
+#     # 1. 4D Interaction Tensor: (Pairs, H_slice, bins_i, bins_j)
+#     ck12 = cki[p_d1][:, h_slice, :, None] * cki[p_d2][:, h_slice, None, :]
+
+#     # 2. Vectorized Loss (Contract bin axes)
+#     loss_i = np.einsum('phij,pij->phi', ck12, dMi)
+#     loss_j = np.einsum('phij,pij->phj', ck12, dMj)
+
+#     # 3. Vectorized Breakup Gain: (H_slice, bin_out)
+#     # Contracts Pair (p), bin_i (i), and bin_j (j) axes simultaneously
+#     Mij_loss = ck12 * dMl[:, None, :, :]
+#     #Mij_loss = ck12 * (dMi + dMj)[:, None, :, :]
+    
+#     Mb_gain_dist = np.einsum('bij,phij->hb', dMb_kernel, Mij_loss)
+
+#     # 4. Local Accumulation Buffers
+#     l_loss = np.zeros((dnum, num_h, num_bins))
+#     l_gain = np.zeros((dnum, num_h, num_bins))
+    
+#     # --- Scatter Loss Mapping ---
+#     # Explicit 3D indices to avoid broadcasting errors
+#     p_idx_3d = p_d1[:, None, None]
+#     h_idx_3d = np.arange(num_h)[None, :, None]
+#     b_idx_3d = np.arange(num_bins)[None, None, :]
+    
+#     np.add.at(l_loss, (p_idx_3d, h_idx_3d, b_idx_3d), loss_i)
+#     np.add.at(l_loss, (p_d2[:, None, None], h_idx_3d, b_idx_3d), loss_j)
+    
+#     # --- Scatter Coalescence Gain ---
+#     # gain_m_full: (Pairs, H_slice, bin_i, bin_j)
+#     gain_m_full = ck12 * dMg[:, None, :, :, 0]
+#     gain_d_full = ck12 * dMg[:, None, :, :, 1]
+    
+#     # Explicit 4D indices for height and the pair-bin destination maps
+#     h_idx_4d = np.arange(num_h)[None, :, None, None]
+#     dest_bins_min = kmin_p[:, None, :, :] # (Pairs, 1, bins, bins)
+#     dest_bins_mid = kmid_p[:, None, :, :] # (Pairs, 1, bins, bins)
+
+#     np.add.at(l_gain[indc], (h_idx_4d, dest_bins_min), Eagg * gain_m_full)
+#     np.add.at(l_gain[indc], (h_idx_4d, dest_bins_mid), Eagg * gain_d_full)
+
+#     # --- Scatter Breakup Gain ---
+#     # Direct additive assignment for the redistributed mass
+#     l_gain[indb] += Ebr * Mb_gain_dist
+
+#     return l_loss, l_gain
+
+
+# def vectorized_1mom_OLD(cki_slice, p_d1, p_d2, dMi, dMj, dMtot, dMg, dMb, 
+#                          kmin_p, kmid_p, indc, indb, Eagg, Ebr, dnum):
+#     """
+#     Pure NumPy Math Engine. 
+#     Processes a slice of heights for all distribution pairs.
+#     """
+#     num_h = cki_slice.shape[1]
+#     num_bins = cki_slice.shape[2]
+    
+#     # 1. Tensor Product: (Pairs, H_slice, bins, bins)
+#     ck12 = cki_slice[p_d1][:, :, :, None] * cki_slice[p_d2][:, :, None, :]
+
+#     # 2. Loss Terms (einsum is faster/cache-friendly here)
+#     loss_i = np.einsum('phij,pij->phi', ck12, dMi)
+#     loss_j = np.einsum('phij,pij->phj', ck12, dMj)
+
+#     # 3. Gain Terms
+#     # Coalescence
+#     gain_m = Eagg * (ck12 * dMg[:, None, :, :, 0])
+#     gain_d = Eagg * (ck12 * dMg[:, None, :, :, 1])
+    
+#     # Breakup (Using pre-summed dMtot)
+#     Mb_gain_dist = np.einsum('bij,phij->hb', dMb, ck12 * dMtot[:, None, :, :])
+
+#     # 4. Local Accumulation (To be mapped to SHM)
+#     l_loss = np.zeros((dnum, num_h, num_bins))
+#     l_gain = np.zeros((dnum, num_h, num_bins))
+    
+#     # Scatter Loss
+#     h_idx_3 = np.arange(num_h)[None, :, None]
+#     b_idx_3 = np.arange(num_bins)[None, None, :]
+    
+#     np.add.at(l_loss, (p_d1[:, None, None], h_idx_3, b_idx_3), loss_i)
+#     np.add.at(l_loss, (p_d2[:, None, None], h_idx_3, b_idx_3), loss_j)
+    
+#     # Scatter Coalescence Gain
+#     h_idx_4 = np.arange(num_h)[None, :, None, None]
+#     np.add.at(l_gain[indc], (h_idx_4, kmin_p[:, None, :, :]), gain_m)
+#     np.add.at(l_gain[indc], (h_idx_4, kmid_p[:, None, :, :]), gain_d)
+
+#     # Add Breakup Gain
+#     l_gain[indb] += Ebr * Mb_gain_dist
+
+#     return l_loss, l_gain
+
+
+
+# def transfer_1mom_bins_NEW(Hlen, bins, ck12, dMi_loss, dMj_loss, dM_loss, dM_gain, 
+#                        kmin, kmid, dMb_gain_frac, breakup=False):
+
+#     # (hlen x bins x bins)
+#     M1_loss = np.sum(ck12*dMi_loss[None,:,:],axis=2)
+#     M2_loss = np.sum(ck12*dMj_loss[None,:,:],axis=1)
+    
+#     # ChatGPT is the GOAT for telling me about np.add.at!
+#     M_gain = np.zeros((Hlen,bins))
+#     np.add.at(M_gain,  (np.arange(Hlen)[:,None,None],kmin),  ck12*(dM_gain[:,:,0][None,:,:]))
+#     np.add.at(M_gain,  (np.arange(Hlen)[:,None,None],kmid),  ck12*(dM_gain[:,:,1][None,:,:]))
+    
+#     # ELD NOTE: Breakup here can take losses from each pair and calculate gains
+#     # for breakup. Breakup gain arrays will be 3D.
+#     if breakup:
+        
+#         # (Hlen,bins,bins)
+#         Mij_loss = ck12*(dM_loss[None,:,:])
+
+#         Mb_gain = np.sum((dMb_gain_frac[:,kmin][None,:,:,:])*Mij_loss[:,None,:,:],axis=(2,3))
+#     else:
+#         Mb_gain = np.zeros((Hlen,bins))
+    
+#     return M1_loss, M2_loss, M_gain, Mb_gain
+
+
+
+# def LGN_int_OLD(n,muf,sig2f,x1,x2):
+#     # 
+
+#     #I = 0.5*np.exp(0.5*n*(n-1)*sig2f)*\
+#    #     (scip.erf((np.log(x2-muf)-sig2f*(n-0.5))/(np.sqrt(2*sig2f)))-\
+#    #      scip.erf((np.log(x1-muf)-sig2f*(n-0.5))/(np.sqrt(2*sig2f))))
+
+#     I = 0.5*np.exp(n*muf+0.5*n**2*sig2f)*\
+#         (scip.erf((np.log(x2)-muf-n*sig2f)/(np.sqrt(2*sig2f)))-\
+#          scip.erf((np.log(x1)-muf-n*sig2f)/(np.sqrt(2*sig2f))))
+            
+            
+#     # I = np.exp(n*muf+0.5*n**2*sig2f)*\
+#     #     (scip.erf((np.log(x2)-muf-n*sig2f)/(np.sqrt(sig2f)))-\
+#     #      scip.erf((np.log(x1)-muf-n*sig2f)/(np.sqrt(sig2f))))
+
+
+#     return I 
+
+# def LGN_int_PB07(n,muf,sig2f,x1,x2):
+#     # moments of lognormal fragment mass distribution from x1 to x2
+#     # See Prat and Barros (2007)
+    
+#     n += 1
+
+#     t1 = np.log(x1-muf)/np.sqrt(sig2f)
+#     t2 = np.log(x2-muf)/np.sqrt(sig2f)
+
+#     I = (np.sqrt(np.pi*sig2f)/2.)*np.exp(n*(muf+0.25*n*sig2f))*\
+#         (scip.erf(t2-0.5*n*np.sqrt(sig2f))-scip.erf(t1-0.5*n*np.sqrt(sig2f)))
+         
+#     # NORMALIZE I so that integral of mass from x1[0] to x2[-1] evaluates to unity.
+#     # This is needed to preserve the total mass from each interaction.
+
+#     return I 
+
+
+# def GAU_int_ORIG(n, mu, sig2, x1, x2):
+#     """
+#     Integrates x^n * Normal(mu, sigma^2) from x1 to x2.
+#     Safe and stable using error functions.
+#     """
+#     sqrt2 = np.sqrt(2.0)
+#     sigma = np.sqrt(sig2)
+#     sig_sqrt2 = np.sqrt(2.*sig2)
+    
+#     # Standardize bounds
+#     z1 = (x1 - mu) / sig_sqrt2
+#     z2 = (x2 - mu) / sig_sqrt2
+    
+#     # n=0: Number (Area under curve)
+#     if n == 0:
+#         return 0.5 * (scip.erf(z2) - scip.erf(z1))
+    
+#     # n=3: Mass (Integral of x^3 * PDF)
+#     # Using analytic expansion of moments for Normal distribution
+#     if n == 3:
+#         # We need the indefinite integral of x^3 * exp(-(x-mu)^2 / 2sig^2)
+#         # It's cleaner to use a helper that evaluates the moment-generating function
+#         def normal_moment_3(x):
+#             z = (x - mu) / sigma
+#             # Integral part: -sigma * (x^2 + mu*x + mu^2 + 2*sig^2) * PDF(x) + mu*(mu^2 + 3sig^2)*CDF(x)
+#             pdf = (1.0 / (sigma * np.sqrt(2*np.pi))) * np.exp(-0.5 * z**2)
+#             cdf = 0.5 * (1.0 + scip.erf(z / sqrt2))
+#             return -sig2 * (x**2 + mu*x + mu**2 + 2*sig2) * pdf + mu * (mu**2 + 3*sig2) * cdf
+        
+#         return normal_moment_3(x2) - normal_moment_3(x1)
+    
+#     return 0.0 # Extend if other moments are needed
+
+
+# def transfer_1mom_bins_Google(Hlen, bins, kr, ir, jr, n12, dMi_loss, dMj_loss, dM_gain, kmin, kmid, dMb_gain_frac, breakup):
+#     """
+#     Calculates mass transfer rates using optimized bincount accumulation.
+#     Indices (kr, ir, jr, kmin, kmid) must be integers.
+#     Weights (n12, dMi_loss, etc.) are floats.
+#     """
+    
+#     # Pre-calculate the flat grid size for the 1D accumulator
+#     grid_size = Hlen * bins
+    
+#     # 1. Flatten 2D indices (kr, bin) into a 1D index space
+#     # This allows bincount to sum across the entire Hlen x bins grid in one C-call
+#     idx_i = kr * bins + ir
+#     idx_j = kr * bins + jr
+#     idx_kmin = kr * bins + kmin
+#     idx_kmid = kr * bins + kmid
+
+#     # 2. Accumulate Losses (M1 and M2)
+#     # weights=n12*dMi_loss handles the floating point mass transfer rates
+#     M1_loss = np.bincount(idx_i, weights=n12 * dMi_loss, minlength=grid_size).reshape(Hlen, bins)
+#     M2_loss = np.bincount(idx_j, weights=n12 * dMj_loss, minlength=grid_size).reshape(Hlen, bins)
+
+#     # 3. Accumulate Coalescence Gains
+#     # We sum the primary and secondary gain bins (kmin/kmid) separately
+#     M_gain = np.bincount(idx_kmin, weights=n12 * dM_gain[:, 0], minlength=grid_size).reshape(Hlen, bins)
+#     M_gain += np.bincount(idx_kmid, weights=n12 * dM_gain[:, 1], minlength=grid_size).reshape(Hlen, bins)
+
+#     # 4. Handle Breakup Gains
+#     Mb_gain = np.zeros((Hlen, bins))
+#     if breakup:
+#         # Mij_loss represents total mass lost from the bin-pair to be redistributed
+#         Mij_loss = n12 * (dMi_loss + dMj_loss)
+        
+#         # dMb_gain_frac is (bins, n_pairs). We scale it by the total mass lost.
+#         # This is a large broadcasting operation, but NumPy handles it efficiently in RAM.
+#         weighted_frac = dMb_gain_frac * Mij_loss  # Result shape: (bins, n_pairs)
+        
+#         # We must sum the fragments into the correct height levels (kr).
+#         # We loop over bins because 'bins' is usually small (e.g. 30-100), 
+#         # while 'n_pairs' can be huge. bincount stays in optimized C.
+#         for b in range(bins):
+#             Mb_gain[:, b] = np.bincount(kr, weights=weighted_frac[b, :], minlength=Hlen)
+
+#     return M1_loss, M2_loss, M_gain, Mb_gain 
+
+
+# def transfer_1mom_vec_3D(static_chunk, M_loss_buffer, M_gain_buffer, Mb_gain_buffer, ck12_chunk, dMi_loss, dMj_loss, dM_loss, dM_gain, dMb_frac, bins, Hlen, dnum,breakup=False):
+#     """
+#     Worker function: Processes a contiguous 'chunk' of bin-pair interactions.
+#     Bypasses object overhead by using flattened 1D array math. 
+#     """
+#     # 1. Extract indices from the pre-indexed structured array 
+#     kr = static_chunk['kr']
+#     kmin = static_chunk['kmin']
+#     kmid = static_chunk['kmid']
+#     idx_d1 = static_chunk['d1_flat']
+#     idx_d2 = static_chunk['d2_flat']
+    
+#     #idx_kmin = static_chunk['gain_kmin_4d']
+#     #idx_kmid = static_chunk['gain_kmid_4d']
+    
+#     #idx_d1 = kr * bins + ir
+#     #idx_d2 = kr * bins + jr
+    
+#     idx_kmin = kr * bins + kmin 
+#     idx_kmid = kr * bins + kmid
+    
+#     # 2. Map 3D (dnum, height, bin) coordinates to a 1D flat index 
+#     full_grid_size = dnum * Hlen * bins
+#     grid_size = Hlen*bins
+    
+#     # 3. Accumulate Losses and Coalescence Gains using bincount 
+#     # This is significantly faster than np.add.at for floating point weights. 
+#     M_loss_flat = np.bincount(idx_d1, weights=ck12_chunk * dMi_loss, minlength=full_grid_size)
+#     M_loss_flat += np.bincount(idx_d2, weights=ck12_chunk * dMj_loss, minlength=full_grid_size)
+       
+#     M_loss_buffer.ravel()[:] = M_loss_flat
+    
+#     # M1_loss_flat = np.bincount(idx_d1, weights=ck12_chunk * dMi_loss, minlength=grid_size)
+#     # M2_loss_flat = np.bincount(idx_d2, weights=ck12_chunk * dMj_loss, minlength=grid_size)
+    
+#     M_gain_flat  = np.bincount(idx_kmin, weights=ck12_chunk * dM_gain[:, 0], minlength=grid_size)
+#     M_gain_flat += np.bincount(idx_kmid, weights=ck12_chunk * dM_gain[:, 1], minlength=grid_size)
+    
+#     M_gain_buffer.ravel()[:] = M_gain_flat
+    
+#     # 4. Handle Breakup Gains 
+#     Mb_gain_flat = np.zeros(grid_size)
+    
+#    # if dMb_frac is not None:
+#     if breakup:
+#         # Calculate total mass lost per interaction pair 
+#        # Mij_loss = ck12_chunk * dM_loss
+   
+#         # Multiply fragmentation fractions by the total mass lost 
+#         # weighted_frac shape: (bins, chunk_n_pairs)
+#         weighted_frac = dMb_frac *  ck12_chunk * dM_loss
+        
+        
+#         # Distribute fragments into height bins (kr) for each particle size bin 
+#         for b in range(bins):
+            
+#             Mb_gain_flat[b::bins] += np.bincount(kr, weights=weighted_frac[b, :], minlength=Hlen)
+            
+#             # Sum mass at each height level for this specific bin 
+#             #h_sum = np.bincount(kr, weights=weighted_frac[b, :], minlength=Hlen)
+#             # Map the height sums into the correct 1D flat grid positions 
+#             #Mb_gain_flat[b::bins] = h_sum 
+#         Mb_gain_buffer.ravel()[:] = Mb_gain_flat
+            
+#     #M_loss_temp = M_loss_flat.reshape(dnum,Hlen, bins)
+                
+#     #M1_loss_temp = M1_loss_flat.reshape(Hlen, bins)           
+#     #M2_loss_temp = M2_loss_flat.reshape(Hlen, bins)
+    
+#     #M_gain_temp  = M_gain_flat.reshape(Hlen, bins)
+#     #Mb_gain_temp = Mb_gain_flat.reshape(Hlen, bins)
+
+#     # Return a single stack of flattened results to minimize IPC overhead [cite: 1, 7]
+#     return M_loss_buffer, M_gain_buffer, Mb_gain_buffer
+#     #return M_loss_temp, M_gain_temp, Mb_gain_temp
+# #    return M1_loss_temp, M2_loss_temp, M_gain_temp, Mb_gain_temp
+
+# def transfer_1mom_bins_optimized(static_chunk, ck12_chunk, dMi_loss, dMj_loss, dM_loss, dM_gain, dMb_frac, bins, Hlen):
+#     """
+#     Worker function: Processes a contiguous 'chunk' of bin-pair interactions.
+#     Bypasses object overhead by using flattened 1D array math. 
+#     """
+#     # 1. Extract indices from the pre-indexed structured array 
+#     kr = static_chunk['kr']
+#     ir = static_chunk['ir']
+#     jr = static_chunk['jr']
+#     kmin = static_chunk['kmin']
+#     kmid = static_chunk['kmid']
+    
+#     # 2. Map 2D (height, bin) coordinates to a 1D flat index 
+#     grid_size = Hlen * bins
+#     idx_i = kr * bins + ir
+#     idx_j = kr * bins + jr
+#     idx_kmin = kr * bins + kmin
+#     idx_kmid = kr * bins + kmid
+    
+#     # 3. Accumulate Losses and Coalescence Gains using bincount 
+#     # This is significantly faster than np.add.at for floating point weights. 
+#     M1_loss_flat = np.bincount(idx_i, weights=ck12_chunk * dMi_loss, minlength=grid_size)
+#     M2_loss_flat = np.bincount(idx_j, weights=ck12_chunk * dMj_loss, minlength=grid_size)
+    
+#     M_gain_flat = np.bincount(idx_kmin, weights=ck12_chunk * dM_gain[:, 0], minlength=grid_size)
+#     M_gain_flat += np.bincount(idx_kmid, weights=ck12_chunk * dM_gain[:, 1], minlength=grid_size)
+    
+#     # 4. Handle Breakup Gains 
+#     Mb_gain_flat = np.zeros(grid_size)
+#     if dMb_frac is not None:
+
+#         weighted_frac = dMb_frac * ck12_chunk * dM_loss
+        
+#         # Distribute fragments into height bins (kr) for each particle size bin 
+#         for b in range(bins):
+#             # Sum mass at each height level for this specific bin 
+#             h_sum = np.bincount(kr, weights=weighted_frac[b, :], minlength=Hlen)
+#             # Map the height sums into the correct 1D flat grid positions 
+#             Mb_gain_flat[b::bins] = h_sum 
+            
+#     M1_loss_temp = M1_loss_flat.reshape(Hlen, bins)
+#     M2_loss_temp = M2_loss_flat.reshape(Hlen, bins)
+#     M_gain_temp  = M_gain_flat.reshape(Hlen, bins)
+#     Mb_gain_temp = Mb_gain_flat.reshape(Hlen, bins)
+
+#     # Return a single stack of flattened results to minimize IPC overhead [cite: 1, 7]
+#     return M1_loss_temp, M2_loss_temp, M_gain_temp, Mb_gain_temp
+
+# def transfer_1mom_bins_inplace(static_chunk, ck12_chunk, dMi_loss, dMj_loss, dM_loss, dM_gain, dMb_frac,
+#                                M1_loss_buffer,M2_loss_buffer,M_gain_buffer,Mb_gain_buffer,bins, Hlen,breakup=False):
+#     """
+#     Worker function: Processes a contiguous 'chunk' of bin-pair interactions.
+#     Bypasses object overhead by using flattened 1D array math. 
+#     """
+#     # 1. Extract indices from the pre-indexed structured array 
+#     kr = static_chunk['kr']
+#     ir = static_chunk['ir']
+#     jr = static_chunk['jr']
+#     kmin = static_chunk['kmin']
+#     kmid = static_chunk['kmid']
+    
+#     # 2. Map 2D (height, bin) coordinates to a 1D flat index 
+#     grid_size = Hlen * bins
+#     idx_i = kr * bins + ir
+#     idx_j = kr * bins + jr
+#     idx_kmin = kr * bins + kmin
+#     idx_kmid = kr * bins + kmid
+    
+#     # 3. Accumulate Losses and Coalescence Gains using bincount 
+#     # This is significantly faster than np.add.at for floating point weights. 
+#     M1_loss_buffer[:] += np.bincount(idx_i, weights=ck12_chunk * dMi_loss, minlength=grid_size)
+#     M2_loss_buffer[:] += np.bincount(idx_j, weights=ck12_chunk * dMj_loss, minlength=grid_size)
+    
+#     M_gain_buffer[:] += np.bincount(idx_kmin, weights=ck12_chunk * dM_gain[:, 0], minlength=grid_size)
+#     M_gain_buffer[:] += np.bincount(idx_kmid, weights=ck12_chunk * dM_gain[:, 1], minlength=grid_size)
+    
+#     # 4. Handle Breakup Gains 
+#     if breakup:
+
+#         weighted_frac = dMb_frac * ck12_chunk * dM_loss
+        
+#         # Distribute fragments into height bins (kr) for each particle size bin 
+#         for b in range(bins):
+#             # Sum mass at each height level for this specific bin 
+#             Mb_gain_buffer[b::bins] += np.bincount(kr, weights=weighted_frac[b, :], minlength=Hlen)
+            
+#     #M1_loss_temp = M1_loss_flat.reshape(Hlen, bins)
+#     #M2_loss_temp = M2_loss_flat.reshape(Hlen, bins)
+#     #M_gain_temp  = M_gain_flat.reshape(Hlen, bins)
+#     #Mb_gain_temp = Mb_gain_flat.reshape(Hlen, bins)
+
+#     # Return a single stack of flattened results to minimize IPC overhead [cite: 1, 7]
+#     #return M1_loss_buffer, M2_loss_buffer, M_gain_buffer, Mb_gain_buffer
+#     #return M1_loss_temp, M2_loss_temp, M_gain_temp, Mb_gain_temp
+
+# def transfer_1mom_bins_vec(static_chunk, n12, dMi_loss, dMj_loss, dM_loss, dM_gain, dMb_gain_frac, dnum, bins, Hlen, breakup=False):
+
+#     # 1. Extract indices from the pre-indexed structured array 
+#     kr = static_chunk['kr']
+#     ir = static_chunk['ir']
+#     jr = static_chunk['jr']
+#     d1 = static_chunk['d1']
+#     d2 = static_chunk['d2']
+#     kmin = static_chunk['kmin']
+#     kmid = static_chunk['kmid']
+    
+#     # DO TRANSFER HERE
+#     # Initialize gain term arrays
+#     M_loss  = np.zeros((dnum,Hlen,bins))
+#     M_gain  = np.zeros((Hlen,bins))
+#     Mb_gain = np.zeros((Hlen,bins))
+    
+#     np.add.at(M_loss,(d1,kr,ir),n12*dMi_loss)
+#     np.add.at(M_loss,(d2,kr,jr),n12*dMj_loss)
+    
+#     np.add.at(M_gain,(kr,kmin),n12*dM_gain[:,0])
+#     np.add.at(M_gain,(kr,kmid),n12*dM_gain[:,1])
+    
+#     # ELD NOTE: Breakup here can take losses from each pair and calculate gains
+#     # for breakup. Breakup gain arrays will be 3D.
+#     if breakup:    
+#         np.add.at(Mb_gain, kr, np.transpose(dMb_gain_frac[:,kmin]*n12*dM_loss))
+
+#     return M_loss, M_gain, Mb_gain 
