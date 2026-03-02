@@ -564,7 +564,7 @@ s_agg = spectral_1d(habit_params=['snow',agg_dict],cc_dest=2)
 ```
 
 Users can also implement their own fallspeed-size and aspect ratio-isze parameterizations
-as well. To do this, users use either `ar= lambda d: aspect_ratio(d)` or 
+as well. To do this, users use either `aspect_ratio= lambda d: aspect_ratio(d)` or 
 `vt=lambda d: fallspeed(d)` as inputs to **`spectral_1d()`** where `aspect_ratio(d)` 
 and `fallspeed(d)` are custom functions that users would like to use to specify
 the aspect ratio-size and/or fallspeed-size relationships. 

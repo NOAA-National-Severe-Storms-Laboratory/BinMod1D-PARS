@@ -1,16 +1,45 @@
 # -*- coding: utf-8 -*-
 """
-Created on Wed Sep 10 09:40:10 2025
-
-@author: edwin.dunnavan
+These are analytical solutions to the SCE, SBE, and SCE-SBE steady-state solution
+following Scott (1964) and Feingold et al. (1988). For more information, see:
+    
+Scott, W. T.: Analytical studies of cloud droplet coalesence I, J. Atmos. Sci., 25, 54–65, https://doi.org/10.1175/1520-
+0469(1968)025<0054:ASOCDC>2.0.CO;2, 1968.
+    
+Feingold, G., Tzivion, S., and Levin, Z.: Evolution of raindrop spectra. Part I: Solution to the Stochastic Collection/Breakup equation using
+the method of moments, J. Atmos. Sci., 45, 3387–3399, https://doi.org/10.1175/1520-0469(1988)045<3387:EORSPI>2.0.CO;2, 1988.
+    
 """
 import numpy as np
 import mpmath
 from scipy.special import gamma, gammaln, hyp2f1
 from scipy.special import i0e, i1e # Import scaled Bessel functions
-#from scipy.optimize import fsolve
 
 def Scott_moments(r,t,nu,E,B,kernel_type='Golovin'):
+    '''
+    Calculate moments for Scott's analytical solutions to the SCE for Golovin, Product, and Constant kernels.
+
+    Parameters
+    ----------
+    r : TYPE
+        DESCRIPTION.
+    t : TYPE
+        DESCRIPTION.
+    nu : TYPE
+        DESCRIPTION.
+    E : TYPE
+        DESCRIPTION.
+    B : TYPE
+        DESCRIPTION.
+    kernel_type : TYPE, optional
+        DESCRIPTION. The default is 'Golovin'.
+
+    Returns
+    -------
+    M_rt : TYPE
+        DESCRIPTION.
+
+    '''
     
     T = E*t
     
@@ -72,6 +101,31 @@ def Scott_moments(r,t,nu,E,B,kernel_type='Golovin'):
 
 
 def Feingold_moments(r,t,nu,B,gam,kernel_type='SBE'):
+    '''
+    Calculate moments for Feingold's analytical solutions to the SBE/SCE-SBE Steady state solution for Constant kernel.
+
+
+    Parameters
+    ----------
+    r : TYPE
+        DESCRIPTION.
+    t : TYPE
+        DESCRIPTION.
+    nu : TYPE
+        DESCRIPTION.
+    B : TYPE
+        DESCRIPTION.
+    gam : TYPE
+        DESCRIPTION.
+    kernel_type : TYPE, optional
+        DESCRIPTION. The default is 'SBE'.
+
+    Returns
+    -------
+    M_rt : TYPE
+        DESCRIPTION.
+
+    '''
     
     M_rt = np.zeros_like(t)
     
@@ -100,6 +154,32 @@ def Feingold_moments(r,t,nu,B,gam,kernel_type='SBE'):
 
 
 def Scott_dists(xbins, Eagg, nu, t, kernel_type='Golovin', max_k=100):
+    '''
+    Calculates Scott's analytical number distribution function solution to
+    the SCE for Golovin, Product, and Constant kernels.
+
+    Parameters
+    ----------
+    xbins : TYPE
+        DESCRIPTION.
+    Eagg : TYPE
+        DESCRIPTION.
+    nu : TYPE
+        DESCRIPTION.
+    t : TYPE
+        DESCRIPTION.
+    kernel_type : TYPE, optional
+        DESCRIPTION. The default is 'Golovin'.
+    max_k : TYPE, optional
+        DESCRIPTION. The default is 100.
+
+    Returns
+    -------
+    npbins : TYPE
+        DESCRIPTION.
+
+    '''
+    
     bins = len(xbins)
     Tlen = len(t)
     npbins = np.zeros([bins, Tlen])
@@ -221,6 +301,80 @@ def Scott_dists(xbins, Eagg, nu, t, kernel_type='Golovin', max_k=100):
             npbins[mask_lg, 1:] = term1 / (term2 * term3)
 
     return npbins
+
+def Feingold_dists(xbins, t, nu, E, B, gam, kernel_type='SBE'):
+    '''
+    Calculates Feingold's analytical number distribution function solution to
+    the SBE/SCE-SBE steady-state solution for Constant kernel.
+
+    Parameters
+    ----------
+    xbins : TYPE
+        DESCRIPTION.
+    t : TYPE
+        DESCRIPTION.
+    nu : TYPE
+        DESCRIPTION.
+    E : TYPE
+        DESCRIPTION.
+    B : TYPE
+        DESCRIPTION.
+    gam : TYPE
+        DESCRIPTION.
+    kernel_type : TYPE, optional
+        DESCRIPTION. The default is 'SBE'.
+
+    Returns
+    -------
+    npbins : TYPE
+        DESCRIPTION.
+
+    '''
+    
+    if kernel_type == 'SBE':
+        #n0_xt = (1./gamma(nu))*(nu**nu)*xbins[:,None]**(nu-1)*np.exp(-nu*xbins[:,None]) # initial dist.
+        #npbins = (n0_xt+gam*(np.exp(B*gam*t[None,:])-1)*np.exp(-gam*xbins[:,None]))/(1+(1./gam)*(np.exp(B*gam*t[None,:])-1)) 
+        
+        x_col = xbins[:, None]
+        t_row = t[None, :]
+    
+        # 1. Initial distribution (t=0)
+        # Using eps to protect against 0^(nu-1) singularity if xbins starts at 0 and nu < 1
+        eps = 1e-20
+        n0_xt = (1./gamma(nu)) * (nu**nu) * (x_col + eps)**(nu-1) * np.exp(-nu * x_col)
+        
+        # 2. Exponent parameter P
+        P = B * gam * t_row
+    
+        # 3. Stable decaying exponentials
+        exp_neg_P = np.exp(-P)
+        one_minus_exp = 1.0 - exp_neg_P
+        
+        # 4. Numerically stable fraction
+        num = gam * n0_xt * exp_neg_P + (gam**2) * one_minus_exp * np.exp(-gam * x_col)
+        den = gam * exp_neg_P + one_minus_exp
+        
+        npbins = num / den
+        
+    elif kernel_type == 'SCE/SBE':
+        # E_new logic (kept as provided)
+        E_new = 1000. * E 
+        #E_new = E 
+        eta = 0.5 * E_new * gam * (2. - E_new)
+        
+        
+        # Implementing using the scaled versions:
+        arg = eta * xbins
+        
+        decay_factor = np.exp(-(gam - 2.0 * eta) * xbins)
+        bessel_diff = i0e(arg) - i1e(arg)
+        
+        npbins = (1 - E_new) * gam**2 * bessel_diff * decay_factor
+        
+
+    return npbins
+
+
 
 # def Scott_dists_working(xbins, Eagg, nu, t, kernel_type='Golovin', max_k=40):
 #     """
@@ -440,54 +594,6 @@ def Scott_dists(xbins, Eagg, nu, t, kernel_type='Golovin', max_k=100):
 
     
 #     return npbins
-
-
-def Feingold_dists(xbins, t, nu, E, B, gam, kernel_type='SBE'):
-    
-    
-    if kernel_type == 'SBE':
-        n0_xt = (1./gamma(nu))*(nu**nu)*xbins[:,None]**(nu-1)*np.exp(-nu*xbins[:,None]) # initial dist.
-        npbins = (n0_xt+gam*(np.exp(B*gam*t[None,:])-1)*np.exp(-gam*xbins[:,None]))/(1+(1./gam)*(np.exp(B*gam*t[None,:])-1)) 
-        
-    elif kernel_type == 'SCE/SBE':
-        # E_new logic (kept as provided)
-        E_new = 1000. * E 
-        eta = 0.5 * E_new * gam * (2. - E_new)
-        
-        # --- THE FIX ---
-        # Original: (i0(eta*x) - i1(eta*x)) * exp(-(gam - eta)*x)
-        # Identity: i0(x) = i0e(x) * exp(x)
-        # Subst:    (i0e(eta*x)*exp(eta*x) - i1e(eta*x)*exp(eta*x)) * exp(-gam*x + eta*x)
-        # Factor:   exp(eta*x) * (i0e - i1e) * exp(-gam*x) * exp(eta*x) -> WRONG ALGEBRA ABOVE
-        
-        # Correct Algebra:
-        # We want: [ I0(eta*x) - I1(eta*x) ] * exp( - (gam - eta)*x )
-        #        = [ i0e(eta*x)*e^(eta*x) - i1e(eta*x)*e^(eta*x) ] * e^(-gam*x + eta*x)
-        #        = e^(eta*x) * [ i0e(eta*x) - i1e(eta*x) ] * e^(-gam*x) * e^(eta*x)
-        #        = e^(2*eta*x - gam*x) * [ i0e(eta*x) - i1e(eta*x) ]
-        
-        # Wait, usually the decaying term matches the growing term. 
-        # Let's check the argument of exp.
-        # Argument is -(gam - eta)*x = -gam*x + eta*x.
-        # Bessel grows as exp(eta*x). 
-        # Total exponent = eta*x + (-gam*x + eta*x) = 2*eta*x - gam*x.
-        
-        # If 2*eta - gam <= 0, this is stable. 
-        # If 2*eta - gam > 0, it grows physically (and numerically).
-        
-        # Implementing using the scaled versions:
-        arg = eta * xbins
-        
-        # We replace exp(-(gam-eta)x) with exp(-(gam-2*eta)x) because i0e removed one exp(eta*x)
-        # Decay factor adjusted: exp( -(gam - eta)*x + eta*x ) = exp( -(gam - 2*eta)*x )
-        
-        decay_factor = np.exp(-(gam - 2.0 * eta) * xbins)
-        bessel_diff = i0e(arg) - i1e(arg)
-        
-        npbins = (1 - E_new) * gam**2 * bessel_diff * decay_factor
-        
-
-    return npbins
 
 
 # def Feingold_dists_ORIG(xbins,t,nu,E,B,gam,kernel_type='SBE'):

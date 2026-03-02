@@ -11,6 +11,22 @@ def CKE(di1d,dj1d,vi1d,vj1d):
     '''
     Collisional Kinetic Energy as defined by Low and List and others.
 
+    Parameters
+    ----------
+    di1d : TYPE
+        DESCRIPTION.
+    dj1d : TYPE
+        DESCRIPTION.
+    vi1d : TYPE
+        DESCRIPTION.
+    vj1d : TYPE
+        DESCRIPTION.
+
+    Returns
+    -------
+    TYPE
+        DESCRIPTION.
+
     '''
     
     rho_w = 1.0       # Density of water (g/cm^3)
@@ -27,6 +43,26 @@ def CKE(di1d,dj1d,vi1d,vj1d):
 
 
 def Weber_number(di1d,dj1d,vi1d,vj1d):
+    '''
+    Weber number as defined by Low and List and others.
+
+    Parameters
+    ----------
+    di1d : TYPE
+        DESCRIPTION.
+    dj1d : TYPE
+        DESCRIPTION.
+    vi1d : TYPE
+        DESCRIPTION.
+    vj1d : TYPE
+        DESCRIPTION.
+
+    Returns
+    -------
+    TYPE
+        DESCRIPTION.
+
+    '''
     
     # Physical Constants (CGS)
     rho_w = 1.0       # Density of water (g/cm^3)
@@ -58,6 +94,22 @@ def Weber_number(di1d,dj1d,vi1d,vj1d):
 def Straub_params(di1d,dj1d,vi1d,vj1d):
     '''
     Straub et al. (2010) fragment distribution parameters
+
+    Parameters
+    ----------
+    di1d : TYPE
+        DESCRIPTION.
+    dj1d : TYPE
+        DESCRIPTION.
+    vi1d : TYPE
+        DESCRIPTION.
+    vj1d : TYPE
+        DESCRIPTION.
+
+    Returns
+    -------
+    Straub_dict : TYPE
+        DESCRIPTION.
 
     '''
     Straub_dict = {}
@@ -196,28 +248,119 @@ def Straub_params(di1d,dj1d,vi1d,vj1d):
     return Straub_dict
     
 def Prod_kernel(xi,xj):
+    '''
+    Product kernel
+
+    Parameters
+    ----------
+    xi : TYPE
+        DESCRIPTION.
+    xj : TYPE
+        DESCRIPTION.
+
+    Returns
+    -------
+    TYPE
+        DESCRIPTION.
+
+    '''
     
     return xi[:,None]*xj[None,:]
 
 
 def Constant_kernel(xi,xj):
+    '''
+    Constant kernel
+
+    Parameters
+    ----------
+    xi : TYPE
+        DESCRIPTION.
+    xj : TYPE
+        DESCRIPTION.
+
+    Returns
+    -------
+    TYPE
+        DESCRIPTION.
+
+    '''
     
     return np.ones_like(xi[:,None]*xj[None,:])
 
 
 def Golovin_kernel(xi,xj):
+    '''
+    Golovin kernel
+
+    Parameters
+    ----------
+    xi : TYPE
+        DESCRIPTION.
+    xj : TYPE
+        DESCRIPTION.
+
+    Returns
+    -------
+    TYPE
+        DESCRIPTION.
+
+    '''
     
     return xi[:,None]+xj[None,:]
 
 def hydro_kernel(vtx,vty,Ax,Ay):
+    '''
+    Hydrodynamic kernel
 
-    # Hydrodynamic kernel in mm^3/s. Note units eventually cancel out if
-    # Nt is in #/L
+    Parameters
+    ----------
+    vtx : TYPE
+        DESCRIPTION.
+    vty : TYPE
+        DESCRIPTION.
+    Ax : TYPE
+        DESCRIPTION.
+    Ay : TYPE
+        DESCRIPTION.
+
+    Returns
+    -------
+    Kxy : TYPE
+        DESCRIPTION.
+
+    '''
+
+    # Hydrodynamic kernel in mm^3/s. 
     Kxy = 0.001*np.abs(vtx[:,None]-vty[None,:])*(np.sqrt(Ax[:,None])+np.sqrt(Ay[None,:]))**2.   
-
+    
     return Kxy     
 
 def long_kernel(di,dj,vi,vj,Ai,Aj):
+    '''
+    Long (1974) kernel as formulated by Simmel et al. (2000)
+
+    Parameters
+    ----------
+    di : TYPE
+        DESCRIPTION.
+    dj : TYPE
+        DESCRIPTION.
+    vi : TYPE
+        DESCRIPTION.
+    vj : TYPE
+        DESCRIPTION.
+    Ai : TYPE
+        DESCRIPTION.
+    Aj : TYPE
+        DESCRIPTION.
+
+    Returns
+    -------
+    Kxy : TYPE
+        DESCRIPTION.
+
+    '''
     
     # See Long (1974) (JAS)
     # NOTE: Try Simmel's approach. 
@@ -233,6 +376,29 @@ def long_kernel(di,dj,vi,vj,Ai,Aj):
     return Kxy
 
 def hall_kernel(di,dj,vi,vj,Ai,Aj):
+    '''
+    Hall (1980) collection kernel
+
+    Parameters
+    ----------
+    di : TYPE
+        DESCRIPTION.
+    dj : TYPE
+        DESCRIPTION.
+    vi : TYPE
+        DESCRIPTION.
+    vj : TYPE
+        DESCRIPTION.
+    Ai : TYPE
+        DESCRIPTION.
+    Aj : TYPE
+        DESCRIPTION.
+
+    Returns
+    -------
+    None.
+
+    '''
     
     from scipy.interpolate import griddata
     
@@ -278,7 +444,31 @@ def straub_efficiency(di, dj, vi, vj, Ai, Aj):
         
         Note: The parameterization is based on CGS units. 
         We must ensure the Weber number calculation uses consistent units.
-        '''
+        
+        ALSO, BinMod1D currently does not handle non-constant Es parameterizations!
+        Future versions will incorporate this.
+
+    Parameters
+    ----------
+    di : TYPE
+        DESCRIPTION.
+    dj : TYPE
+        DESCRIPTION.
+    vi : TYPE
+        DESCRIPTION.
+    vj : TYPE
+        DESCRIPTION.
+    Ai : TYPE
+        DESCRIPTION.
+    Aj : TYPE
+        DESCRIPTION.
+
+    Returns
+    -------
+    Kxy : TYPE
+        DESCRIPTION.
+
+    '''
         
         # Physical Constants (CGS)
         rho_w = 1.0       # Density of water (g/cm^3)

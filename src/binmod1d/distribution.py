@@ -17,9 +17,57 @@ import matplotlib.pyplot as plt
 import types
 
 class dist():
+    '''
+    A class for initializing a spectral bin distribution
+    '''
     
     def __init__(self, sbin=4, bins=80, D1=0.01, dist_var='mass', kernel='Hydro',
                  habit_dict=None, ptype='rain', Tc=10., x0=None, mom_num=2):
+        '''
+        
+
+        Parameters
+        ----------
+        sbin : int
+            Spectral bin mass grid resolution. The default is 4.
+        bins : int
+            Number of bins used for each distribution. The default is 80
+        D1 : float, optional
+            Left-hand edge of first bin in mm if dist_var='size'. The default is 0.01.
+        dist_var : str, optional
+            The independent variable chosen for specifying initial distribution function.
+            dist_var = 'size' (if particle size distribution n(D))
+            dist_var = 'mass' (if particle mass distribution n(m))
+            The default is 'mass'.
+        kernel : str, optional
+            Name of collection kernel used. Option must be either:
+                kernel='Golovin'
+                kernel='Product'
+                kernel='Constant'
+                kernel='Hydro' (Hydrodynamic kernel)
+                kernel='Long' (see Long (1974))
+                kernel='Hall' (see Hall (1980))
+                The default is 'Hydro'.
+        habit_dict : dict, optional
+            Dictionary with habit parameters. If None, then dictionary will default
+            to 'rain' (see habits.py). The default is None.
+        ptype : str, optional
+            Type of precipitation. Either,
+            ptype = 'rain'
+                or
+            ptype = 'snow'
+            The default is 'rain'.
+        Tc : float, optional
+            Assumed mean temperature of layer in degrees Celsius. Currently
+            only used for dielectric constant calculation but eventually will be
+            used for collection kernels and potentially other microphysical processes.
+            The default is 10..
+        x0 : float, optional
+            Left-hand edge of first bin in g if dist_var='mass'. If None, then defaults to 0.01.
+        mom_num : int, optional
+            Number of bin moments used to specify subgrid linear distribution (either mom_num=2 or mom_num=1). The default is 2.
+
+        '''
         
         self.mom_num = mom_num
         
@@ -39,14 +87,18 @@ class dist():
         # 2. Dispatcher: Populate the grid based on the chosen method
         if init_method == 'gamma':
              
-            Nt0 = habit_dict.get('Nt0',1.)
-            Mt0 = habit_dict.get('Mt0',1.)
-            Dm0 = habit_dict.get('Dm0',2.0)
-            mbar = habit_dict.get('mbar0',None)
+            Nt0 = habit_dict.get('Nt0',1.) # #/m^3
+            
+            Mt0 = habit_dict.get('Mt0',1.) # g/m^3
+            Dm0 = habit_dict.get('Dm0',2.0) # mm
+            mbar = habit_dict.get('mbar0',None) #g
             mu0 = habit_dict.get('mu0',3.)
             gam_norm = habit_dict.get('gam_norm',False)
             
             self.gam_norm = gam_norm
+            
+            if not self.gam_norm:
+                Nt0 *= 1000.
             
             self.bin_gamma_dist(Nt0=Nt0,Mt0=Mt0,mbar=mbar,mu0=mu0,Dm0=Dm0,normalize=gam_norm)
             
@@ -56,13 +108,17 @@ class dist():
             habit_dict['mu0'] = mu0
             habit_dict['Dm0'] = Dm0
             habit_dict['gam_norm'] = gam_norm
+            
+            #if not self.gam_norm:
+            #    self.Mbins *= 1000. # Convert kg to g
+            #    self.Nbins *= 1000. # Convert L to #/m^3
 
         elif init_method == 'analytical':
             
             if 'func_nD' not in habit_dict:
                 raise ValueError('User needs to supply func_nD as keyword argument')
             
-            func_nD = habit_dict.get('func_nD',lambda D: 1000.*np.exp(-D/1.))
+            func_nD = habit_dict.get('func_nD',lambda D: 1.*np.exp(-D/1.))
             
             self.bin_analytical_dist(func_nD, var=dist_var)
             
@@ -118,7 +174,7 @@ class dist():
              
         else:
             raise ValueError(f"Unknown init_method: {init_method}")
-                     
+               
         # 3. Diagnostics
         if mom_num == 2:
             self.diagnose() 
@@ -154,6 +210,50 @@ class dist():
 #             self.diagnose_1mom()
         
     def init_dist(self,sbin,bins,D1,kernel='Hydro',habit_dict=None,ptype='rain',Tc=10.,dist_var='mass',x0=None,mom_num=2):
+        '''
+        
+
+        Parameters
+        ----------
+        sbin : int
+            Spectral bin mass grid resolution. The default is 4.
+        bins : int
+            Number of bins used for each distribution. The default is 80
+        D1 : float, optional
+            Left-hand edge of first bin in mm if dist_var='size'. The default is 0.01.
+        kernel : str, optional
+            Name of collection kernel used. Option must be either:
+                kernel='Golovin'
+                kernel='Product'
+                kernel='Constant'
+                kernel='Hydro' (Hydrodynamic kernel)
+                kernel='Long' (see Long (1974))
+                kernel='Hall' (see Hall (1980))
+                The default is 'Hydro'.
+        habit_dict : dict, optional
+            Dictionary with habit parameters. If None, then dictionary will default
+            to 'rain' (see habits.py). The default is None.
+        ptype : str, optional
+            Type of precipitation. Either,
+            ptype = 'rain'
+                or
+            ptype = 'snow'
+            The default is 'rain'.
+        Tc : float, optional
+            Assumed mean temperature of layer in degrees Celsius. Currently
+            only used for dielectric constant calculation but eventually will be
+            used for collection kernels and potentially other microphysical processes.
+            The default is 10..
+        dist_var : str, optional
+            The independent variable chosen for specifying initial distribution function.
+            dist_var = 'size' (if particle size distribution n(D))
+            dist_var = 'mass' (if particle mass distribution n(m))
+            The default is 'mass'.
+        x0 : float, optional
+            Left-hand edge of first bin in g if dist_var='mass'. If None, then defaults to 0.01.
+        mom_num : int, optional
+            Number of bin moments used to specify subgrid linear distribution (either mom_num=2 or mom_num=1). The default is 2.
+        '''
         
         if habit_dict is None:
             habit_dict = habits()[ptype]
@@ -163,18 +263,30 @@ class dist():
         self.D1 = D1
         self.sbin = sbin 
         self.bins = bins
+        self.ptype = ptype
         
-        self.ar = habit_dict['ar'] 
-        self.br = habit_dict['br'] 
-        self.arho = habit_dict['arho'] 
-        self.brho = habit_dict['brho'] 
-        self.av = habit_dict['av'] 
-        self.bv = habit_dict['bv']
-        self.sigma = habit_dict['sig']
-        self.am = habit_dict['am']    # Units: g * mm^(-(3+brho)) 
-        self.bm = habit_dict['bm']
+        if self.ptype=='rain':
+            self.ar = habit_dict.get('ar',1.) 
+            self.br = habit_dict.get('br',0.)
+            self.arho = habit_dict.get('arho',1.)
+            self.brho = habit_dict.get('brho',0.)
+            self.av = habit_dict.get('av',3.78) # Atlas and Ulbrich (1977)
+            self.bv = habit_dict.get('bv',0.67) # Atlas and Ulbrich (1977)
+            self.sigma = habit_dict.get('sig',10.)
+            self.am = habit_dict.get('am',0.001*(np.pi/6.))    # Units: g * mm^(-(3+brho)) 
+            self.bm = habit_dict.get('bm',3.)
+        elif self.ptype=='snow':
+            self.ar = habit_dict.get('ar',0.6) 
+            self.br = habit_dict.get('br',0.)
+            self.arho = habit_dict.get('arho',0.2) 
+            self.brho = habit_dict.get('brho',1.0)
+            self.av = habit_dict.get('av',0.8) 
+            self.bv = habit_dict.get('bv',0.14)
+            self.sigma = habit_dict.get('sig',0.)
+            self.am = habit_dict.get('am',0.001*(np.pi/6.)*habit_dict['arho'] )    # Units: g * mm^(-(3+brho)) 
+            self.bm = habit_dict.get('bm',3.-habit_dict['brho'])
         
-        ar_func = habit_dict.get('ar',None)
+        ar_func = habit_dict.get('aspect_ratio',None)
         vt_func = habit_dict.get('vt',None)
             
         self.ptype = ptype
@@ -257,37 +369,6 @@ class dist():
             self.rho1 = np.ones_like(self.d1) # g/cm^3
             self.rho2 = np.ones_like(self.d2) # g/cm^3
              
-            #self.vt  = rain_terminal_velocity(self.d)
-            #self.vt1 = rain_terminal_velocity(self.d1)
-            #self.vt2 = rain_terminal_velocity(self.d2)
-            #self.vt_edges = rain_terminal_velocity(self.d_edges)
-        
-        # if ptype=='rain':
-        #     # Use Brandes (2002) relation which is a curve fit to laboratory measurements from
-        #     # Gunn and Kinzer (1949) and Pruppacher and Pitter (1971)
-        #     # See (https://doi.org/10.1175/1520-0450(2002)041<0674:EIREWA>2.0.CO;2)
-        #     vt_brandes = lambda d: -0.1021 + 4.932*d-0.9551*d**2+0.07934*d**3-0.002362*d**4
-        #     dmin_brandes = 0.1 
-        #     dmax_brandes = 8.1
-        #     #self.vt = -0.1021 + 4.932*self.d-0.9551*self.d**2+0.07934*self.d**3-0.002362*self.d**4
-        #     #self.vt_edges = -0.1021 + 4.932*self.d_edges-0.9551*self.d_edges**2+0.07934*self.d_edges**3-0.002362*self.d_edges**4
-        #     self.vt = vt_brandes(self.d)
-        #     self.vt[self.d>dmax_brandes] = vt_brandes(dmax_brandes)
-        #     self.vt[self.d<dmin_brandes] = vt_brandes(dmin_brandes)
-            
-        #     self.vt_edges = vt_brandes(self.d_edges)
-        #     self.vt_edges[self.d_edges>dmax_brandes] = vt_brandes(dmax_brandes)
-        #     self.vt_edges[self.d_edges<dmin_brandes] = vt_brandes(dmin_brandes)
-            
-            
-        # else:
-        
-        # Set up particle properties for mass grid
-        # Fall speed (m/s)
-        
-        #self.vt = np.clip(-0.1021 + 4.932*self.d-0.9551*self.d**2+0.07934*self.d**3-0.002362*self.d**4,0.01,10.)
-        #self.vt_edges = np.clip(-0.1021 + 4.932*self.d_edges-0.9551*self.d_edges**2+0.07934*self.d_edges**3-0.002362*self.d_edges**4,0.01,10.)
-
         if isinstance(vt_func,types.LambdaType):
             self.vt = vt_func(self.d)
             self.vt_edges = vt_func(self.d_edges)
@@ -301,15 +382,6 @@ class dist():
         self.vt1 = self.vt_edges[:-1].copy() 
         self.vt2 = self.vt_edges[1:].copy()
 
-        # ORIGINAL Atlas power-law for RAIN
-        # self.vt = self.av*self.d**self.bv
-        # self.vt_edges = self.av*self.d_edges**self.bv
-        
-        # self.vt[self.vt>10.] = 10.
-        # self.vt_edges[self.vt_edges>10.]=10.
-        
-        # self.vt1 = self.vt_edges[:-1].copy() 
-        # self.vt2 = self.vt_edges[1:].copy()
 
         # Midpoint Area (mm^2)
         # !!! Note, testing here
@@ -339,6 +411,8 @@ class dist():
         self.Dn = Dm0/(mu0+4.)
         
         self.mn = self.am*self.Dn**self.bm
+        
+        
 
         # Number distribution function in terms of mass (n(x))
         
@@ -350,20 +424,27 @@ class dist():
             if mbar is None:
                 mbar = Mt0/Nt0
             
-            self.nedges = (self.Nt0/mbar)*((nu**nu)/scip.gamma(nu))*(self.xedges/mbar)**(nu-1.)*np.exp(-nu*self.xedges/mbar)
+            #self.nedges = (self.Nt0/mbar)*((nu**nu)/scip.gamma(nu))*(self.xedges/mbar)**(nu-1.)*np.exp(-nu*self.xedges/mbar)
         
-            self.nbins = (self.Nt0/mbar)*((nu**nu)/scip.gamma(nu))*(self.xbins/mbar)**(nu-1.)*np.exp(-nu*self.xbins/mbar)
+            #self.nbins = (self.Nt0/mbar)*((nu**nu)/scip.gamma(nu))*(self.xbins/mbar)**(nu-1.)*np.exp(-nu*self.xbins/mbar)
             
+            nx_func = lambda x: (self.Nt0/mbar)*((nu**nu)/scip.gamma(nu))*(x/mbar)**(nu-1.)*np.exp(-nu*x/mbar)
             
         else:
-           self.nedges = (self.Nt0/self.bm)*(1./scip.gamma(self.mu0+1.))*\
-               (1./self.mn)*(self.xedges/self.mn)**((nu/self.bm)-1.)*np.exp(-(self.xedges/self.mn)**(1./self.bm))
+           #self.nedges = (self.Nt0/self.bm)*(1./scip.gamma(self.mu0+1.))*\
+           #    (1./self.mn)*(self.xedges/self.mn)**((nu/self.bm)-1.)*np.exp(-(self.xedges/self.mn)**(1./self.bm))
                
-           self.nbins = (self.Nt0/self.bm)*(1./scip.gamma(self.mu0+1.))*\
-               (1./self.mn)*(self.xbins/self.mn)**((nu/self.bm)-1.)*np.exp(-(self.xbins/self.mn)**(1./self.bm))
-            
-        self.Nbins = 0.5*(self.nedges[:-1]+self.nedges[1:])*(self.x2-self.x1)
-        self.Mbins = (1./6.)*(self.nedges[:-1]*(2.*self.x1+self.x2)+self.nedges[1:]*(self.x1+2.*self.x2))*(self.x2-self.x1)
+           #self.nbins = (self.Nt0/self.bm)*(1./scip.gamma(self.mu0+1.))*\
+           #    (1./self.mn)*(self.xbins/self.mn)**((nu/self.bm)-1.)*np.exp(-(self.xbins/self.mn)**(1./self.bm))
+           
+           nx_func = lambda x: (self.Nt0/self.bm)*(1./scip.gamma(self.mu0+1.))*\
+               (1./self.mn)*(x/self.mn)**((nu/self.bm)-1.)*np.exp(-(x/self.mn)**(1./self.bm))
+           
+         
+        self.bin_analytical_dist(nx_func, var='mass')    
+           
+        #self.Nbins = 0.5*(self.nedges[:-1]+self.nedges[1:])*(self.x2-self.x1)
+        #self.Mbins = (1./6.)*(self.nedges[:-1]*(2.*self.x1+self.x2)+self.nedges[1:]*(self.x1+2.*self.x2))*(self.x2-self.x1)
 
 
     def bin_analytical_dist(self, func_nD, var='size'):
@@ -392,8 +473,8 @@ class dist():
         
         for k in range(self.bins):
             
-            self.Mbins[k], _ = quad(func_nD_scaled, x1[k], x2[k])
-            self.Nbins[k], _ = quad(func_nD, x1[k], x2[k])
+            self.Mbins[k], _ = quad(func_nD_scaled, x1[k], x2[k],limit=100)
+            self.Nbins[k], _ = quad(func_nD, x1[k], x2[k],limit=100)
 
     def bin_empirical_dist(self, user_edges, user_nD):
         """
@@ -534,12 +615,16 @@ class dist():
 
 
     def moments(self,r):  # Units are g^n
-        # Integrate to find arbitrary moments of subgrid distribution Mn = Int x^n *[n(x)=ak*x+ck]*dx
+        '''
+        Integrates to find arbitrary moments of subgrid distribution Mn = Int x^n *[n(x)=ak*x+ck]*dx
+        '''
         return self.aki*Pn(r+1,self.x1,self.x2)+self.cki*Pn(r,self.x1,self.x2)
 
-    # Function for diagnosing linear distribution function following Wang et al. (2008)
-    # NOTE: Need to clip xm to left/right bin boundaries
+    
     def diagnose_1mom(self):
+        '''
+        Function for diagnosing uniform distribution function
+        '''
          
         self.Nbins = self.Mbins/self.xbins
         
@@ -569,6 +654,9 @@ class dist():
 
    
     def diagnose(self):
+        '''
+        Function for diagnosing uniform distribution function following Wang et al. (2008)
+        '''
         
         # Google Gemini enhanced version. Needed to bug fix. (see original above)
         eps = 1e-32 # Protection against div by zero
@@ -651,20 +739,28 @@ class dist():
         self.vtn[self.vtn>10.] = 10.
            
     
-    def check_moments(self):
+    # def check_moments(self):
+    #     '''
+    #     Checks initial moments
+
+    #     '''
         
-        Ncheck = 0.5*(self.x2-self.x1)*(self.n1+self.n2) 
-        Mcheck = (1./6.)*(self.x2-self.x1)*\
-              (self.n1*(2.*self.x1+self.x2)+self.n2*(self.x1+2.*self.x2))
+    #     Ncheck = 0.5*(self.x2-self.x1)*(self.n1+self.n2) 
+    #     Mcheck = (1./6.)*(self.x2-self.x1)*\
+    #           (self.n1*(2.*self.x1+self.x2)+self.n2*(self.x1+2.*self.x2))
               
-        print('Ncheck = {} | Nactual = {}'.format(Ncheck.sum(),self.Nbins.sum()))
-        print('Mcheck = {} | Mactual = {}'.format(Mcheck.sum(),self.Mbins.sum()))
+    #     print('Ncheck = {} | Nactual = {}'.format(Ncheck.sum(),self.Nbins.sum()))
+    #     print('Mcheck = {} | Mactual = {}'.format(Mcheck.sum(),self.Mbins.sum()))
         
-        print('Ndiff = {}'.format(Ncheck-self.Nbins))
-        print('Mdiff = {}'.format(Mcheck-self.Mbins))
+    #     print('Ndiff = {}'.format(Ncheck-self.Nbins))
+    #     print('Mdiff = {}'.format(Mcheck-self.Mbins))
        
         
     def radar_bins(self):
+        '''
+        Calculate radar variables for each bin of distribution.
+
+        '''
         
         ang1 = self.angs[0]
         ang2 = self.angs[1]
@@ -852,6 +948,22 @@ class dist():
 
 # Mbins = (dnum,Hlen,bins,Tout)
 def update_1mom(Mbins,dxi):
+    '''
+    Updates 1 moment distribution uniform subgrid parameters.
+
+    Parameters
+    ----------
+    Mbins : TYPE
+        DESCRIPTION.
+    dxi : TYPE
+        DESCRIPTION.
+
+    Returns
+    -------
+    TYPE
+        DESCRIPTION.
+
+    '''
     
    # return Mbins/dxi[None,None,:]
 
@@ -872,7 +984,41 @@ def update_1mom(Mbins,dxi):
 
    
 def update_2mom(Mbins,Nbins,rhobins,bound_low,bound_high,dx,xi1,xi2):
-    # Google Gemini enhanced version. Needed to bug fix. (see original above)
+    '''
+    Google Gemini enhanced version of 2 moment subgrid linear distribution 
+    diagnosis from Mbins and Nbins. Needed to bug fix. (see original commented).
+
+    Parameters
+    ----------
+    Mbins : TYPE
+        DESCRIPTION.
+    Nbins : TYPE
+        DESCRIPTION.
+    rhobins : TYPE
+        DESCRIPTION.
+    bound_low : TYPE
+        DESCRIPTION.
+    bound_high : TYPE
+        DESCRIPTION.
+    dx : TYPE
+        DESCRIPTION.
+    xi1 : TYPE
+        DESCRIPTION.
+    xi2 : TYPE
+        DESCRIPTION.
+
+    Returns
+    -------
+    aki : TYPE
+        DESCRIPTION.
+    cki : TYPE
+        DESCRIPTION.
+    x1i : TYPE
+        DESCRIPTION.
+    x2i : TYPE
+        DESCRIPTION.
+
+    '''
     
     eps = 1e-32
     
@@ -932,6 +1078,22 @@ def update_2mom(Mbins,Nbins,rhobins,bound_low,bound_high,dx,xi1,xi2):
  
 
 def spheroid_factors(ar):
+    '''
+    Calculates spheroid factors for Rayleigh scattering calculations.
+
+    Parameters
+    ----------
+    ar : TYPE
+        DESCRIPTION.
+
+    Returns
+    -------
+    La : TYPE
+        DESCRIPTION.
+    Lc : TYPE
+        DESCRIPTION.
+
+    '''
     
     La = (1./3.)*np.ones_like(ar)
     
@@ -949,22 +1111,35 @@ def spheroid_factors(ar):
 
 
 def angular_moments(sigma):
+    '''
+    Calculates angular moments from Ryzhkov et al. (2011)
 
-       # Compute angular moments from Ryzhkov et al. (2011)
-       sig = (np.pi/180) * sigma
-       uu = np.exp(-2.0 * sig**2)
-       ang1 = 0.25 * (1 + uu)**2
-       ang2 = 0.25 * (1 - uu**2)
-       ang3 = (0.375 + 0.5 * uu + 0.125 * uu**4)**2
-       ang4 = ((0.375 - 0.5 * uu + 0.125 * uu**4) *
-               (0.375 + 0.5 * uu + 0.125 * uu**4))
-       ang5 = 0.125 * (0.375 + 0.5 * uu + 0.125 * uu**4) * (1 - uu**4)
-       ang6 = 0.
-       ang7 = 0.5 * uu * (1 + uu)
-       
-       angs = np.array([ang1,ang2,ang3,ang4,ang5,ang6,ang7])
-       
-       return angs
+    Parameters
+    ----------
+    sigma : TYPE
+        DESCRIPTION.
+
+    Returns
+    -------
+    angs : TYPE
+        DESCRIPTION.
+
+    '''
+    
+    sig = (np.pi/180) * sigma
+    uu = np.exp(-2.0 * sig**2)
+    ang1 = 0.25 * (1 + uu)**2
+    ang2 = 0.25 * (1 - uu**2)
+    ang3 = (0.375 + 0.5 * uu + 0.125 * uu**4)**2
+    ang4 = ((0.375 - 0.5 * uu + 0.125 * uu**4) *
+            (0.375 + 0.5 * uu + 0.125 * uu**4))
+    ang5 = 0.125 * (0.375 + 0.5 * uu + 0.125 * uu**4) * (1 - uu**4)
+    ang6 = 0.
+    ang7 = 0.5 * uu * (1 + uu)
+    
+    angs = np.array([ang1,ang2,ang3,ang4,ang5,ang6,ang7])
+    
+    return angs
    
     
 def dielectric_ice(lamda,TK):

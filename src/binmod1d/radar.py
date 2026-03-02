@@ -6,12 +6,24 @@ Created on Thu Jan 29 08:23:48 2026
 """
 
 import numpy as np
-
-
-
- 
         
 def spheroid_factors(ar):
+    '''
+    Calculate spheroid factors
+
+    Parameters
+    ----------
+    ar : TYPE
+        DESCRIPTION.
+
+    Returns
+    -------
+    La : TYPE
+        DESCRIPTION.
+    Lc : TYPE
+        DESCRIPTION.
+
+    '''
     
     La = (1./3.)*np.ones_like(ar)
     
@@ -28,22 +40,35 @@ def spheroid_factors(ar):
     return La, Lc 
         
 def angular_moments(sigma):
+    '''
+    Calculate angular moments following Ryzhkov et al. (2011)
 
-       # Compute angular moments from Ryzhkov et al. (2011)
-       sig = (np.pi/180) * sigma
-       uu = np.exp(-2.0 * sig**2)
-       ang1 = 0.25 * (1 + uu)**2
-       ang2 = 0.25 * (1 - uu**2)
-       ang3 = (0.375 + 0.5 * uu + 0.125 * uu**4)**2
-       ang4 = ((0.375 - 0.5 * uu + 0.125 * uu**4) *
-               (0.375 + 0.5 * uu + 0.125 * uu**4))
-       ang5 = 0.125 * (0.375 + 0.5 * uu + 0.125 * uu**4) * (1 - uu**4)
-       ang6 = 0.
-       ang7 = 0.5 * uu * (1 + uu)
-       
-       angs = np.array([ang1,ang2,ang3,ang4,ang5,ang6,ang7])
-       
-       return angs        
+    Parameters
+    ----------
+    sigma : TYPE
+        DESCRIPTION.
+
+    Returns
+    -------
+    angs : TYPE
+        DESCRIPTION.
+
+    '''
+
+    sig = (np.pi/180) * sigma
+    uu = np.exp(-2.0 * sig**2)
+    ang1 = 0.25 * (1 + uu)**2
+    ang2 = 0.25 * (1 - uu**2)
+    ang3 = (0.375 + 0.5 * uu + 0.125 * uu**4)**2
+    ang4 = ((0.375 - 0.5 * uu + 0.125 * uu**4) *
+            (0.375 + 0.5 * uu + 0.125 * uu**4))
+    ang5 = 0.125 * (0.375 + 0.5 * uu + 0.125 * uu**4) * (1 - uu**4)
+    ang6 = 0.
+    ang7 = 0.5 * uu * (1 + uu)
+    
+    angs = np.array([ang1,ang2,ang3,ang4,ang5,ang6,ang7])
+    
+    return angs        
    
     
 def dielectric_ice(lamda,TK):
@@ -71,16 +96,28 @@ def dielectric_ice(lamda,TK):
  
 
 def dielectric_water(t,eps_0,t0=273.15,wave=110.):
-    """
+    '''
     Calculate dielectric constant for fresh water at temperature T based on
     Ray (1972).
 
-    Input:
-        Temperature [K]
-    Output:
-        Dielectric constant
-    """
+    Parameters
+    ----------
+    t : float
+        Air temperature in Kelvins.
+    eps_0 : Dielectric constant for liquid water at 0 C.
+        DESCRIPTION.
+    t0 : float, optional
+        0 degrees Celsisus in Kelvins. The default is 273.15.
+    wave : float, optional
+        Radar wavelength in mm. The default is 110..
 
+    Returns
+    -------
+    ew : float
+        Dielectric constant for liquid water at temperature and radar wavlength.
+
+    '''
+    
     ew_eps_s = (78.54 * (1.0 - 4.579e-3 * (t - t0 - 25) +
                          1.19e-5 * (t - t0 - 25)**2 -
                           2.8e-8 * (t - t0 - 25)**3))
