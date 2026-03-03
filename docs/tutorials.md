@@ -139,10 +139,10 @@ the total number and mean sizes of the initial population of particles. Therefor
 the initial gamma distribution input is instead parameterized as 
 
 $$
-n_{0}(D) = \frac{N_{t,0}}{\Gamma(\mu_{0}+1)} \frac{1}{D_{m,0}} \left( \mu_{0}+4 \right)^{\mu_{0}+1} \left( \frac{D}{D_{m,0}}\right)^{\mu_{0}} \exp\left[ - (\mu_{0}+4) \frac{D}{D_{m,0}}\right],
+n_{0}(D) = 1000\, \frac{N_{t,0}}{\Gamma(\mu_{0}+1)} \frac{1}{D_{m,0}} \left( \mu_{0}+4 \right)^{\mu_{0}+1} \left( \frac{D}{D_{m,0}}\right)^{\mu_{0}} \exp\left[ - (\mu_{0}+4) \frac{D}{D_{m,0}}\right],
 $$
 
-where
+where $n_{0}(D)$ has units of m$^{-3}$ mm$^{-1}$ and
 
 $$
 N_{t,0} = N_{0} \Lambda_{0}^{-(\mu_{0}+1)}\, \Gamma(\mu_{0}+1)
