@@ -326,68 +326,79 @@ class spectral_1d:
 
         Parameters
         ----------
-        sbin : TYPE, optional
-            DESCRIPTION. The default is 4.
-        bins : TYPE, optional
-            DESCRIPTION. The default is 160.
-        D1 : TYPE, optional
-            DESCRIPTION. The default is 0.001.
-        x0 : TYPE, optional
-            DESCRIPTION. The default is 0.01.
-        dist_var : TYPE, optional
-            DESCRIPTION. The default is 'mass'.
-        kernel : TYPE, optional
-            DESCRIPTION. The default is 'Golovin'.
-        Ecol : TYPE, optional
-            DESCRIPTION. The default is 1.53.
-        Es : TYPE, optional
-            DESCRIPTION. The default is 0.001.
-        Eb : TYPE, optional
-            DESCRIPTION. The default is 0..
-        moments : TYPE, optional
-            DESCRIPTION. The default is 2.
-        ztop : TYPE, optional
-            DESCRIPTION. The default is 3000.0.
-        zbot : TYPE, optional
-            DESCRIPTION. The default is 0..
-        zout : TYPE, optional
-            DESCRIPTION. The default is None.
-        tout : TYPE, optional
-            DESCRIPTION. The default is None.
-        tmax : TYPE, optional
-            DESCRIPTION. The default is 800..
-        output_freq : TYPE, optional
+        sbin : int
+            Spectral bin mass grid resolution. The default is 4.
+        bins : int
+            Number of bins used for each distribution. The default is 56.
+        D1 : float, optional
+            Minimum equivolume diameter bin size in mm when the 'dist_var' parameter is 'size'. The default is 0.25.
+        x0 : float, optional
+            Minimum bin mass in grams when the 'dist_var' parameter is 'mass'.. The default is 0.05.
+        dist_var : str, optional
+            Whether to use mass or size to specify initial gamma distribution. The default is 'mass'.
+        kernel : str, optional
+            Type of collision kernel in collection_kernels.py to use for coalescence/breakup. The default is 'Golovin'.
+        Ecol : float, optional
+            Collision efficiency. The default is 1.0.
+        Es : float, optional
+            Sticking efficiency. The default is 1.0.
+        Eb : float, optional
+            Breakup efficiency. The default is 0..
+        moments : int, optional
+            Number of moments to use for spectral bin model (either 1 (mass) or 2 (mass and number)). The default is 2.
+        ztop : float, optional
+            Top height of steady-state/1D model domain in meters. The default is 0..
+        zbot : float, optional
+            Bottom height of steady-state/1D model domain in meters. The default is 0..    
+        tmax : float, optional
+            Maximum time in seconds the model is run. The default is 800.
+        output_freq : int, optional
+            Frequency in time with which the Full 1D column model is output. The default is 60..
+        dt : float, optional
+            Model time step in seconds. The default is 1.
+        dz : float, optional
+            Height grid spacing in meters. The default is 10..
+        frag_dist : str, optional
+            Type of fragment distribution. The default is 'exp'.
+        habit_params : list, optional
+            List of distribution parameters for each category (total distribution number determined by len(habit_lists)). 
+            elements of list can be either strings where each string defines a default habit type from the
+            habits() function in the habits module or a dictionary with the necessary parameters. The default is ['rain'].
+        ptype : str, optional
+            Whether particles are rain or snow. NOTE: currently not considering mixed phase or mixture of rain/show. The default is 'rain'.
+        Tc : float, optional
+            Layer-averaged temperature in degrees Celsius. Used in radar calculations. The default is 10..
+        boundary : Nonetype or str, optional
+            Upper boundary conditions for full 1D model: None   = fallout mode for 1D model
+                                                        'fixed' = fixed upper boundary condition. 
+                                                        The default is None.
+        cc_dest : int, optional
+            Distribution destination of coalesced particles. 
+            Index (1 = first distribution) corresponds to the distribution in
+            habit_list.
+            The default is 1.
+        br_dest : int, optional
+            Distribution destination of breakup (fragment) particles. 
+            Index (1 = first distribution) corresponds to the distribution in
+            habit_list.
             DESCRIPTION. The default is 1.
-        dt : TYPE, optional
-            DESCRIPTION. The default is 10..
-        dz : TYPE, optional
-            DESCRIPTION. The default is 10..
-        frag_dist : TYPE, optional
-            DESCRIPTION. The default is 'exp'.
-        habit_dict : TYPE, optional
-            DESCRIPTION. The default is None.
-        ptype : TYPE, optional
-            DESCRIPTION. The default is 'rain'.
-        Tc : TYPE, optional
-            DESCRIPTION. The default is 10..
-        radar : TYPE, optional
-            DESCRIPTION. The default is False.
-        wavl : TYPE, optional
-            DESCRIPTION. The default is 110..
-        boundary : TYPE, optional
-            DESCRIPTION. The default is None.
-        cc_dest : TYPE, optional
-            DESCRIPTION. The default is 1.
-        br_dest : TYPE, optional
-            DESCRIPTION. The default is 1.
-        rk_order : TYPE, optional
-            DESCRIPTION. The default is 1.
-        adv_order : TYPE, optional
-            DESCRIPTION. The default is 1.
-        gpu : TYPE, optional
-            DESCRIPTION. The default is False.
-        progress : TYPE, optional
-            DESCRIPTION. The default is True.
+        radar : bool, optional
+            Whether to calculate radar variables for each bin. The default is False.
+        wavl: float, optional
+            Radar wavelength in mm.
+        rk_order : int, optional
+            Runge-Kutta time stepping order. The default is 1.
+        adv_order : int, optional
+            Upwind advection scheme order (CURRENTLY NOT IMPLMENTED YET). The default is 1.
+        gpu : bool, optional
+            Whether to use GPU (if available) (CURRENTLY NOT IMPLEMENTED YET). The default is False.
+        load : str, optional
+            If loading spectral_1d() object from netcdf file, this is the path string to the netcdf file.
+            None means no loading.
+            The default is None.
+        progress: bool, optional 
+            If using a progressbar when using run() method.
+            The default is None.
         **kwargs : TYPE
             DESCRIPTION.
 

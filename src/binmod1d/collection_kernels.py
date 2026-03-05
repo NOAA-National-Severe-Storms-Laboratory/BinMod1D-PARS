@@ -13,19 +13,19 @@ def CKE(di1d,dj1d,vi1d,vj1d):
 
     Parameters
     ----------
-    di1d : TYPE
-        DESCRIPTION.
-    dj1d : TYPE
-        DESCRIPTION.
-    vi1d : TYPE
-        DESCRIPTION.
-    vj1d : TYPE
-        DESCRIPTION.
+    di1d : array (bins,)
+        i bin midpoint diameter.
+    dj1d : array (,bins)
+        j bin midpoint diameter.
+    vi1d : array (bins,)
+        i bin midpoint fall speed.
+    vj1d : array (,bins)
+        i bin midpoint diameter.
 
     Returns
     -------
-    TYPE
-        DESCRIPTION.
+    array (bins,bins)
+        CKE values broadcasted for each i,j bin combination.
 
     '''
     
@@ -48,19 +48,19 @@ def Weber_number(di1d,dj1d,vi1d,vj1d):
 
     Parameters
     ----------
-    di1d : TYPE
-        DESCRIPTION.
-    dj1d : TYPE
-        DESCRIPTION.
-    vi1d : TYPE
-        DESCRIPTION.
-    vj1d : TYPE
-        DESCRIPTION.
+    di1d : array (bins,)
+        i bin midpoint diameter.
+    dj1d : array (,bins)
+        j bin midpoint diameter.
+    vi1d : array (bins,)
+        i bin midpoint fall speed.
+    vj1d : array (,bins)
+        i bin midpoint diameter.
 
     Returns
     -------
-    TYPE
-        DESCRIPTION.
+    array (bins,bins)
+        We values broadcasted for each i,j bin combination.
 
     '''
     
@@ -97,19 +97,19 @@ def Straub_params(di1d,dj1d,vi1d,vj1d):
 
     Parameters
     ----------
-    di1d : TYPE
-        DESCRIPTION.
-    dj1d : TYPE
-        DESCRIPTION.
-    vi1d : TYPE
-        DESCRIPTION.
-    vj1d : TYPE
-        DESCRIPTION.
+    di1d : array (bins,)
+        i bin midpoint diameter.
+    dj1d : array (,bins)
+        j bin midpoint diameter.
+    vi1d : array (bins,)
+        i bin midpoint fall speed.
+    vj1d : array (,bins)
+        i bin midpoint diameter.
 
     Returns
     -------
-    Straub_dict : TYPE
-        DESCRIPTION.
+    Straub_dict : dict
+        Dictionary of Straub's parameters for lognormal, two Gaussians, and dirac distributions.
 
     '''
     Straub_dict = {}
@@ -253,15 +253,15 @@ def Prod_kernel(xi,xj):
 
     Parameters
     ----------
-    xi : TYPE
-        DESCRIPTION.
-    xj : TYPE
-        DESCRIPTION.
+    xi : array (bins,)
+        Bin mass edges for i distribution
+    xj : array (,bins)
+        Bin mass edges for j distribution
 
     Returns
     -------
-    TYPE
-        DESCRIPTION.
+    array (bins,bins)
+        Product kernel evaluated at bin edge combination.
 
     '''
     
@@ -274,15 +274,15 @@ def Constant_kernel(xi,xj):
 
     Parameters
     ----------
-    xi : TYPE
-        DESCRIPTION.
-    xj : TYPE
-        DESCRIPTION.
+    xi : array (bins,)
+        Bin mass edges for i distribution
+    xj : array (,bins)
+        Bin mass edges for j distribution
 
     Returns
     -------
-    TYPE
-        DESCRIPTION.
+    array (bins,bins)
+        Constant kernel evaluated at bin edge combination.
 
     '''
     
@@ -290,20 +290,21 @@ def Constant_kernel(xi,xj):
 
 
 def Golovin_kernel(xi,xj):
+
     '''
-    Golovin kernel
+    Golovin (summation) kernel
 
     Parameters
     ----------
-    xi : TYPE
-        DESCRIPTION.
-    xj : TYPE
-        DESCRIPTION.
+    xi : array (bins,)
+        Bin mass edges for i distribution
+    xj : array (,bins)
+        Bin mass edges for j distribution
 
     Returns
     -------
-    TYPE
-        DESCRIPTION.
+    array (bins,bins)
+        Golovin (summation) kernel evaluated at bin edge combination.
 
     '''
     
@@ -315,19 +316,19 @@ def hydro_kernel(vtx,vty,Ax,Ay):
 
     Parameters
     ----------
-    vtx : TYPE
-        DESCRIPTION.
-    vty : TYPE
-        DESCRIPTION.
-    Ax : TYPE
-        DESCRIPTION.
-    Ay : TYPE
-        DESCRIPTION.
+    vtx : array (bins,)
+        Bin fall speed edges for i distribution
+    vty : array (,bins)
+        Bin fall speed edges for j distribution
+    Ax : array (bins,)
+        Bin collection surface area for i distribution
+    Ay : array (,bins)
+        Bin collection surface area for j distribution
 
     Returns
     -------
-    Kxy : TYPE
-        DESCRIPTION.
+    Kxy : array (bins,bins)
+        Hydrodynamic collection kernel evaluated at bin edges
 
     '''
 
@@ -342,23 +343,23 @@ def long_kernel(di,dj,vi,vj,Ai,Aj):
 
     Parameters
     ----------
-    di : TYPE
-        DESCRIPTION.
-    dj : TYPE
-        DESCRIPTION.
-    vi : TYPE
-        DESCRIPTION.
-    vj : TYPE
-        DESCRIPTION.
-    Ai : TYPE
-        DESCRIPTION.
-    Aj : TYPE
-        DESCRIPTION.
+    di : array (bins,)
+        Bin diameter edges for i distribution
+    dj : array (,bins)
+        Bin diameter edges for j distribution
+    vti : array (bins,)
+        Bin fall speed edges for i distribution
+    vtj : array (,bins)
+        Bin fall speed edges for j distribution
+    Ai : array (bins,)
+        Bin collection surface area for i distribution
+    Aj : array (,bins)
+        Bin collection surface area for j distribution
 
     Returns
     -------
-    Kxy : TYPE
-        DESCRIPTION.
+    Kxy : array (bins,bins)
+        Collection kernel evaluated at bin edges
 
     '''
     
@@ -377,27 +378,27 @@ def long_kernel(di,dj,vi,vj,Ai,Aj):
 
 def hall_kernel(di,dj,vi,vj,Ai,Aj):
     '''
-    Hall (1980) collection kernel
+    Hall (1980) collection kernel.
 
     Parameters
     ----------
-    di : TYPE
-        DESCRIPTION.
-    dj : TYPE
-        DESCRIPTION.
-    vi : TYPE
-        DESCRIPTION.
-    vj : TYPE
-        DESCRIPTION.
-    Ai : TYPE
-        DESCRIPTION.
-    Aj : TYPE
-        DESCRIPTION.
+    di : array (bins,)
+        Bin diameter edges for i distribution
+    dj : array (,bins)
+        Bin diameter edges for j distribution
+    vti : array (bins,)
+        Bin fall speed edges for i distribution
+    vtj : array (,bins)
+        Bin fall speed edges for j distribution
+    Ai : array (bins,)
+        Bin collection surface area for i distribution
+    Aj : array (,bins)
+        Bin collection surface area for j distribution
 
     Returns
     -------
-    None.
-
+    Kxy : array (bins,bins)
+        Collection kernel evaluated at bin edges
     '''
     
     from scipy.interpolate import griddata
@@ -450,23 +451,23 @@ def straub_efficiency(di, dj, vi, vj, Ai, Aj):
 
     Parameters
     ----------
-    di : TYPE
-        DESCRIPTION.
-    dj : TYPE
-        DESCRIPTION.
-    vi : TYPE
-        DESCRIPTION.
-    vj : TYPE
-        DESCRIPTION.
-    Ai : TYPE
-        DESCRIPTION.
-    Aj : TYPE
-        DESCRIPTION.
+    di : array (bins,)
+        Bin diameter edges for i distribution
+    dj : array (,bins)
+        Bin diameter edges for j distribution
+    vti : array (bins,)
+        Bin fall speed edges for i distribution
+    vtj : array (,bins)
+        Bin fall speed edges for j distribution
+    Ai : array (bins,)
+        Bin collection surface area for i distribution
+    Aj : array (,bins)
+        Bin collection surface area for j distribution
 
     Returns
     -------
-    Kxy : TYPE
-        DESCRIPTION.
+    Kxy : array (bins,bins)
+        Collection kernel evaluated at bin edges
 
     '''
         

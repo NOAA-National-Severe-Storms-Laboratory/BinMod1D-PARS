@@ -612,6 +612,20 @@ def vectorized_2mom(params, w, L, dMb_kernel, dNb_kernel,
 
 
 def init_rk(rk_order):
+    '''
+    
+
+    Parameters
+    ----------
+    rk_order : int
+        Runge-Kutta order.
+
+    Returns
+    -------
+    RK : dict
+        Dictionary of Runge-Kutta Butcher table parameters.
+
+    '''
     
     # --- Butcher tableaux (a_ij, b_i, c_i) for RK1–RK4 ---
     tableaux = {
@@ -1624,7 +1638,7 @@ def _unpack_f(f):
 
 def LGN_int(n, mu, sig2, x1, x2):
     """
-    Ultimate High-Precision Log-Normal integral.
+    High-Precision Log-Normal integral.
     Handles both Left Tail (z < -26) and Right Tail (z > 26) using erfcx scaling.
     Calculates Integral(x^n * PDF(x) dx) from x1 to x2.
     

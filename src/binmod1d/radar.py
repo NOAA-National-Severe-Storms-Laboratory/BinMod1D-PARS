@@ -13,15 +13,15 @@ def spheroid_factors(ar):
 
     Parameters
     ----------
-    ar : TYPE
-        DESCRIPTION.
+    ar : array
+        Particle aspect ratios.
 
     Returns
     -------
-    La : TYPE
-        DESCRIPTION.
-    Lc : TYPE
-        DESCRIPTION.
+    La : array
+        Geometric shape factor along a axis.
+    Lc : array
+        Geometric shape factor along c axis
 
     '''
     
@@ -45,13 +45,14 @@ def angular_moments(sigma):
 
     Parameters
     ----------
-    sigma : TYPE
-        DESCRIPTION.
+    sigma : float
+        Axisymmteric Gaussian angle standard deviation (generally between 0 and 40 deg)
+        from Ryzhkov et al. (2011).
 
     Returns
     -------
-    angs : TYPE
-        DESCRIPTION.
+    angs : array
+        Angular moments in order: [Ang1,Ang2,Ang3,Ang4,Ang5,Ang6,Ang7].
 
     '''
 
@@ -72,7 +73,22 @@ def angular_moments(sigma):
    
     
 def dielectric_ice(lamda,TK):
-    # From Maetzler Matlab code based on Ray 1972
+    '''
+    Ray (1972) dielectric constant calculation for ice.
+
+    Parameters
+    ----------
+    lamda : froat
+        Radar wavelength in mm.
+    TK : float
+        Air temperature in Kelvin.
+
+    Returns
+    -------
+    ei : complex
+        Dielectric constant of ice for wavelength and temperature.
+
+    '''
     # lambda in mm
     
     f = 299.792458/lamda # Convert to GHz
@@ -113,7 +129,7 @@ def dielectric_water(t,eps_0,t0=273.15,wave=110.):
 
     Returns
     -------
-    ew : float
+    ew : complex
         Dielectric constant for liquid water at temperature and radar wavlength.
 
     '''
