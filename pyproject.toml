@@ -4,7 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "binmod1d"         # must be unique on PyPI
-version = "1.0.2"
+version = "1.0.3"
+
 description = "A 1D Column bin microphysics model that performs collision-coalescence and breakup."
 readme = "README.md"
 requires-python = ">=3.8"
