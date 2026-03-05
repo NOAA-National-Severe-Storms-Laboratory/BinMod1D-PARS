@@ -1196,6 +1196,9 @@ def dielectric_water(t,eps_0,t0=273.15,wave=110.):
 
 def extended_brandes(d):
     """
+    Brandes et al. (2002): https://doi.org/10.1175/1520-0450(2002)041<0674:EIREWA>2.0.CO;2
+    their equation 2
+    
     Modified Brandes AR fit function:
     - Unity (1.0) at d=0
     - Matches original poly between ~0.3743 and 10

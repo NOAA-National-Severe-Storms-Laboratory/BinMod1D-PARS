@@ -10,6 +10,32 @@ from cmweather import cm as cmp
 import matplotlib as mpl
 
 def get_cmap_vars(varname):
+    '''
+    
+
+    Parameters
+    ----------
+    varname : str
+        Variable name.
+
+    Returns
+    -------
+    cmap : matplotlib.color colorbar
+        colorbar handle.
+    levels : array or list
+        Array or list of levels for contours.
+    levels_ticks : array or list
+        Array or list of ticks for levels.
+    clabel : str
+        Colorbar label.
+    labelpad : int
+        matplotlib colorbar labelpad parameter.
+    fontsize : int
+        fontsize for colorbar title.
+    slabel : str
+        Shorthand label for colorbar.
+
+    '''
     
     if varname == 'Z':
         cmap = cmp.NWSRef

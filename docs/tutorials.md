@@ -373,13 +373,15 @@ sedimenting and then a leveling off of reflectivity afterward in a quasi-steady 
 We can use **`plot_moments_radar()`** to directly overlay the height profiles of the 
 distribution and radar variables at $30$ minutes with the steady-state solution from before.
 To do this, we first return the pyplot figure and axis when plotting the full 1D results.
-Then, we can use this axis handle as an input to the steady-state plotting. Let's set `lstyle='--'`
-when we plot the steady-state solution. This will plot the steady-state profiles with a dashed line
-whereas the full 1D column model will be plotted as a solid line.
+Then, we can use this axis handle as an input to the steady-state plotting. We can also use 
+pyplot keyword arguments directly in **`plot_moments_radar()`** in order to modify line styles and 
+other properites. Let's set `linestyle='--'` when we plot the steady-state solution. 
+This will plot the steady-state profiles with a dashed line whereas the full 1D column model 
+will be plotted as a solid line.
 
 ```python
 fig, ax = rain_breakup_full.plot_moments_radar()
-rain_breakup_SS.plot_moments_radar(ax=ax,lstyle='--')
+rain_breakup_SS.plot_moments_radar(ax=ax,linestyle='--')
 ``` 
 
 ```{image} _static/tutorial_moments_full_SS.svg

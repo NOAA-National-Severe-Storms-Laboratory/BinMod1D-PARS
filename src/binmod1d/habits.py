@@ -23,7 +23,7 @@ def habits():
     Returns
     -------
     habits : Dict
-        DESCRIPTION.
+        Dictionary of habit parameters.
 
     '''
     
