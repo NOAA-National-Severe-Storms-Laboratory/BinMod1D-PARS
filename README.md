@@ -1,3 +1,5 @@
+![BinMod1D Banner](https://raw.githubusercontent.com/NOAA-National-Severe-Storms-Laboratory/BinMod1D-PARS/main/assets/PyPi_Banner.png)
+=======
 # BinMod1D-PARS
 
 [![Documentation Status](https://readthedocs.org/projects/binmod1d-pars/badge/?version=latest)](https://binmod1d-pars.readthedocs.io/en/latest/?badge=latest)
