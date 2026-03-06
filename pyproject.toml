@@ -4,11 +4,11 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "binmod1d"         # must be unique on PyPI
-version = "1.0.5"
+version = "1.0.6"
 
 description = "A 1D Column bin microphysics model that performs collision-coalescence and breakup."
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 authors = [{name="Edwin Lee Dunnavan, RSII Cooperative Institute for Severe and High-Impact Research and Weather Operations (CIWRO)", email="edwin.dunnavan@noaa.gov"}]
 license = {text = "MIT"}           # or point to license file
 dependencies = [
