@@ -9,7 +9,7 @@ the spectral model using the **`spectral_1d()`** class:
 ```python
 from binmod1d.spectral_model import spectral_1d
 
-s1 = spectral_1D()
+s1 = spectral_1d()
 ```
 
 The inputs to this class will specify the initial gamma particle size (or mass) distribution (PSD), 
@@ -24,11 +24,11 @@ In general, the most relevant inputs are:
 :class-body: sd-pb-0
 
 * **`sbin`** {bdg-secondary}`int`  
-  Resolution of geometric mass bins (default: 8).
+  Resolution of geometric mass bins (default: 4).
 * **`bins`** {bdg-secondary}`int`  
-  Number of mass bins for the distribution (default: 140).
+  Number of mass bins for the distribution (default: 56).
 * **`dt`** {bdg-secondary}`float`  
-  Model time step in seconds. (default:2)
+  Model time step in seconds. (default:1)
 * **`tmax`** {bdg-secondary}`float`  
   Maximum time in seconds the model is run (default: 800).
 * **`output_freq`** {bdg-secondary}`int`  
@@ -36,9 +36,9 @@ In general, the most relevant inputs are:
 * **`dz`** {bdg-secondary}`float`  
   Height grid spacing in meters. (default: 20.)
 * **``ztop``** {bdg-secondary}`float`  
-  Top height of steady-state/1D model domain. (default: 0.)
+  Top height of steady-state/1D model domain in meters. (default: 0.)
 * **``zbot``** {bdg-secondary}`float`  
-  Bottom height of steady-state/1D model domain. (default: 0.)
+  Bottom height of steady-state/1D model domain in meters. (default: 0.)
 * **``D1``** {bdg-secondary}`float`  
   Minimum equivolume diameter bin size in mm when the **``dist_var``** parameter is 'size'. (default: 0.25)
 * **``x0``** {bdg-secondary}`float`  
@@ -46,15 +46,32 @@ In general, the most relevant inputs are:
 * **``moments``** {bdg-secondary}`int`  
   Number of moments to use for spectral bin model (either 1 (mass) or 2 (mass and number)). (default: 2)
 * **``dist_var``** {bdg-secondary}`str`  
-  Whether to use mass or size to specify initial gamma distribution. (default: 'mass')
+  Whether to use mass or size to specify initial gamma distribution. (default: 'size')
 * **``kernel``** {bdg-secondary}`str`  
-  Type of collision kernel in collection_kernels.py to use for coalescence/breakup. (default: 'Golovin')
+  Type of collision kernel in collection_kernels.py to use for coalescence/breakup. (default: 'Hydro')
 * **``frag_dist``** {bdg-secondary}`str`  
-  Type of fragment distribution. (default: 'exp')
+  Type of fragment distribution. (default: 'LGN')
 * **``ptype``** {bdg-secondary}`str`  
   Whether particles are rain or snow. (default: 'rain')
+* **``habit_params``** {bdg-secondary}`str/list/dict`  
+  Name(s) of habit parameters used for each distribution category. Multiple categories are included if input is a list of strings (default dictionaries) or dictionaries. (default: 'rain')
+* **``Ecol``** {bdg-secondary}`float`  
+  Collision efficiency. (default: 1.0)
+* **``Es``** {bdg-secondary}`float`  
+  Sticking/coalescence efficiency. (default: 1.0)
+* **``Eb``** {bdg-secondary}`float`  
+  Breakup efficiency. (default: 0.0)
+* **``wavl``** {bdg-secondary}`float`  
+  Radar wavelength in millimeters. (default: 110.0)
+* **``radar``** {bdg-secondary}`bool`  
+  Whether to compute radar variables. (default: False)
+* **``cc_dest``** {bdg-secondary}`int`  
+  Distribution destination from 1 to len(habit_params) for coalesced particles. (default: 1)
+* **``br_dest``** {bdg-secondary}`int`  
+  Distribution destination from 1 to len(habit_params) for breakup/fragmented particles. (default: 1)
+* **``rk_order``** {bdg-secondary}`int`  
+  Runge-kutta order with options of orders 1 through 4. (default: 1)
 :::
-
 
 After the model is initialized, users can then use the **`run()`** method 
 to run the model with the inputs specified in spectral_1D:
@@ -114,8 +131,10 @@ However, for user convenience, inputs usually follow these conventions:
 | Quantity | Unit | Parameter Examples |
 | :--- | :--- | :--- |
 | **Size** | millimeters (mm) | `Dm0`, `D1` |
-| **Mass** | grams (g) | `x0` |
-| **Number** | per liter ($L^{-1}$) | `Nt0` |
+| **Mass** | grams (g) | `x0`, `Mbins` |
+| **Height** | meters (m) | `dz`, `ztop`, `zbot` |
+| **Total Number** | per liter ($L^{-1}$) | `Nt0` |
+| **Bin Number** |  m$^{-3}$ | `Nbins` |
 
 {octicon}`info;1em;sd-text-info` *Note: This prevents the need for very large or small scientific notation for typical rain/snow cases.*
 :::
@@ -181,7 +200,7 @@ We'll also run the model out to 30 minutes to get a nice timeseries when we
 plot some results.
 
 ```python
-rain_box = spectral_1d(sbin=1,bins=40,D1=0.01,dt=2.,tmax=1800.,Nt0=10.,Dm0=1.25,mu0=0.,habit_params=['rain'],ptype='rain',kernel='Hydro',Ecol=1.0,Es=0.2,radar=True,dist_var='size')
+rain_box = spectral_1d(sbin=2,bins=60,D1=0.01,dt=2.,tmax=1800.,Nt0=10.,Dm0=1.25,mu0=0.,habit_params=['rain'],ptype='rain',kernel='Hydro',Ecol=1.0,Es=0.2,radar=True,dist_var='size')
 rain_box.run()
 ```
 
@@ -192,7 +211,7 @@ the initial and final number and mass distribution functions
 ```python
 rain_box.plot_dists(x_axis='size')
 ```
-```{image} _static/tutorial_dist_log_box.svg
+```{image} _static/tutorial_dist_log_box_new.svg
 :width: 600px
 :align: center
 ```
@@ -211,10 +230,11 @@ plots in a semi-log fashion by using the `xscale` and `yscale` input parameters 
 with `distscale='linear'`
 
 ```python
-rain_box.plot_dists(-1,x_axis='size',xscale='linear',yscale='log',distscale='linear')
+fig, ax = rain_box.plot_dists(-1,x_axis='size',xscale='linear',yscale='log',distscale='linear')
+ax[1].set_xlim((0.,8.))
 ```
 
-```{image} _static/tutorial_dist_lin_log_box.svg
+```{image} _static/tutorial_dist_lin_log_box_new.svg
 :width: 600px
 :align: center
 ```
@@ -225,7 +245,7 @@ We can also plot these distributions in a simple linear-linear style plot as wel
 rain_box.plot_dists(-1,x_axis='size',xscale='linear',yscale='linear',distscale='linear')
 ```
 
-```{image} _static/tutorial_dist_lin_box.svg
+```{image} _static/tutorial_dist_lin_box_new.svg
 :width: 600px
 :align: center
 ```
@@ -239,7 +259,7 @@ We can better compare the initial and final number distribution functions by usi
 rain_box.plot_dists(-1,x_axis='size',xscale='linear',yscale='linear',distscale='linear',normbin=True)
 ```
 
-```{image} _static/tutorial_dist_lin_norm_box.svg
+```{image} _static/tutorial_dist_lin_norm_box_new.svg
 :width: 600px
 :align: center
 ```
@@ -252,7 +272,7 @@ rain_box.plot_moments_radar()
 Notice that the liquid water content is constant throughout whereas the other variables
 increase or decrease approximately with generalized power-law behaviors.
 
-```{image} _static/tutorial_moments_box.svg
+```{image} _static/tutorial_moments_box_new.svg
 :width: 100%
 :align: center
 ```
@@ -269,7 +289,7 @@ spacing as `dz=20.` and the top and bottom heights as `ztop=3000.` and `zbot=0.`
 where each variable is in meters. 
 
 ```python
-rain_SS = spectral_1d(sbin=1,bins=40,D1=0.01,tmax=0.,dz=20.,ztop=3000.,zbot=0.,Nt0=10.,Dm0=1.25,mu0=0.,habit_params=['rain'],ptype='rain',kernel='Hydro',Ecol=1.0,Es=0.2,radar=True,dist_var='size')
+rain_SS = spectral_1d(sbin=2,bins=60,D1=0.01,tmax=0.,dz=20.,ztop=3000.,zbot=0.,Nt0=10.,Dm0=1.25,mu0=0.,habit_params=['rain'],ptype='rain',kernel='Hydro',Ecol=1.0,Es=0.2,radar=True,dist_var='size')
 rain_SS.run()
 ```
 Now we can plot the distributions as before to get a sense for what the final distributions look like. 
@@ -278,10 +298,10 @@ height index using the `tind` or `hind` parameters. By default, the function plo
 distribution (i.e., `tind=hind=-1`) so we can just call the method like before without any arguments.
 
 ```python
-rain_SS.plot_dists()
+rain_SS.plot_dists(x_axis='size')
 ```
 
-```{image} _static/tutorial_dist_log_SS.svg
+```{image} _static/tutorial_dist_log_SS_new.svg
 :width: 600px
 :align: center
 ```
@@ -292,7 +312,7 @@ height profiles for all variables
 rain_SS.plot_moments_radar()
 ```
 
-```{image} _static/tutorial_moments_SS.svg
+```{image} _static/tutorial_moments_SS_new.svg
 :width: 100%
 :align: center
 ```
@@ -308,7 +328,7 @@ we'll use the `dz` input which specifies the dz spacing for each subplots betwee
 ```python
 rain_SS.plot_dists_height(dz=1.5)
 ```
-```{image} _static/tutorial_dists_height_SS.svg
+```{image} _static/tutorial_dists_height_SS_new.svg
 :width: 600px
 :align: center
 ```
@@ -319,20 +339,25 @@ combined coalescence and breakup. We'll also choose a lognormal distribution to 
 fragments.
 
 ```python
-rain_breakup_SS = spectral_1d(sbin=1,bins=40,D1=0.01,tmax=0.,dz=20.,ztop=3000.,zbot=0.,Nt0=10.,Dm0=1.25,mu0=0.,habit_params=['rain'],frag_dist='LGN',ptype='rain',kernel='Hydro',Ecol=1.0,Es=0.8,Eb=0.035,radar=True,dist_var='size')
+rain_breakup_SS = spectral_1d(sbin=2,bins=60,D1=0.01,tmax=0.,dz=20.,ztop=3000.,zbot=0.,Nt0=10.,Dm0=1.25,mu0=0.,habit_params=['rain'],frag_dist='LGN',ptype='rain',kernel='Hydro',Ecol=1.0,Es=0.8,Eb=0.035,radar=True,dist_var='size')
 rain_breakup_SS.run()
 ```
 
 Now let's plot the resulting moments and radar variables as well as the same 
 distribution plot as before with height
 
-```{image} _static/tutorial_moments_breakup_SS.svg
+```python
+rain_breakup_SS.plot_moments_radar()
+rain_breakup_SS.plot_dists_height(dz=1.5)
+```
+
+```{image} _static/tutorial_moments_breakup_SS_new.svg
 :width: 100%
 :align: center
 ```
 
 
-```{image} _static/tutorial_dists_height_breakup_SS.svg
+```{image} _static/tutorial_dists_height_breakup_SS_new.svg
 :width: 600px
 :align: center
 ```
@@ -351,7 +376,7 @@ calculations if users have multiple CPUs. Therefore, even this simulation will n
 very long on most modern PCs.
 
 ```python
-rain_breakup_full = spectral_1d(sbin=1,bins=40,D1=0.01,dt=2,tmax=1800.,dz=20.,ztop=3000.,zbot=0.,Nt0=10.,Dm0=1.25,mu0=0.,habit_params=['rain'],frag_dist='LGN',ptype='rain',kernel='Hydro',boundary='fixed',Ecol=1.0,Es=0.8,Eb=0.035,radar=True,dist_var='size')
+rain_breakup_full = spectral_1d(sbin=2,bins=60,D1=0.01,dt=2,tmax=1800.,dz=20.,ztop=3000.,zbot=0.,Nt0=10.,Dm0=1.25,mu0=0.,habit_params=['rain'],frag_dist='LGN',ptype='rain',kernel='Hydro',boundary='fixed',Ecol=1.0,Es=0.8,Eb=0.035,radar=True,dist_var='size')
 rain_breakup_full.run()
 ```
 
@@ -362,7 +387,7 @@ method. Reflectivity is plotted by default so we just need to call the function 
 rain_breakup_full.plot_time_height()
 ```
 
-```{image} _static/tutorial_time_height_Z_full.svg
+```{image} _static/tutorial_time_height_Z_full_new.png
 :width: 100%
 :align: center
 ```
@@ -384,7 +409,7 @@ fig, ax = rain_breakup_full.plot_moments_radar()
 rain_breakup_SS.plot_moments_radar(ax=ax,linestyle='--')
 ``` 
 
-```{image} _static/tutorial_moments_full_SS.svg
+```{image} _static/tutorial_moments_full_SS_new.svg
 :width: 100%
 :align: center
 ```
@@ -401,11 +426,11 @@ rain_breakup_full.plot_time_height(var='ZDR')
 rain_breakup_full.plot_time_height(var='KDP')
 ```
 
-```{image} _static/tutorial_time_height_ZDR_full.svg
+```{image} _static/tutorial_time_height_ZDR_full_new.png
 :width: 100%
 :align: center
 ```
-```{image} _static/tutorial_time_height_KDP_full.svg
+```{image} _static/tutorial_time_height_KDP_full_new.png
 :width: 100%
 :align: center
 ```
@@ -428,7 +453,7 @@ distribution but we'll put the fragmented particles in a second distribution. Le
 use the steady-state coalescence/breakup example from before.
 
 ```python
-rain_breakup_SS_2cat = spectral_1d(sbin=1,bins=40,D1=0.01,tmax=0.,dz=20.,ztop=3000.,zbot=0.,Nt0=10.,Dm0=1.25,mu0=0.,habit_params=['rain','rain'],frag_dist='LGN',cc_dest=1,br_dest=2,ptype='rain',kernel='Hydro',Ecol=1.0,Es=0.8,Eb=0.035,radar=True,dist_var='size')
+rain_breakup_SS_2cat = spectral_1d(sbin=2,bins=60,D1=0.01,tmax=0.,dz=20.,ztop=3000.,zbot=0.,Nt0=10.,Dm0=1.25,mu0=0.,habit_params=['rain','rain'],frag_dist='LGN',cc_dest=1,br_dest=2,ptype='rain',kernel='Hydro',Ecol=1.0,Es=0.8,Eb=0.035,radar=True,dist_var='size')
 rain_breakup_SS_2cat.run()
 ```
 We'll use the `plot_habits` input parameter in the plots to specify that we want to see the individual
@@ -439,13 +464,13 @@ rain_breakup_SS_2cat.plot_moments_radar(plot_habits=True)
 rain_breakup_SS_2cat.plot_dists_height(dz=1.5,plot_habits=True)
 ```
 
-```{image} _static/tutorial_moments_breakup_SS_2cat.svg
+```{image} _static/tutorial_moments_breakup_SS_2cat_new.svg
 :width: 100%
 :align: center
 ```
 
 
-```{image} _static/tutorial_dists_height_breakup_SS_2cat.svg
+```{image} _static/tutorial_dists_height_breakup_SS_2cat_new.svg
 :width: 600px
 :align: center
 ```

@@ -54,11 +54,12 @@ class spectral_1d:
     
         
     def __init__(self,sbin=4,bins=56,dt=1,
-                 tmax=800.,output_freq=1,dz=10.,ztop=0.,zbot=0.,D1=0.25,x0=0.05,Ecol=1.0,Es=1.0,Eb=0.,moments=2,dist_var='mass',
-                 kernel='Golovin',frag_dist='exp_mass',habit_params='rain',
+                 tmax=800.,output_freq=1,dz=10.,ztop=0.,zbot=0.,D1=0.25,x0=0.05,
+                 Ecol=1.0,Es=1.0,Eb=0.,moments=2,dist_var='size',
+                 kernel='Hydro',frag_dist='LGN',habit_params='rain',
                  ptype='rain',Tc=10.,boundary=None,cc_dest=1,br_dest=1, 
-                 radar=False,wavl=110.,rk_order=1,adv_order=1,gpu=False,load=None,progress=True,
-                 **kwargs):
+                 radar=False,wavl=110.,rk_order=1,adv_order=1,gpu=False,
+                 load=None,progress=True,**kwargs):
         
         '''
         
@@ -1943,8 +1944,8 @@ class spectral_1d:
                     ylabel_mass = r'd$P_{M}$/dlog(m)'
                     
                 else:
-                    ylabel_num = r'dN/dlog(m)'
-                    ylabel_mass = r'dM/dlog(m)'
+                    ylabel_num = r'dN/dlog(m) [m$^{-3}$]'
+                    ylabel_mass = r'dM/dlog(m) [g m$^{-3}$]'
                 
                 xlabel = r'log(m) [log(g)]'
                 
@@ -1964,8 +1965,8 @@ class spectral_1d:
                     ylabel_mass = r'd$P_{M}$/dlog(D)'
                     
                 else:
-                    ylabel_num = r'dN/dlog(D)'
-                    ylabel_mass = r'dM/dlog(D)'
+                    ylabel_num = r'dN/dlog(D) [m$^{-3}$]'
+                    ylabel_mass = r'dM/dlog(D) [g m$^{-3}$]'
                 
                 xlabel = r'log(D) [log(mm)]'
                 

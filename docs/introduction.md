@@ -15,7 +15,7 @@ difficult numerical problem and requires special consideration. **BinMod1D** how
 makes it easy to both simulate PSD evolution in time and in height and visualize
 results in a variety of different plotting styles.
 
-```{image} _static/tutorial_time_height_Z_full.svg
+```{image} _static/tutorial_time_height_Z_full_new.png
 :width: 100%
 :align: center
 ```
