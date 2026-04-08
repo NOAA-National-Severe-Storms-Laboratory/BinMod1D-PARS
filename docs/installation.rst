@@ -1,20 +1,30 @@
 Installation
 ============
 
-BinMod1D can be installed using either PyPi:
+BinMod1D can be installed using PyPi or directly from source via GitHub.
+
+PyPi (Recommended)
+-----------------
 
 .. code-block:: bash
 
-	pip install binmod1d
+    pip install binmod1d
 
+Conda (Under Review)
+-------------------
 
-Or by using conda
+.. note::
+   The Conda-forge package is currently **under review**. The pull request has been submitted, but the package is not yet available for public installation. Please use the **pip** or **GitHub** methods for now.
 
 .. code-block:: bash
 
-	conda install -c conda-forge binmod1d
+    # Not currently available
+    # conda install -c conda-forge binmod1d
 
 ----
+
+GitHub (Source)
+--------------
 
 The source code for **BinMod1D** is publicly available on GitHub. You can report 
 issues, contribute to the development, or clone the repository to use **BinMod1D**
