@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.abspath('../src'))
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 project = 'BinMod1D'
-copyright = '2026, Edwin Lee Dunnavan'
+copyright = '2026, Board of Regents of the University of Oklahoma'
 author = 'Edwin Lee Dunnavan'
 
 # -- General configuration ---------------------------------------------------

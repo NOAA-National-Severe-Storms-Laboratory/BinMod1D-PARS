@@ -18,3 +18,4 @@ This is documentation for the BinMod1D python package!
    tutorials
    examples
    modules
+   license
