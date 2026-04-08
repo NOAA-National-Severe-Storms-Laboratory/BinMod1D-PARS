@@ -5,7 +5,7 @@
 ```
 # Introduction
 
-{bdg-primary}`v1.0` {bdg-secondary}`Python 3.9+` {bdg-success}`NSSL`
+{bdg-primary}`v1.0.9` {bdg-secondary}`Python 3.11+` {bdg-link-danger}`University of Oklahoma <https://www.ou.edu/>` {bdg-link-info}`CIWRO <https://ciwro.ou.edu/>` {bdg-link-success}`NSSL <https://www.nssl.noaa.gov/>`
 
 **BinMod1D** is a versatile and convenient 1D spectral bin microphysics model that
 explicitly simulates the evolution of rain or snow particle size distributions 
