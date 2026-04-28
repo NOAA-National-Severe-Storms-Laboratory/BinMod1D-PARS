@@ -4,14 +4,14 @@ Installation
 BinMod1D can be installed using PyPi or directly from source via GitHub.
 
 PyPi (Recommended)
------------------
+------------------
 
 .. code-block:: bash
 
     pip install binmod1d
 
 Conda (Under Review)
--------------------
+--------------------
 
 .. note::
    The Conda-forge package is currently **under review**. The pull request has been submitted, but the package is not yet available for public installation. Please use the **pip** or **GitHub** methods for now.
@@ -40,7 +40,7 @@ from source.
 
        +++
 
-       .. button-link:: https://github.com/NOAA-National-Severe-Storms-Laboratory/BinMod1D-PARS/
+       .. button-link:: https://github.com/NOAA-National-Severe-Storms-Laboratory/BinMod1D/
           :color: primary
           :outline:
           :expand:

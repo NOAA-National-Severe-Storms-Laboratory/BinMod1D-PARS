@@ -5,7 +5,7 @@
 
 **Run in Browser**
 No installation required! Click the badge below to launch these notebooks in a live Binder environment.
-[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/NOAA-National-Severe-Storms-Laboratory/BinMod1D-PARS/main)
+[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/NOAA-National-Severe-Storms-Laboratory/BinMod1D/main)
 :::
 
 ---
@@ -15,7 +15,7 @@ No installation required! Click the badge below to launch these notebooks in a l
 
 :::{grid-item-card} 📉 Analytical Examples
 :img-top: _static/Golovin_example.svg
-:link: https://github.com/NOAA-National-Severe-Storms-Laboratory/BinMod1D-PARS/blob/main/notebooks/BM1D_analytical_examples.ipynb
+:link: https://github.com/NOAA-National-Severe-Storms-Laboratory/BinMod1D/blob/main/notebooks/BM1D_analytical_examples.ipynb
 :link-type: url
 :class-header: sd-bg-light
 
@@ -24,7 +24,7 @@ No installation required! Click the badge below to launch these notebooks in a l
 
 :::{grid-item-card} ☁️ Steady State Examples
 :img-top: _static/SS_example.svg
-:link: https://github.com/NOAA-National-Severe-Storms-Laboratory/BinMod1D-PARS/blob/main/notebooks/BM1D_steady_state_examples.ipynb
+:link: https://github.com/NOAA-National-Severe-Storms-Laboratory/BinMod1D/blob/main/notebooks/BM1D_steady_state_examples.ipynb
 :link-type: url
 :class-header: sd-bg-light
 
@@ -33,7 +33,7 @@ No installation required! Click the badge below to launch these notebooks in a l
 
 :::{grid-item-card} ⛈️ 1D Column Examples
 :img-top: _static/Full_example_Best.svg
-:link: https://github.com/NOAA-National-Severe-Storms-Laboratory/BinMod1D-PARS/blob/main/notebooks/BM1D_full_1d_examples.ipynb
+:link: https://github.com/NOAA-National-Severe-Storms-Laboratory/BinMod1D/blob/main/notebooks/BM1D_full_1d_examples.ipynb
 :link-type: url
 :class-header: sd-bg-light
 
@@ -63,5 +63,5 @@ Simulate the full vertical evolution of precipitation particles over time.
 ## 📥 Getting the Source
 If you want to run these locally on your own machine, you can download the full repository or the individual notebook files from GitHub.
 
-{bdg-link-primary}`Download all Notebooks (GitHub) <https://github.com/NOAA-National-Severe-Storms-Laboratory/BinMod1D-PARS/archive/refs/heads/main.zip>`
-{bdg-link-secondary}`View on GitHub <https://github.com/NOAA-National-Severe-Storms-Laboratory/BinMod1D-PARS/>`
+{bdg-link-primary}`Download all Notebooks (GitHub) <https://github.com/NOAA-National-Severe-Storms-Laboratory/BinMod1D/archive/refs/heads/main.zip>`
+{bdg-link-secondary}`View on GitHub <https://github.com/NOAA-National-Severe-Storms-Laboratory/BinMod1D/>`
