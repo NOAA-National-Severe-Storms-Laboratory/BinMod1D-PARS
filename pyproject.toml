@@ -9,7 +9,6 @@ description = "A 1D Column bin microphysics model that performs collision-coales
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [{name="Edwin Lee Dunnavan, RSII Cooperative Institute for Severe and High-Impact Research and Weather Operations (CIWRO)", email="edwin.dunnavan@noaa.gov"}]
-#license = {text = "MIT"}           # or point to license file
 license = { file = "LICENSE" }
 
 classifiers = [
@@ -32,7 +31,7 @@ dependencies = [
 
 # optional:
 [project.urls]
-"Homepage" = "https://github.com/NOAA-National-Severe-Storms-Laboratory/BinMod1D-PARS"
+"Homepage" = "https://github.com/NOAA-National-Severe-Storms-Laboratory/BinMod1D"
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -44,9 +43,26 @@ docs = [
     "sphinx-copybutton",
     "sphinx-rtd-theme",
     "nbsphinx",
-    "ipython"  # often needed for nbsphinx
+    "ipython",
+]
+
+test = [
+    "pytest",
 ]
 
 #[tool.setuptools]
 # This explicitly sets the content type, although 'readme = "README.md"' often implies it for markdown
 #long-description-content-type = "text/markdown" # <--- Crucial for rendering Markdown correctly
+
+
+[tool.pylint.messages_control]
+disable = [
+    "invalid-name",                 # Allow math/physics variable names (ZH, Mbins, Ecol)
+    "line-too-long",                # Allow long equations without forced line breaks
+    "too-many-arguments",           # Allow complex scientific methods to take many parameters
+    "too-many-instance-attributes", # Allow the spectral_1d class to hold its many physics arrays
+    "too-many-locals",              # Allow RK solvers to use necessary local variables
+    "redefined-outer-name",         # Prevent warnings common in notebook-to-script code
+    "missing-docstring",            # Suppress warnings if minor helper functions lack docstrings
+    "ungrouped-imports",            # Prevent pedantic warnings about import ordering
+]

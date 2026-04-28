@@ -24,9 +24,9 @@ In general, the most relevant inputs are:
 :class-body: sd-pb-0
 
 * **`sbin`** {bdg-secondary}`int`  
-  Resolution of geometric mass bins (default: 4).
+  Resolution of geometric mass bins (default: 2).
 * **`bins`** {bdg-secondary}`int`  
-  Number of mass bins for the distribution (default: 56).
+  Number of mass bins for the distribution (default: 60).
 * **`dt`** {bdg-secondary}`float`  
   Model time step in seconds. (default:1)
 * **`tmax`** {bdg-secondary}`float`  
@@ -40,7 +40,7 @@ In general, the most relevant inputs are:
 * **``zbot``** {bdg-secondary}`float`  
   Bottom height of steady-state/1D model domain in meters. (default: 0.)
 * **``D1``** {bdg-secondary}`float`  
-  Minimum equivolume diameter bin size in mm when the **``dist_var``** parameter is 'size'. (default: 0.25)
+  Minimum equivolume diameter bin size in mm when the **``dist_var``** parameter is 'size'. (default: 0.1)
 * **``x0``** {bdg-secondary}`float`  
   Minimum bin mass in grams when the 'dist_var' parameter is 'mass'. (default: 0.01)
 * **``moments``** {bdg-secondary}`int`  
@@ -371,7 +371,7 @@ time (`tmax`) and top and bottom (`ztop` and `zbot`) input values. Let's use the
 parameter (i.e., 30 minute simulation) along with the same height grid as in the
 steady-state example. We'll also fix the top boundary conditon with `boundary='fixed'` 
 in order for the model approach a steady-state solution after a sufficiently long
-period of time. Note that **BinMod1D** uses numba functionality which will parallelize
+period of time. Note that **BinMod1D** uses the Numba just-in-time (JIT) functionality which will parallelize
 calculations if users have multiple CPUs. Therefore, even this simulation will not take
 very long on most modern PCs.
 
